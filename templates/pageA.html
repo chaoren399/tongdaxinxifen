@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>通达信行业分类 - 页面 A</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <h1>通达信行业分类 <span class="page-tag">页面 A · 一级 + 二级</span></h1>
+            <div class="stats">
+                <span class="badge badge-primary">一级行业 <b>{{ stats.primary }}</b></span>
+                <span class="badge badge-secondary">二级行业 <b>{{ stats.secondary }}</b></span>
+            </div>
+        </div>
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a class="active" href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_c') }}">页面 C</a>
+            <a href="{{ url_for('page_d') }}">页面 D</a>
+            <a href="{{ url_for('page_e') }}">页面 E</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <div class="toolbar">
+            <input id="searchInput" type="search" placeholder="搜索一级 / 二级行业名称或代码..." />
+        </div>
+
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width: 22%;">一级行业</th>
+                        <th>二级行业</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for g in groups %}
+                    <tr class="primary-row" data-name="{{ g.name }}" data-code="{{ g.code }}">
+                        <td class="primary-cell">
+                            <div class="primary-info">
+                                <span class="tag tag-primary">一级</span>
+                                <span class="primary-name">{{ g.name }}</span>
+                                <span class="primary-code" hidden>{{ g.code }}</span>
+                                <span class="primary-meta">
+                                    {{ g.secondaryCount }} 个二级 ·
+                                    {{ g.tertiaryCount }} 个三级 ·
+                                    {{ g.stockCount }} 只股票
+                                </span>
+                            </div>
+                        </td>
+                        <td>
+                            {% if g.secondaries %}
+                            <ul class="secondary-list">
+                                {% for s in g.secondaries %}
+                                <li class="secondary-item"
+                                    data-name="{{ s.name }}"
+                                    data-code="{{ s.code }}">
+                                    <span class="tag tag-secondary">二级</span>
+                                    <span class="secondary-name">{{ s.name }}</span>
+                                    <span class="secondary-code" hidden>{{ s.code }}</span>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            {% else %}
+                            <span class="empty">— 暂无二级行业 —</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='pageA.js') }}"></script>
+</body>
+</html>

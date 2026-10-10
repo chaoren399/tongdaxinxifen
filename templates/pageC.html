@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>通达信行业分类 - 页面 C</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <h1>通达信行业分类 <span class="page-tag">页面 C · 一级 + 二级 + 三级 + 股票 + 新增</span></h1>
+            <div class="stats">
+                <span class="badge badge-primary">一级行业 <b>{{ stats.primary }}</b></span>
+                <span class="badge badge-secondary">二级行业 <b>{{ stats.secondary }}</b></span>
+                <span class="badge badge-tertiary">三级行业 <b>{{ stats.tertiary }}</b></span>
+                <span class="badge badge-stock">股票 <b>{{ stats.stocks }}</b></span>
+            </div>
+        </div>
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a class="active" href="{{ url_for('page_c') }}">页面 C</a>
+            <a href="{{ url_for('page_d') }}">页面 D</a>
+            <a href="{{ url_for('page_e') }}">页面 E</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <div class="toolbar">
+            <input id="searchInput" type="search" placeholder="搜索一级 / 二级 / 三级行业或股票名称..." />
+        </div>
+
+        <!-- 新增股票面板 -->
+        <section class="add-panel">
+            <div class="add-panel-head">
+                <h3>新增股票到三级行业</h3>
+                <div class="add-panel-actions">
+                    <span class="added-count">本次已新增 <b id="addedCount">{{ added|length }}</b> 只</span>
+                    <button id="resetAdded" type="button" class="btn-ghost">清空记录</button>
+                </div>
+            </div>
+            <form id="addStockForm" class="add-form" autocomplete="off">
+                <div class="field field-wide">
+                    <label for="tertiaryPath">三级行业</label>
+                    <select id="tertiaryPath" name="path" required>
+                        <option value="">— 请选择三级行业 —</option>
+                        {% for opt in tertiary_options %}
+                        <option value="{{ opt.value }}">{{ opt.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="stockName">股票名称 <span class="req">*</span></label>
+                    <input id="stockName" name="name" type="text" required maxlength="20" placeholder="例如：贵州茅台" />
+                </div>
+                <div class="field">
+                    <label for="stockCode">股票代码</label>
+                    <input id="stockCode" name="code" type="text" maxlength="10" placeholder="例如：600519" />
+                </div>
+                <div class="field">
+                    <label for="stockLoc">所在地</label>
+                    <input id="stockLoc" name="location" type="text" maxlength="40" placeholder="例如：贵州贵阳" />
+                </div>
+                <div class="field field-wide">
+                    <label for="stockMain">主营业务</label>
+                    <input id="stockMain" name="main_business" type="text" maxlength="120" placeholder="例如：白酒生产销售" />
+                </div>
+                <div class="field field-submit">
+                    <button type="submit" class="btn-primary">新增</button>
+                </div>
+            </form>
+            <div id="addResult" class="add-result" hidden></div>
+        </section>
+
+        <!-- 批量新增股票面板 -->
+        <section class="add-panel">
+            <div class="add-panel-head">
+                <h3>批量新增股票到三级行业</h3>
+            </div>
+            <form id="batchForm" class="batch-form" autocomplete="off">
+                <div class="field field-wide">
+                    <label for="batchTertiaryPath">三级行业</label>
+                    <select id="batchTertiaryPath" name="path" required>
+                        <option value="">— 请选择三级行业 —</option>
+                        {% for opt in tertiary_options %}
+                        <option value="{{ opt.value }}">{{ opt.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field field-wide">
+                    <label for="batchNames">股票名称 <span class="req">*</span>（每行一个，最多 500 个，自动去重）</label>
+                    <textarea id="batchNames" name="names" rows="5" required
+                        placeholder="例如：&#10;安泰集团&#10;国际实业&#10;云维股份"></textarea>
+                </div>
+                <div class="field field-submit">
+                    <button type="submit" class="btn-primary">批量新增</button>
+                </div>
+            </form>
+            <div id="batchResult" class="add-result" hidden></div>
+        </section>
+
+        <!-- 本次新增的记录 -->
+        {% if added %}
+        <section class="added-list">
+            <h3>本次新增的记录</h3>
+            <ul class="added-items">
+                {% for r in added %}
+                <li class="added-item">
+                    <span class="tag tag-primary">一级</span>
+                    <span class="added-path">{{ r.primary }} / {{ r.secondary }} / {{ r.tertiary }}</span>
+                    <span class="arrow">→</span>
+                    <span class="tag tag-stock">股票</span>
+                    <span class="added-name">{{ r.stock.name }}</span>
+                    <span class="added-code">{{ r.stock.code or '' }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+
+        <!-- 完整层级表（与 pageB 相同） -->
+        <div class="table-wrap">
+            <table class="data-table data-table-b">
+                <thead>
+                    <tr>
+                        <th style="width: 18%;">一级行业</th>
+                        <th>二级 / 三级 / 股票</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for g in groups %}
+                    <tr class="primary-row" data-name="{{ g.name }}" data-code="{{ g.code }}">
+                        <td class="primary-cell">
+                            <div class="primary-info">
+                                <span class="tag tag-primary">一级</span>
+                                <span class="primary-name">{{ g.name }}</span>
+                                <span class="primary-code" hidden>{{ g.code }}</span>
+                                <span class="primary-meta">
+                                    {{ g.secondaryCount }} 二级 ·
+                                    {{ g.tertiaryCount }} 三级 ·
+                                    {{ g.stockCount }} 股票
+                                </span>
+                            </div>
+                        </td>
+                        <td>
+                            {% if g.secondaries %}
+                            <ul class="secondary-blocks">
+                                {% for s in g.secondaries %}
+                                <li class="secondary-block" data-name="{{ s.name }}" data-code="{{ s.code }}">
+                                    <div class="secondary-head">
+                                        <span class="tag tag-secondary">二级</span>
+                                        <span class="secondary-name">{{ s.name }}</span>
+                                        <span class="secondary-code" hidden>{{ s.code }}</span>
+                                        <span class="secondary-meta">
+                                            {{ s.tertiaryCount }} 三级 · {{ s.stockCount }} 股票
+                                        </span>
+                                    </div>
+                                    {% if s.tertiaries %}
+                                    <ul class="tertiary-blocks">
+                                        {% for t in s.tertiaries %}
+                                        <li class="tertiary-block" data-name="{{ t.name }}" data-code="{{ t.code }}">
+                                            <div class="tertiary-head">
+                                                <span class="tag tag-tertiary">三级</span>
+                                                <span class="tertiary-name">{{ t.name }}</span>
+                                                <span class="tertiary-code" hidden>{{ t.code }}</span>
+                                                <span class="tertiary-meta">{{ t.stockCount }} 股票</span>
+                                            </div>
+                                            {% if t.stocks %}
+                                            <ul class="stock-list">
+                                                {% for st in t.stocks %}
+                                                <li class="stock-row" data-name="{{ st.name }}" data-code="{{ st.code }}">
+                                                    <span class="stock-name">{{ st.name }}</span>
+                                                    <span class="stock-code" hidden>{{ st.code or '-' }}</span>
+                                                    <span class="stock-loc">{{ st.location or '' }}</span>
+                                                    <span class="stock-main">{{ st.main_business or '' }}</span>
+                                                </li>
+                                                {% endfor %}
+                                            </ul>
+                                            {% else %}
+                                            <div class="empty">— 暂无股票 —</div>
+                                            {% endif %}
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                    {% else %}
+                                    <div class="empty">— 暂无三级行业 —</div>
+                                    {% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            {% else %}
+                            <span class="empty">— 暂无二级行业 —</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='pageB.js') }}"></script>
+    <script src="{{ url_for('static', filename='pageC.js') }}"></script>
+</body>
+</html>

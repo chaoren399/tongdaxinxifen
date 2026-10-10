@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>通达信行业分类</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <h1>通达信行业分类</h1>
+            <div class="stats">
+                <span class="badge badge-primary">一级行业 <b>{{ stats.primary }}</b></span>
+                <span class="badge badge-secondary">二级行业 <b>{{ stats.secondary }}</b></span>
+                <span class="badge badge-tertiary">三级行业 <b>{{ stats.tertiary }}</b></span>
+                <span class="badge badge-stock">股票 <b>{{ stats.stocks }}</b></span>
+            </div>
+        </div>
+        <nav class="topnav">
+            <a class="active" href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_c') }}">页面 C</a>
+            <a href="{{ url_for('page_d') }}">页面 D</a>
+            <a href="{{ url_for('page_e') }}">页面 E</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <div class="toolbar">
+            <input id="searchInput" type="search" placeholder="搜索行业或股票名称 / 代码..." />
+        </div>
+
+        <ul id="primaryList" class="primary-grid">
+            {% for p in primaries %}
+            <li class="primary-card" data-name="{{ p.name }}">
+                <div class="primary-card-head">
+                    <span class="tag tag-primary">一级</span>
+                    <span class="primary-name">{{ p.name }}</span>
+                    <span class="primary-code" hidden>{{ p.code }}</span>
+                </div>
+                <div class="primary-stats">
+                    <span>二级 <b>{{ p.secondaryCount }}</b></span>
+                    <span>三级 <b>{{ p.tertiaryCount }}</b></span>
+                    <span>股票 <b>{{ p.stockCount }}</b></span>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+    </main>
+
+    <!-- 行业详情弹窗 -->
+    <div id="modal" class="modal" hidden>
+        <div class="modal-mask"></div>
+        <div class="modal-card">
+            <div class="modal-head">
+                <div>
+                    <h2 id="modalTitle">行业详情</h2>
+                    <div class="breadcrumb" id="modalBread"></div>
+                </div>
+                <button id="modalClose" class="modal-close" aria-label="关闭">×</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
