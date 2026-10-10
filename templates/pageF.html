@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>通达信行业分类 - 页面 F · 多股票搜索</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <h1>通达信行业分类 <span class="page-tag">页面 F · 多股票搜索</span></h1>
+        </div>
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_c') }}">页面 C</a>
+            <a href="{{ url_for('page_d') }}">页面 D</a>
+            <a class="active" href="{{ url_for('page_f') }}">页面 F</a>
+            <a href="{{ url_for('page_g') }}">页面 G</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <div class="batch-search-box">
+            <div class="batch-search-row">
+                <textarea id="batchSearchInput" rows="4"></textarea>
+                <button id="batchSearchBtn" type="button">搜 索</button>
+            </div>
+        </div>
+
+        <div id="batchSummary" class="batch-summary" hidden></div>
+
+        <div id="batchResultList" class="batch-result-list">
+            <div class="stock-detail-card stock-detail-empty">
+                <p class="empty">输入关键词后点击"搜索"，每只股票将按页面 E 的格式展示在这里</p>
+            </div>
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='pageF.js') }}"></script>
+</body>
+</html>

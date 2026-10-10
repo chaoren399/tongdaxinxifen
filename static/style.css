@@ -545,7 +545,233 @@ mark.hl {
     border-bottom-style: solid;
 }
 
-/* ========== 页面 E：股票详情 ========== */
+/* ========== 页面 F：多股票批量搜索 ========== */
+.batch-search-box {
+    max-width: 1200px;
+    margin: 0 auto 16px;
+}
+.batch-search-row {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+}
+.batch-search-row textarea {
+    flex: 1;
+    box-sizing: border-box;
+    padding: 10px 14px;
+    font-size: 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    outline: none;
+    resize: vertical;
+    font-family: inherit;
+    line-height: 1.6;
+}
+.batch-search-row textarea:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+.batch-search-row button {
+    flex: none;
+    padding: 0 28px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #fff;
+    background: #2563eb;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.batch-search-row button:hover {
+    background: #1d4ed8;
+}
+.batch-search-row button:disabled {
+    background: #93c5fd;
+    cursor: not-allowed;
+}
+.batch-summary {
+    max-width: 1200px;
+    margin: 0 auto 12px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    font-size: 13px;
+    color: #374151;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 8px 14px;
+}
+.batch-summary-kw {
+    color: #4b5563;
+    word-break: break-all;
+}
+.batch-summary-cnt {
+    margin-left: auto;
+    color: #2563eb;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.batch-result-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 900px;
+    margin: 0 auto;
+}
+.batch-result-list .stock-detail-card {
+    position: relative;
+    margin: 0;
+}
+.batch-result-list .stock-detail-card mark.ssi-hl {
+    background: #fde68a;
+    color: #92400e;
+    border-radius: 2px;
+    padding: 0 1px;
+}
+.batch-result-list .stock-detail-card td mark.ssi-hl {
+    font-weight: 700;
+}
+.batch-result-list .stock-detail-card.name-hit {
+    border-color: #93c5fd;
+}
+.batch-name-link {
+    color: #1d4ed8;
+    text-decoration: none;
+    border-bottom: 1px dashed #93c5fd;
+    font-weight: 600;
+}
+.batch-name-link:hover {
+    border-bottom-style: solid;
+    border-bottom-color: #1d4ed8;
+}
+.batch-hit-badge.card-hit {
+    position: absolute;
+    top: -9px;
+    right: 14px;
+    display: inline-block;
+    font-size: 11px;
+    color: #92400e;
+    background: #fef3c7;
+    border: 1px solid #fde68a;
+    border-radius: 10px;
+    padding: 1px 8px;
+    margin-left: 6px;
+    white-space: nowrap;
+    z-index: 1;
+}
+.batch-placeholder-row td {
+    padding: 28px 12px;
+    text-align: center;
+}
+
+/* ========== 页面 F 卡片内行业链接 ========== */
+a.industry-link {
+    color: #1d4ed8;
+    text-decoration: none;
+    border-bottom: 1px dashed #93c5fd;
+    cursor: pointer;
+}
+a.industry-link:hover {
+    border-bottom-style: solid;
+    border-bottom-color: #1d4ed8;
+}
+
+/* ========== 页面 G：行业股票列表 ========== */
+.industry-head-card {
+    max-width: 1200px;
+    margin: 0 auto 16px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 18px 24px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+}
+.industry-head-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.industry-head-name {
+    font-size: 20px;
+    font-weight: 700;
+    color: #111827;
+}
+.industry-head-code {
+    font-family: "SF Mono", Consolas, Monaco, monospace;
+    color: #2563eb;
+    background: #eff6ff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+.industry-head-parent {
+    font-size: 13px;
+    color: #6b7280;
+}
+.industry-head-count {
+    margin-left: auto;
+    font-size: 13px;
+    color: #2563eb;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.industry-group-card {
+    max-width: 1200px;
+    margin: 0 auto 12px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 14px 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.industry-group-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #f3f4f6;
+}
+.industry-group-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #111827;
+}
+.industry-group-code {
+    font-family: "SF Mono", Consolas, Monaco, monospace;
+    color: #6b7280;
+    font-size: 12px;
+}
+.industry-group-count {
+    margin-left: auto;
+    font-size: 12px;
+    color: #6b7280;
+}
+.industry-stock-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    padding: 4px 0;
+}
+.industry-stock-cloud .is-name {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #111827;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 5px;
+    padding: 4px 10px;
+    white-space: nowrap;
+}
+
+/* ========== 股票详情卡片（页面 F 使用） ========== */
 .stock-detail-card {
     background: #fff;
     border: 1px solid #e5e7eb;
@@ -591,6 +817,20 @@ mark.hl {
 .stock-detail-path .path-sep {
     color: #9ca3af;
     margin: 0 2px;
+}
+.stock-detail-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 20px;
+}
+.stock-detail-col .stock-detail-table {
+    table-layout: fixed;
+    width: 100%;
+    height: 100%;
+}
+.stock-detail-col .stock-detail-table td {
+    word-break: break-all;
+    white-space: normal;
 }
 .stock-detail-table {
     width: 100%;
@@ -755,6 +995,7 @@ mark.hl {
     .batch-form { grid-template-columns: 1fr; }
     .batch-form .field-wide,
     .batch-form .field-submit { grid-column: span 1; }
+    .stock-detail-columns { grid-template-columns: 1fr; gap: 0; }
 }
 .add-result.ok {
     background: #ecfdf5;

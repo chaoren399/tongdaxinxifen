@@ -283,49 +283,86 @@ def page_b():
 
 @app.route("/pageD")
 def page_d():
-    """页面 D：与页面 B 完全相同（展示一级+二级+三级+股票），股票名称可跳转页面 E"""
+    """页面 D：与页面 B 完全相同（展示一级+二级+三级+股票），股票名称可跳转页面 F 搜索"""
     groups, stats = _build_full_groups()
     return render_template("pageD.html", groups=groups, stats=stats)
 
 
-@app.route("/pageE")
-def page_e():
-    """页面 E：按股票代码展示单只股票的详细信息（含行业路径）"""
-    code = (request.args.get("code") or "").strip()
+@app.route("/pageF")
+def page_f():
+    """页面 F：多股票批量搜索"""
+    return render_template("pageF.html")
+
+
+@app.route("/pageG")
+def page_g():
+    """
+    页面 G：按行业展示股票列表。
+    参数：level（1/2/3，或 primary/secondary/tertiary）+ name（行业名称）。
+    三级行业直接展示其下股票；一级/二级行业按三级行业分组展示其下全部股票。
+    """
+    level = (request.args.get("level") or "").strip().lower()
     name = (request.args.get("name") or "").strip()
-    stock = None
-    path = None
-    if code or name:
-        for primary_name, primary in INDUSTRY_TREE.items():
-            for secondary_name, secondary in primary["secondaries"].items():
-                for tertiary_name, tertiary in secondary["tertiaries"].items():
-                    for st in tertiary["stocks"]:
-                        if (code and st["code"] == code) or (
-                            not code and name and st["name"] == name
-                        ):
-                            stock = st
-                            path = {
-                                "primary": primary_name,
-                                "primaryCode": primary["code"],
-                                "secondary": secondary_name,
-                                "secondaryCode": secondary["code"],
-                                "tertiary": tertiary_name,
-                                "tertiaryCode": tertiary["code"],
-                            }
-                            break
-                    if stock:
-                        break
-                if stock:
+    level_map = {
+        "1": 1, "2": 2, "3": 3,
+        "primary": 1, "secondary": 2, "tertiary": 3,
+    }
+    level = level_map.get(level, 0)
+
+    groups = []   # [{name, code, stocks: [...]}]
+    industry = None
+    if level and name:
+        if level == 1:
+            primary = INDUSTRY_TREE.get(name)
+            if primary:
+                industry = {"name": name, "code": primary["code"], "level": "一级行业"}
+                for sname, secondary in primary["secondaries"].items():
+                    for tname, tertiary in secondary["tertiaries"].items():
+                        groups.append(
+                            {"name": tname, "code": tertiary["code"],
+                             "stocks": tertiary["stocks"]}
+                        )
+        elif level == 2:
+            for primary_name, primary in INDUSTRY_TREE.items():
+                secondary = primary["secondaries"].get(name)
+                if secondary:
+                    industry = {
+                        "name": name, "code": secondary["code"],
+                        "level": "二级行业", "parent": primary_name,
+                    }
+                    for tname, tertiary in secondary["tertiaries"].items():
+                        groups.append(
+                            {"name": tname, "code": tertiary["code"],
+                             "stocks": tertiary["stocks"]}
+                        )
                     break
-            if stock:
-                break
-    if stock is None:
-        # 未找到（或未传参数）时给出提示页
-        return render_template(
-            "pageE.html", stock=None, path=None,
-            query={"code": code, "name": name},
-        )
-    return render_template("pageE.html", stock=stock, path=path, query=None)
+        elif level == 3:
+            for primary_name, primary in INDUSTRY_TREE.items():
+                for sname, secondary in primary["secondaries"].items():
+                    tertiary = secondary["tertiaries"].get(name)
+                    if tertiary:
+                        industry = {
+                            "name": name, "code": tertiary["code"],
+                            "level": "三级行业",
+                            "parent": f"{primary_name} / {sname}",
+                        }
+                        groups.append(
+                            {"name": name, "code": tertiary["code"],
+                             "stocks": tertiary["stocks"]}
+                        )
+                        break
+                if industry:
+                    break
+
+    total = sum(len(g["stocks"]) for g in groups)
+    return render_template(
+        "pageG.html",
+        industry=industry,
+        groups=groups,
+        total=total,
+        query_name=name,
+        query_level=level,
+    )
 
 
 @app.route("/pageC")
@@ -355,6 +392,65 @@ def page_c():
 
 
 # ============== API ==============
+
+@app.route("/api/stocks/search_batch", methods=["POST"])
+def api_stocks_search_batch():
+    """
+    批量搜索多只股票（页面 F）。
+    请求 JSON: {"q": "关键词串"}，关键词按换行 / 逗号 / 顿号 / 空格分隔。
+    对每只股票做全字段模糊匹配（名称/代码/所在地/主营/概念/三级行业），
+    返回所有至少命中一个关键词的股票，附命中关键词列表（名称命中的排前）。
+    """
+    data = request.get_json(silent=True) or {}
+    raw = (data.get("q") or "").strip()
+    # 分隔关键词：换行、中英文逗号、顿号、分号、空白
+    keywords = [
+        kw.strip().lower()
+        for kw in raw.replace("，", ",").replace("、", ",").replace(";", ",")
+        .replace("；", ",").replace("\n", ",").split(",")
+        if kw.strip()
+    ]
+    if not keywords:
+        return jsonify({"keywords": [], "items": [], "total": 0})
+
+    items = []
+    for primary_name, primary in INDUSTRY_TREE.items():
+        for secondary_name, secondary in primary["secondaries"].items():
+            for tertiary_name, tertiary in secondary["tertiaries"].items():
+                for st in tertiary["stocks"]:
+                    matched = [kw for kw in keywords
+                               if _stock_hit_keyword(st, tertiary_name, kw)]
+                    if not matched:
+                        continue
+                    items.append(
+                        {
+                            "name": st["name"],
+                            "code": st["code"],
+                            "location": st["location"],
+                            "main_business": st["main_business"],
+                            "concept1": st["concept1"],
+                            "concept2": st["concept2"],
+                            "primary": primary_name,
+                            "secondary": secondary_name,
+                            "tertiary": tertiary_name,
+                            "nameHit": any(kw in st["name"].lower() for kw in matched),
+                            "matched": matched,
+                        }
+                    )
+    # 名称命中优先
+    items.sort(key=lambda r: 0 if r["nameHit"] else 1)
+    return jsonify(
+        {"keywords": keywords, "items": items, "total": len(items)}
+    )
+
+
+def _stock_hit_keyword(st, tertiary_name, kw):
+    """判断股票 st 在全字段上是否包含关键词 kw（均为小写比较）"""
+    fields = (
+        st["name"], st["code"], st["location"], st["main_business"],
+        st["concept1"], st["concept2"], tertiary_name,
+    )
+    return any(kw in (f or "").lower() for f in fields)
 
 @app.route("/api/primaries")
 def api_primaries():
