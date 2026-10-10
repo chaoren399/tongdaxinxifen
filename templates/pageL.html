@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>通达信行业分类 - 页面 L · 全部概念（层级）</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <style>
+        /* 页面 L 专属样式 */
+        .concept-cell-link {
+            text-decoration: none;
+            color: inherit;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .concept-cell-link:hover .primary-name { color: #2563eb; }
+        .concept-children { list-style: none; padding: 0; margin: 0; }
+        .concept-node { margin-bottom: 8px; }
+        .concept-node-head {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .concept-node-head .tag { flex: none; }
+        .concept-node-head .primary-name { font-weight: 600; }
+        .concept-node-head .primary-meta {
+            color: #6b7280;
+            font-size: 12px;
+            font-weight: 400;
+            white-space: nowrap;
+        }
+        .concept-node-body { margin: 4px 0 0 12px; }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <h1>通达信行业分类 <span class="page-tag">页面 L · 全部概念（层级 + 股票）</span></h1>
+            <div class="stats">
+                <span class="badge badge-primary">概念 <b>{{ stats.concepts }}</b></span>
+                <span class="badge badge-stock">股票 <b>{{ stats.stocks }}</b></span>
+                <span class="badge badge-tertiary">含概念股票 <b>{{ stats.stocks_with_concept }}</b></span>
+            </div>
+        </div>
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_c') }}">页面 C</a>
+            <a href="{{ url_for('page_d') }}">页面 D</a>
+            <a href="{{ url_for('page_f') }}">页面 F</a>
+            <a href="{{ url_for('page_g') }}">页面 G</a>
+            <a href="{{ url_for('page_h') }}">页面 H</a>
+            <a href="{{ url_for('page_j') }}">页面 J</a>
+            <a href="{{ url_for('page_k') }}">页面 K</a>
+            <a class="active" href="{{ url_for('page_l') }}">页面 L</a>
+        </nav>
+    </header>
+
+    {% macro render_concept(node, root_name) %}
+    <ul class="concept-children">
+        {% if node.stocks %}
+        <li class="concept-node" data-name="{{ node.name }}">
+            {% if node.name != root_name %}
+            <div class="concept-node-head">
+                <a class="concept-cell-link"
+                   href="{{ url_for('page_h') }}?name={{ node.name|urlencode }}">
+                    <span class="tag tag-tertiary">概念</span>
+                    <span class="primary-name">{{ node.name }}</span>
+                </a>
+                <span class="primary-meta">{{ node.count }} 股票</span>
+            </div>
+            {% endif %}
+            <div class="concept-node-body">
+                {% if node.stocks %}
+                <ul class="stock-list">
+                    {% for name in node.stocks %}
+                    <li class="stock-row" data-name="{{ name }}">
+                        <span class="stock-name">{{ name }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+                {% for child in node.children %}
+                {{ render_concept(child, root_name) }}
+                {% endfor %}
+            </div>
+        </li>
+        {% else %}
+        {% for child in node.children %}
+        {{ render_concept(child, root_name) }}
+        {% endfor %}
+        {% endif %}
+    </ul>
+    {% endmacro %}
+
+    <main class="container">
+        <div class="toolbar">
+            <input id="searchInput" type="search" placeholder="搜索概念或股票名称..." />
+            <span class="result-count" id="resultCount"></span>
+        </div>
+
+        <div class="table-wrap">
+            <table class="data-table data-table-l">
+                <thead>
+                    <tr>
+                        <th style="width: 18%;">概念</th>
+                        <th>子概念层级 / 关联股票（仅名称）</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for root in roots %}
+                    <tr class="primary-row concept-row" data-name="{{ root.name }}">
+                        <td class="primary-cell">
+                            <div class="primary-info">
+                                <a class="concept-cell-link"
+                                   href="{{ url_for('page_h') }}?name={{ root.name|urlencode }}"
+                                   title="点击查看「{{ root.name }}」相关股票">
+                                    <span class="tag tag-tertiary">概念</span>
+                                    <span class="primary-name">{{ root.name }}</span>
+                                </a>
+                                <span class="primary-meta">{{ root.total }} 股票{% if root.children %} · {{ root.children|length }} 子概念{% endif %}</span>
+                            </div>
+                        </td>
+                        <td>
+                            {% if root.children or root.stocks %}
+                            {{ render_concept(root, root.name) }}
+                            {% else %}
+                            <div class="empty">— 暂无股票 —</div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="2"><div class="empty">— 暂无任何概念数据 —</div></td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <script>
+    (function () {
+        "use strict";
+
+        const $search = document.getElementById("searchInput");
+        const $rows = document.querySelectorAll("tr.concept-row");
+        const counter = document.getElementById("resultCount");
+
+        function clearHighlights() {
+            document.querySelectorAll("mark.hl").forEach((m) => {
+                const text = document.createTextNode(m.textContent);
+                m.parentNode.replaceChild(text, m);
+            });
+        }
+
+        function highlightText(el, keyword) {
+            if (!el || !keyword) return;
+            const text = el.textContent;
+            const lower = text.toLowerCase();
+            const kw = keyword.toLowerCase();
+            const idx = lower.indexOf(kw);
+            if (idx < 0) return;
+            el.textContent = "";
+            el.appendChild(document.createTextNode(text.slice(0, idx)));
+            const mark = document.createElement("mark");
+            mark.className = "hl";
+            mark.textContent = text.slice(idx, idx + keyword.length);
+            el.appendChild(mark);
+            el.appendChild(
+                document.createTextNode(text.slice(idx + keyword.length))
+            );
+        }
+
+        function applySearch() {
+            const kw = ($search.value || "").trim().toLowerCase();
+            clearHighlights();
+            let visibleRows = 0;
+
+            $rows.forEach((row) => {
+                const conceptEl = row.querySelector("td.primary-cell .primary-name");
+                const conceptName = (conceptEl?.textContent || "").toLowerCase();
+
+                // 过滤子概念节点：仅当节点名或其股票命中时保留
+                row.querySelectorAll(".concept-node").forEach((node) => {
+                    const nodeEl = node.querySelector(":scope > .concept-node-head .primary-name, :scope > .primary-name");
+                    const nodeName = ((nodeEl?.textContent) || "").toLowerCase();
+                    const nodeHasStockHit =
+                        [...node.querySelectorAll(":scope .stock-row")]
+                            .some((st) => ((st.querySelector(".stock-name")?.textContent) || "")
+                                .toLowerCase().includes(kw));
+                    if (kw && !nodeName.includes(kw) && !nodeHasStockHit) {
+                        node.style.display = "none";
+                    } else {
+                        node.style.display = "";
+                        if (kw) highlightText(nodeEl, kw);
+                    }
+                });
+
+                // 过滤股票行
+                const stocks = row.querySelectorAll("li.stock-row");
+                let stockVisibleCount = 0;
+                stocks.forEach((st) => {
+                    const stName = ((st.querySelector(".stock-name")?.textContent) || "").toLowerCase();
+                    const hit = !kw || stName.includes(kw);
+                    st.style.display = hit ? "" : "none";
+                    if (hit) {
+                        stockVisibleCount++;
+                        if (kw) highlightText(st.querySelector(".stock-name"), kw);
+                    }
+                });
+
+                const conceptHit = !kw || conceptName.includes(kw);
+                const rowVisible = conceptHit || stockVisibleCount > 0;
+                row.style.display = rowVisible ? "" : "none";
+                if (rowVisible) {
+                    visibleRows++;
+                    if (conceptHit && kw) highlightText(conceptEl, kw);
+                }
+            });
+
+            if (counter) {
+                counter.textContent = kw
+                    ? "匹配 " + visibleRows + " / " + $rows.length + " 个概念"
+                    : "共 " + $rows.length + " 个一级概念";
+            }
+        }
+
+        let timer = null;
+        $search.addEventListener("input", () => {
+            clearTimeout(timer);
+            timer = setTimeout(applySearch, 120);
+        });
+        applySearch();
+    })();
+    </script>
+</body>
+</html>

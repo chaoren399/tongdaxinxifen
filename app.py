@@ -4,117 +4,50 @@
 - 点击一级卡片 -> 异步加载其下二级行业
 - 点击二级 -> 异步加载其下三级行业
 - 点击三级 -> 异步加载对应股票
+
+数据存储：SQLite（data/tongdaxin.db），由 db.py 提供访问层
 """
-import csv
+import csv  # noqa: F401  （保留 csv 以便兼容旧代码）
 import os
 from collections import OrderedDict
-from typing import Dict
+from typing import Any, Dict
 
 from flask import Flask, jsonify, render_template, abort, request
 
+from db import (
+    DB_FILE,
+    CSV_FILE as DATA_FILE,
+    find_stock_by_name,
+    get_conn,
+    init_db_from_csv,
+    load_industry_tree,
+    update_stock_concept,
+)
+
 app = Flask(__name__)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_FILE = os.path.join(
-    BASE_DIR, "data", "通达信一级二级三级行业汇总20261007 - 副本.csv"
-)
-# CSV 表头顺序（14 列），新增股票时按此顺序追加行
-CSV_COLUMNS = [
-    "一级编码", "一级代码", "一级行业(30)", "二级代码", "二级行业(128)",
-    "三级代码", "三级行业(345)", "股票名称", "股票代码", "所在地",
-    "主营", "概念1", "概念2", "概念2",
-]
+# 启动期检测：若 SQLite 数据库不存在则从 CSV 自动迁移
+if not os.path.exists(DB_FILE):
+    if os.path.exists(DATA_FILE):
+        init_db_from_csv()
+    else:
+        raise FileNotFoundError(
+            f"数据库 {DB_FILE} 不存在，且找不到 CSV 源文件 {DATA_FILE}"
+        )
+
+# 增量迁移：确保 concepts 概念表存在（旧数据库升级）
+from db import ensure_concepts_table  # noqa: E402
+ensure_concepts_table()
+
+# 模块级 INDUSTRY_TREE，启动时一次性从 SQLite 加载到内存；写入时同步刷新
+INDUSTRY_TREE: Dict[str, dict] = load_industry_tree()
 
 
-def load_industry_tree():
-    """
-    读取 CSV 并构建层级树:
-    {
-      "一级行业": {
-          "code": "881001",
-          "secondaries": {
-              "二级行业": {
-                  "code": "881002",
-                  "tertiaries": {
-                      "三级行业": {
-                          "code": "881003",
-                          "stocks": [
-                              {"name": "郑州煤电", "code": "600121", ...},
-                          ]
-                      }
-                  }
-              }
-          }
-      },
-      ...
-    }
-    """
-    tree = OrderedDict()
-    with open(DATA_FILE, "r", encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            primary_acode = (row.get("一级编码") or "").strip()
-            primary_code = (row.get("一级代码") or "").strip()
-            primary_name = (row.get("一级行业(30)") or "").strip()
-            secondary_code = (row.get("二级代码") or "").strip()
-            secondary_name = (row.get("二级行业(128)") or "").strip()
-            tertiary_code = (row.get("三级代码") or "").strip()
-            tertiary_name = (row.get("三级行业(345)") or "").strip()
-
-            stock_name = (row.get("股票名称") or "").strip()
-            stock_code = (row.get("股票代码") or "").strip()
-
-            if not primary_name:
-                continue
-
-            if primary_name not in tree:
-                tree[primary_name] = {
-                    "acode": primary_acode,   # 一级编码（A1、A2...）
-                    "code": primary_code,     # 一级代码（881001...）
-                    "secondaries": OrderedDict(),
-                }
-            primary = tree[primary_name]
-
-            if not secondary_name:
-                continue
-
-            if secondary_name not in primary["secondaries"]:
-                primary["secondaries"][secondary_name] = {
-                    "code": secondary_code,
-                    "tertiaries": OrderedDict(),
-                }
-            secondary = primary["secondaries"][secondary_name]
-
-            if not tertiary_name:
-                continue
-
-            if tertiary_name not in secondary["tertiaries"]:
-                secondary["tertiaries"][tertiary_name] = {
-                    "code": tertiary_code,
-                    "stocks": [],
-                }
-            tertiary = secondary["tertiaries"][tertiary_name]
-
-            if stock_name:
-                tertiary["stocks"].append(
-                    {
-                        "name": stock_name,
-                        "code": stock_code,
-                        "location": (row.get("所在地") or "").strip(),
-                        "main_business": (row.get("主营") or "").strip(),
-                        "concept1": (row.get("概念") or "").strip(),
-                        "concept2": "",
-                        "concept3": "",
-                        "concept4": "",
-                        "concept5": "",
-                    }
-                )
-
-    return tree
-
-
-# 启动时加载一次
-INDUSTRY_TREE = load_industry_tree()
+def reload_industry_tree():
+    """从 SQLite 重新加载整棵树（在写入操作后调用，保持内存与磁盘一致）。"""
+    global INDUSTRY_TREE
+    INDUSTRY_TREE = load_industry_tree()
+    return INDUSTRY_TREE
 
 
 def serialize_primary(name, primary):
@@ -424,67 +357,32 @@ def api_page_h_add_concept():
     if concept in all_pieces:
         return jsonify({"ok": False, "error": "该股票已有此概念"}), 400
 
-    # 写入策略：CSV 实际只有「概念」一列
-    # 若概念1 已存在则追加（用 '-'），否则直接填入
-    cur = (target.get("concept1") or "").strip()
-    target_key = "concept1"
-    target_value = f"{cur}-{concept}" if cur else concept
-
-    # 写回 CSV
+    # 写入策略：直接更新 SQLite stocks 表的 concept 列（用 '-' 串接）
     try:
-        with open(DATA_FILE, "r", encoding="utf-8-sig", newline="") as f:
-            rows = list(csv.reader(f))
-    except OSError as e:
-        return jsonify({"ok": False, "error": f"读取CSV失败：{e}"}), 500
+        new_concept = update_stock_concept(
+            stock_name=stock_name,
+            new_concept=concept,
+        )
+    except (LookupError, ValueError) as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"数据库写入失败：{e}"}), 500
 
-    if not rows:
-        return jsonify({"ok": False, "error": "CSV文件无表头"}), 500
+    target_value = new_concept
 
-    header = rows[0]
-    # 兼容：CSV 实际只有「概念」列
-    col_name_to_index = {n: i for i, n in enumerate(header)}
-    if "概念" not in col_name_to_index:
-        header.append("概念")
-        col_name_to_index["概念"] = len(header) - 1
-    rows[0] = header
-
-    # 把所有行对齐到 header 长度
-    for i in range(1, len(rows)):
-        if len(rows[i]) < len(header):
-            rows[i].extend([""] * (len(header) - len(rows[i])))
-
-    # 写入列：实际只写入「概念」列
-    col_target = col_name_to_index["概念"]
-    col_name = col_name_to_index["股票名称"]
-    idx_primary = col_name_to_index["一级行业(30)"]
-    idx_secondary = col_name_to_index["二级行业(128)"]
-    idx_tertiary = col_name_to_index["三级行业(345)"]
-
-    target_idx = -1
-    for i in range(1, len(rows)):
-        r = rows[i]
-        if (
-            r[idx_primary] == primary_name
-            and r[idx_secondary] == secondary_name
-            and r[idx_tertiary] == tertiary_name
-            and r[col_name] == stock_name
-        ):
-            target_idx = i
-            break
-
-    if target_idx < 0:
-        return jsonify({"ok": False, "error": "CSV中未找到该股票行"}), 500
-
-    rows[target_idx][col_target] = target_value
-
-    try:
-        with open(DATA_FILE, "w", encoding="utf-8-sig", newline="") as f:
-            csv.writer(f).writerows(rows)
-    except OSError as e:
-        return jsonify({"ok": False, "error": f"写入CSV失败：{e}"}), 500
-
-    # 同步更新内存树
-    target[target_key] = target_value
+    # 同步更新内存树（重新加载以保持数据一致）
+    reload_industry_tree()
+    # 当前 target 引用指向旧树，刷新一下 target 引用
+    primary = INDUSTRY_TREE.get(primary_name)
+    if primary:
+        secondary = primary["secondaries"].get(secondary_name)
+        if secondary:
+            tertiary = secondary["tertiaries"].get(tertiary_name)
+            if tertiary:
+                for s in tertiary["stocks"]:
+                    if s["name"] == stock_name:
+                        target = s
+                        break
 
     return jsonify({
         "ok": True,
@@ -551,6 +449,98 @@ def page_j():
                           for st in t["stocks"]}),
         total_stocks_with_concept=total_stocks_with_concept,
     )
+
+
+@app.route("/pageL")
+def page_l():
+    """
+    页面 L：以页面 B 的左列布局展示所有概念的层级树及其关联股票。
+    左列为一级概念（含股票数统计，点击可跳页面 H），右列为嵌套的
+    子概念层级 + 该概念下的股票（仅名称）。
+    """
+    from db import _split_concept_raw, list_concepts
+
+    # 1) 按概念名聚合股票（仅名称）
+    stocks_by_concept: Dict[str, list] = {}
+    stock_names = set()
+    for primary_name, primary in INDUSTRY_TREE.items():
+        for secondary_name, secondary in primary["secondaries"].items():
+            for tertiary_name, tertiary in secondary["tertiaries"].items():
+                for st in tertiary["stocks"]:
+                    stock_names.add(st["name"])
+                    seen = set()
+                    for key in ("concept1", "concept2", "concept3",
+                                "concept4", "concept5"):
+                        for piece in _split_concept_raw(st.get(key)):
+                            if piece not in seen:
+                                seen.add(piece)
+                                stocks_by_concept.setdefault(piece, []).append(
+                                    st["name"]
+                                )
+
+    # 2) 依据概念表构建层级树
+    concepts = list_concepts()  # 树形顺序，含 {id, name, level, parent_id, path}
+    nodes: Dict[Any, dict] = {}
+    roots: list = []
+    for c in concepts:
+        node = {
+            "name": c["name"],
+            "level": c["level"] or 1,
+            "count": len(stocks_by_concept.get(c["name"], [])),
+            "total": 0,
+            "children": [],
+        }
+        nodes[c["id"]] = node
+        parent = c.get("parent_id")
+        if parent and parent in nodes:
+            nodes[parent]["children"].append(node)
+        else:
+            roots.append(node)
+
+    # 3) 未入概念表但被股票使用的概念，作为根节点补充展示
+    known = set()
+    for c in concepts:
+        known.add(c["name"])
+
+    def _finalize(node):
+        node["total"] = node["count"] + sum(_finalize(ch) for ch in node["children"])
+        node["children"].sort(key=lambda ch: (-ch["total"], ch["name"]))
+        node["stocks"] = stocks_by_concept.get(node["name"], [])
+        return node["total"]
+
+    for node in roots:
+        _finalize(node)
+    for name in sorted(stocks_by_concept):
+        if name not in known:
+            stocks = stocks_by_concept[name]
+            roots.append(
+                {
+                    "name": name,
+                    "level": 1,
+                    "count": len(stocks),
+                    "total": len(stocks),
+                    "children": [],
+                    "stocks": stocks,
+                }
+            )
+
+    roots.sort(key=lambda nd: (-nd["total"], nd["name"]))
+
+    return render_template(
+        "pageL.html",
+        roots=roots,
+        stats={
+            "concepts": sum(1 + _count_desc(nd) for nd in roots),
+            "stocks": len(stock_names),
+            "stocks_with_concept": len(
+                {s for lst in stocks_by_concept.values() for s in lst}
+            ),
+        },
+    )
+
+
+def _count_desc(node):
+    return sum(1 + _count_desc(ch) for ch in node["children"])
 
 
 def _concept_match(raw, concept_name):
@@ -820,55 +810,45 @@ def _find_tertiary(primary_name, secondary_name, tertiary_name):
 
 def _insert_stock_row_to_csv(row):
     """
-    把新股票行插入到 CSV 中同行业分组的末尾（保持行业聚集）。
-    row: [一级编码, 一级代码, 一级行业, 二级代码, 二级行业, 三级代码, 三级行业, 股票名称, ...]
-    定位方式：从后往前找第一行（一级/二级/三级行业名称都相同的行），插到它后面。
-    若找不到该行业（理论上不会发生），退化为追加到文件末尾。
+    （已迁移至 SQLite）兼容占位：新股票插入改为调用 db.add_stock。
+    row 参数保留旧格式 [一级编码, ..., 三级行业, 股票名称, 股票代码, 所在地, 主营, ...]。
     """
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8-sig", newline="") as f:
-            rows = list(csv.reader(f))
-    except OSError as e:
-        print(f"[错误] 读取 CSV 失败: {e}")
-        return False
-
+    from db import add_stock, find_tertiary_id
     primary_name, secondary_name, tertiary_name = row[2], row[4], row[6]
-    insert_at = None
-    for i in range(len(rows) - 1, 0, -1):  # 跳过表头（索引 0）
-        r = rows[i]
-        if (
-            len(r) >= 7
-            and r[2] == primary_name
-            and r[4] == secondary_name
-            and r[6] == tertiary_name
-        ):
-            insert_at = i + 1
-            break
-    if insert_at is None:
-        insert_at = len(rows)  # 兜底：追加到末尾
-
-    rows.insert(insert_at, row)
+    tid = find_tertiary_id(primary_name, secondary_name, tertiary_name)
+    if tid is None:
+        return False
     try:
-        with open(DATA_FILE, "w", encoding="utf-8-sig", newline="") as f:
-            csv.writer(f).writerows(rows)
-    except OSError as e:
-        print(f"[错误] 写入 CSV 失败: {e}")
+        add_stock(
+            tid,
+            name=row[7],
+            code=row[8] if len(row) > 8 else "",
+            location=row[9] if len(row) > 9 else "",
+            main_business=row[10] if len(row) > 10 else "",
+            concept=row[11] if len(row) > 11 else "",
+        )
+    except Exception as e:
+        print(f"[错误] SQLite 新增股票失败: {e}")
         return False
     return True
 
 
 def _rewrite_csv_without(removed_rows):
-    """重写 CSV：读入全部行，剔除本次新增的行，再写回（保留 BOM）"""
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8-sig", newline="") as f:
-            rows = list(csv.reader(f))
-        keep = [r for r in rows if r not in removed_rows]
-        with open(DATA_FILE, "w", encoding="utf-8-sig", newline="") as f:
-            csv.writer(f).writerows(keep)
-        return len(rows) - len(keep)
-    except OSError as e:
-        print(f"[错误] 重写 CSV 失败: {e}")
-        return 0
+    """
+    （已迁移至 SQLite）兼容占位：删除股票改为调用 db.delete_stock。
+    removed_rows 中每行为旧 CSV 格式，取 [7]=股票名称, [2]/[4]/[6]=行业路径。
+    """
+    from db import delete_stock, find_tertiary_id
+    removed = 0
+    for r in removed_rows:
+        if not r or len(r) < 8:
+            continue
+        tid = find_tertiary_id(r[2], r[4], r[6])
+        try:
+            removed += delete_stock(r[7], tertiary_id=tid)
+        except Exception as e:
+            print(f"[错误] SQLite 删除股票失败: {e}")
+    return removed
 
 
 @app.route("/api/pageC/add_stock", methods=["POST"])
@@ -904,29 +884,23 @@ def api_page_c_add_stock():
         "main_business": main_business,
     }
 
-    # 组装与表头顺序一致的 14 列 CSV 行（一级编码 A1/A2...，一级代码 881001...）
-    csv_row = [
-        primary.get("acode", ""),      # 一级编码
-        primary.get("code", ""),       # 一级代码
-        primary_name,                  # 一级行业(30)
-        secondary.get("code", ""),     # 二级代码
-        secondary_name,                # 二级行业(128)
-        tertiary.get("code", ""),      # 三级代码
-        tertiary_name,                 # 三级行业(345)
-        name,                          # 股票名称
-        code,                          # 股票代码
-        location,                      # 所在地
-        main_business,                 # 主营
-        "",                            # 概念1
-        "",                            # 概念2
-        "",                            # 概念3
-        "",                            # 概念4
-        "",                            # 概念5
-    ]
-
-    # 先写盘（插入到同行业分组末尾），成功后再更新内存树
-    if not _insert_stock_row_to_csv(csv_row):
-        return jsonify({"ok": False, "error": "写入 CSV 文件失败，请检查文件权限"}), 500
+    # 写入 SQLite
+    from db import add_stock, find_tertiary_id
+    tid = find_tertiary_id(primary_name, secondary_name, tertiary_name)
+    if tid is None:
+        return jsonify({"ok": False, "error": "SQLite 中未找到该三级行业"}), 404
+    try:
+        add_stock(
+            tid,
+            name=name,
+            code=code,
+            location=location,
+            main_business=main_business,
+            concept="",
+        )
+    except Exception as e:
+        print(f"[错误] SQLite 新增股票失败: {e}")
+        return jsonify({"ok": False, "error": f"写入数据库失败: {e}"}), 500
 
     tertiary["stocks"].append(new_stock)
 
@@ -935,7 +909,7 @@ def api_page_c_add_stock():
         "secondary": secondary_name,
         "tertiary": tertiary_name,
         "stock": new_stock,
-        "csv_row": csv_row,
+        "tertiary_id": tid,
     }
     session_store["added"].append(record)
 
@@ -1021,68 +995,33 @@ def api_update_stock_concepts():
             if st is not target and st["name"] == new_name:
                 return jsonify({"ok": False, "error": f"新股票名称与「{new_name}」冲突"}), 400
 
-    # 写回 CSV：按行业路径 + 股票名称定位行
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8-sig", newline="") as f:
-            rows = list(csv.reader(f))
-    except OSError as e:
-        return jsonify({"ok": False, "error": f"读取 CSV 失败: {e}"}), 500
-
-    header = rows[0] if rows else []
-    # 追加新概念列（如需要）
-    for new_col in ("概念3", "概念4", "概念5"):
-        if new_col not in header:
-            header.append(new_col)
-    rows[0] = header
-    # 补齐所有数据行
-    for i in range(1, len(rows)):
-        if len(rows[i]) < len(header):
-            rows[i].extend([""] * (len(header) - len(rows[i])))
-
-    # 列索引（已知列）
-    col_map = {
-        "name": header.index("股票名称"),
-        "code": header.index("股票代码"),
-        "location": header.index("所在地"),
-        "main_business": header.index("主营"),
-        "concept1": header.index("概念1"),
-        "concept2": header.index("概念2"),
-        "concept3": header.index("概念3"),
-        "concept4": header.index("概念4"),
-        "concept5": header.index("概念5"),
-    }
-    idx_primary = header.index("一级行业(30)")
-    idx_secondary = header.index("二级行业(128)")
-    idx_tertiary = header.index("三级行业(345)")
-
-    found_idx = -1
-    for i in range(1, len(rows)):
-        r = rows[i]
-        if (
-            len(r) > max(idx_primary, idx_secondary, idx_tertiary, col_map["name"])
-            and r[idx_primary] == primary_name
-            and r[idx_secondary] == secondary_name
-            and r[idx_tertiary] == tertiary_name
-            and r[col_map["name"]] == name
-        ):
-            found_idx = i
-            break
-
-    if found_idx < 0:
-        return jsonify({"ok": False, "error": "CSV 中未找到该股票行"}), 500
-
-    # 写回
-    for k, v in update.items():
-        rows[found_idx][col_map[k]] = v
-        # 同步更新内存树
-        if k in target:
-            target[k] = v
+    # 写 SQLite
+    from db import find_tertiary_id, update_stock
+    tid = find_tertiary_id(primary_name, secondary_name, tertiary_name)
+    if tid is None:
+        return jsonify({"ok": False, "error": "SQLite 中未找到该三级行业"}), 404
 
     try:
-        with open(DATA_FILE, "w", encoding="utf-8-sig", newline="") as f:
-            csv.writer(f).writerows(rows)
-    except OSError as e:
-        return jsonify({"ok": False, "error": f"写入 CSV 失败: {e}"}), 500
+        _, final_name = update_stock(tid, name, update)
+    except LookupError as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"数据库写入失败: {e}"}), 500
+
+    # 同步更新内存树（简单做法：重新加载）
+    reload_industry_tree()
+    # 从新树中定位该股票以返回最新字段
+    primary2 = INDUSTRY_TREE.get(primary_name)
+    target = None
+    if primary2:
+        secondary2 = primary2["secondaries"].get(secondary_name)
+        if secondary2:
+            tertiary2 = secondary2["tertiaries"].get(tertiary_name)
+            if tertiary2:
+                for s in tertiary2["stocks"]:
+                    if s["name"] == final_name:
+                        target = s
+                        break
 
     return jsonify(
         {
@@ -1136,53 +1075,22 @@ def api_page_c_add_stocks_batch():
     if err:
         return jsonify({"ok": False, "error": err}), 404
 
-    # 组装多条 14 列 CSV 行
-    csv_rows = []
-    for n in names:
-        csv_rows.append(
-            [
-                primary.get("acode", ""),      # 一级编码
-                primary.get("code", ""),       # 一级代码
-                primary_name,                  # 一级行业(30)
-                secondary.get("code", ""),     # 二级代码
-                secondary_name,                # 二级行业(128)
-                tertiary.get("code", ""),      # 三级代码
-                tertiary_name,                 # 三级行业(345)
-                n,                             # 股票名称
-                "",                            # 股票代码
-                "",                            # 所在地
-                "",                            # 主营
-                "", "", "",                    # 概念
-            ]
-        )
+    # 组装批量插入数据（SQLite）
+    from db import add_stocks_batch, find_tertiary_id
+    tid = find_tertiary_id(primary_name, secondary_name, tertiary_name)
+    if tid is None:
+        return jsonify({"ok": False, "error": "SQLite 中未找到该三级行业"}), 404
 
-    # 一次性读文件、找到分组末尾、批量插入、一次写回
+    stock_list = [{"name": n, "code": "", "location": "", "main_business": "", "concept": ""} for n in names]
     try:
-        with open(DATA_FILE, "r", encoding="utf-8-sig", newline="") as f:
-            rows = list(csv.reader(f))
-        insert_at = None
-        for i in range(len(rows) - 1, 0, -1):
-            r = rows[i]
-            if (
-                len(r) >= 7
-                and r[2] == primary_name
-                and r[4] == secondary_name
-                and r[6] == tertiary_name
-            ):
-                insert_at = i + 1
-                break
-        if insert_at is None:
-            insert_at = len(rows)
-        rows[insert_at:insert_at] = csv_rows
-        with open(DATA_FILE, "w", encoding="utf-8-sig", newline="") as f:
-            csv.writer(f).writerows(rows)
-    except OSError as e:
-        print(f"[错误] 批量写入 CSV 失败: {e}")
-        return jsonify({"ok": False, "error": "写入 CSV 文件失败，请检查文件权限"}), 500
+        inserted = add_stocks_batch(tid, stock_list)
+    except Exception as e:
+        print(f"[错误] 批量写入 SQLite 失败: {e}")
+        return jsonify({"ok": False, "error": f"写入数据库失败: {e}"}), 500
 
     # 更新内存树 + 记录
     records = []
-    for n, csv_row in zip(names, csv_rows):
+    for n, s_data in zip(names, stock_list):
         new_stock = {"name": n, "code": "", "location": "", "main_business": ""}
         tertiary["stocks"].append(new_stock)
         record = {
@@ -1190,7 +1098,7 @@ def api_page_c_add_stocks_batch():
             "secondary": secondary_name,
             "tertiary": tertiary_name,
             "stock": new_stock,
-            "csv_row": csv_row,
+            "tertiary_id": tid,
         }
         session_store["added"].append(record)
         records.append(
@@ -1230,20 +1138,280 @@ def api_page_c_added():
 
 @app.route("/api/pageC/reset", methods=["POST"])
 def api_page_c_reset():
-    """撤销本次运行新增的全部股票：从内存树移除并从 CSV 文件删除对应行"""
-    removed_rows = [r["csv_row"] for r in session_store["added"] if "csv_row" in r]
+    """撤销本次运行新增的全部股票：从内存树移除并从 SQLite 删除对应行"""
+    from db import delete_stock, find_tertiary_id
     removed = 0
     for record in session_store["added"]:
         _, _, tertiary, _ = _find_tertiary(
             record.get("primary"), record.get("secondary"), record.get("tertiary")
         )
-        if tertiary is not None and record.get("stock") in tertiary["stocks"]:
-            tertiary["stocks"].remove(record["stock"])
-            removed += 1
+        stock_name = (record.get("stock") or {}).get("name", "")
+        # 按名称从内存树移除（编辑操作可能重载内存树，对象引用会失效）
+        if tertiary is not None and stock_name:
+            before = len(tertiary["stocks"])
+            tertiary["stocks"] = [s for s in tertiary["stocks"] if s.get("name") != stock_name]
+            if len(tertiary["stocks"]) < before:
+                removed += 1
+        # SQLite 删除
+        tid = find_tertiary_id(
+            record.get("primary"), record.get("secondary"), record.get("tertiary")
+        )
+        if tid is not None and stock_name:
+            try:
+                delete_stock(stock_name, tertiary_id=tid)
+            except Exception as e:
+                print(f"[错误] SQLite 删除失败: {e}")
     session_store["added"] = []
-    if removed_rows:
-        _rewrite_csv_without(removed_rows)
     return jsonify({"ok": True, "removed": removed})
+
+
+# ==================== 页面 K：概念表编辑 ====================
+
+@app.route("/pageK")
+def page_k():
+    """页面 K：概念字典表编辑（增/改/删/导入，可选同步股票数据）"""
+    from db import list_concepts
+    concepts = list_concepts()
+    return render_template("pageK.html", concepts=concepts)
+
+
+@app.route("/api/pageK/add_concept", methods=["POST"])
+def api_page_k_add_concept():
+    """新增概念 {"name": "...", "description": "...", "parent_id": 1 或 null}"""
+    from db import add_concept
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    description = (data.get("description") or "").strip()
+    parent_id = data.get("parent_id")
+    if parent_id in ("", None):
+        parent_id = None
+    else:
+        try:
+            parent_id = int(parent_id)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "上级分类 id 无效"}), 400
+
+    if not name:
+        return jsonify({"ok": False, "error": "概念名称不能为空"}), 400
+    try:
+        new_id = add_concept(name, description, parent_id=parent_id)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except LookupError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"数据库写入失败：{e}"}), 500
+    return jsonify({"ok": True, "id": new_id, "name": name})
+
+
+@app.route("/api/pageK/update_concept", methods=["POST"])
+def api_page_k_update_concept():
+    """
+    编辑概念 {"id": 1, "name": "新名称", "description": "...", "parent_id": 2, "sync_stocks": true}
+    parent_id 可省略表示保持原上级；传 null 表示移到根（一级）。
+    sync_stocks=true 时，把所有股票概念串中的旧名称替换为新名称。
+    """
+    from db import update_concept, sync_concept_in_stocks
+    data = request.get_json(silent=True) or {}
+    concept_id = data.get("id")
+    name = (data.get("name") or "").strip()
+    description = (data.get("description") or "").strip()
+    sync = bool(data.get("sync_stocks"))
+
+    # parent_id：缺省 → 保持；null/"" → 根；否则整数上级 id
+    parent_id = data.get("parent_id", "__keep__")
+    if parent_id is None or parent_id == "":
+        parent_id = None
+    elif parent_id != "__keep__":
+        try:
+            parent_id = int(parent_id)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "上级分类 id 无效"}), 400
+
+    if concept_id is None:
+        return jsonify({"ok": False, "error": "缺少概念 id"}), 400
+
+    try:
+        old_name, new_name = update_concept(
+            concept_id,
+            name=name or None,
+            description=description,
+            parent_id=parent_id,
+        )
+    except (LookupError, ValueError) as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"数据库写入失败：{e}"}), 500
+
+    synced = 0
+    if sync and new_name != old_name:
+        try:
+            synced = sync_concept_in_stocks(old_name, new_name)
+            reload_industry_tree()
+        except Exception as e:
+            return jsonify(
+                {"ok": False, "error": f"概念已更新，但同步股票失败：{e}"}
+            ), 500
+
+    return jsonify({
+        "ok": True,
+        "old_name": old_name,
+        "new_name": new_name,
+        "synced_stocks": synced,
+    })
+
+
+@app.route("/api/pageK/delete_concept", methods=["POST"])
+def api_page_k_delete_concept():
+    """
+    删除概念 {"id": 1, "sync_stocks": true}
+    级联删除其所有子孙分类。sync_stocks=true 时，把被删除的所有概念从股票串中移除。
+    """
+    from db import delete_concept, sync_concept_in_stocks
+    data = request.get_json(silent=True) or {}
+    concept_id = data.get("id")
+    sync = bool(data.get("sync_stocks"))
+
+    if concept_id is None:
+        return jsonify({"ok": False, "error": "缺少概念 id"}), 400
+
+    try:
+        names = delete_concept(concept_id)
+    except LookupError as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"数据库删除失败：{e}"}), 500
+
+    synced = 0
+    if sync:
+        try:
+            for n in names:
+                synced += sync_concept_in_stocks(n, new_name=None)
+            reload_industry_tree()
+        except Exception as e:
+            return jsonify(
+                {"ok": False, "error": f"概念已删除，但同步股票失败：{e}"}
+            ), 500
+
+    return jsonify({"ok": True, "names": names, "synced_stocks": synced})
+
+
+@app.route("/api/pageK/import_from_stocks", methods=["POST"])
+def api_page_k_import_from_stocks():
+    """把股票表中出现的所有概念导入概念表（去重，已存在跳过）"""
+    from db import import_concepts_from_stocks
+    try:
+        added = import_concepts_from_stocks()
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"导入失败：{e}"}), 500
+    return jsonify({"ok": True, "added": added})
+
+
+@app.route("/api/pageK/concept_stocks")
+def api_page_k_concept_stocks():
+    """查询某概念下已使用的股票列表 ?name=火电"""
+    from db import get_concept_stocks
+    name = (request.args.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "缺少概念名称"}), 400
+    try:
+        stocks = get_concept_stocks(name)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"查询失败：{e}"}), 500
+    return jsonify({"ok": True, "name": name, "stocks": stocks})
+
+
+@app.route("/api/pageK/all_stocks")
+def api_page_k_all_stocks():
+    """所有股票扁平列表（供添加股票时的 datalist 自动补全）"""
+    from db import get_all_stocks_flat
+    try:
+        stocks = get_all_stocks_flat()
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"查询失败：{e}"}), 500
+    return jsonify({"ok": True, "stocks": stocks})
+
+
+@app.route("/api/pageK/add_stocks_to_concept", methods=["POST"])
+def api_page_k_add_stocks_to_concept():
+    """
+    为一批已存在的股票添加某概念。
+    请求: {"name": "火电", "stocks": ["股票A", "股票B"]}
+    - 概念不存在于概念表时自动创建
+    - 已拥有该概念的股票自动跳过
+    返回 {"ok": true, "added": [...], "skipped": [...], "not_found": [...]}
+    """
+    from db import _split_concept_raw, add_concept, update_stock_concept
+    data = request.get_json(silent=True) or {}
+    concept_name = (data.get("name") or "").strip()
+    stock_names = data.get("stocks") or []
+    if isinstance(stock_names, str):
+        stock_names = [s.strip() for s in stock_names.replace("，", ",").split(",")]
+    stock_names = [s.strip() for s in stock_names if s.strip()]
+
+    if not concept_name:
+        return jsonify({"ok": False, "error": "缺少概念名称"}), 400
+    if not stock_names:
+        return jsonify({"ok": False, "error": "请填写至少一个股票名称"}), 400
+
+    # 确保概念存在于概念表（不存在则自动创建）
+    conn_ok = True
+    try:
+        add_concept(concept_name, "")
+    except ValueError:
+        pass  # 已存在，正常
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"数据库写入失败：{e}"}), 500
+
+    added, skipped, not_found = [], [], []
+    for sn in stock_names:
+        try:
+            new_val = update_stock_concept(stock_name=sn, new_concept=concept_name)
+            added.append({"name": sn, "concept": new_val})
+        except LookupError:
+            not_found.append(sn)
+        except ValueError:
+            skipped.append(sn)  # 已有此概念
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"为 {sn} 写入失败：{e}"}), 500
+
+    if added:
+        reload_industry_tree()
+
+    return jsonify({
+        "ok": True,
+        "added": added,
+        "skipped": skipped,
+        "not_found": not_found,
+    })
+
+
+@app.route("/api/pageK/remove_stock_from_concept", methods=["POST"])
+def api_page_k_remove_stock_from_concept():
+    """
+    从指定股票移除某概念。
+    请求: {"name": "火电", "stock": "郑州煤电"}
+    返回 {"ok": true, "new_concept": "机器人"}
+    """
+    from db import remove_concept_from_stock
+    data = request.get_json(silent=True) or {}
+    concept_name = (data.get("name") or "").strip()
+    stock_name = (data.get("stock") or "").strip()
+
+    if not concept_name or not stock_name:
+        return jsonify({"ok": False, "error": "缺少概念或股票名称"}), 400
+
+    try:
+        new_val, changed = remove_concept_from_stock(stock_name, concept_name)
+    except LookupError as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"数据库写入失败：{e}"}), 500
+
+    if changed:
+        reload_industry_tree()
+
+    return jsonify({"ok": True, "new_concept": new_val, "changed": changed})
 
 
 if __name__ == "__main__":

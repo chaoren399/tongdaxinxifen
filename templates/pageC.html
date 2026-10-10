@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>通达信行业分类 - 页面 C</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <style>
+        /* 页面 C 专属：股票名称更紧凑 */
+        .stock-list {
+            grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+            gap: 0 8px;
+            padding-left: 10px;
+        }
+        .stock-row { padding: 1px 0; font-size: 12px; }
+        .stock-row .stock-name { white-space: nowrap; }
+    </style>
 </head>
 <body>
     <header class="topbar">
@@ -27,6 +37,8 @@
             <a href="{{ url_for('page_g') }}">页面 G</a>
             <a href="{{ url_for('page_h') }}">页面 H</a>
             <a href="{{ url_for('page_j') }}">页面 J</a>
+            <a href="{{ url_for('page_k') }}">页面 K</a>
+            <a href="{{ url_for('page_l') }}">页面 L</a>
         </nav>
     </header>
 
@@ -176,8 +188,6 @@
                                                 <li class="stock-row" data-name="{{ st.name }}" data-code="{{ st.code }}">
                                                     <span class="stock-name">{{ st.name }}</span>
                                                     <span class="stock-code" hidden>{{ st.code or '-' }}</span>
-                                                    <span class="stock-loc">{{ st.location or '' }}</span>
-                                                    <span class="stock-main">{{ st.main_business or '' }}</span>
                                                 </li>
                                                 {% endfor %}
                                             </ul>

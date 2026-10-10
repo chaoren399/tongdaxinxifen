@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>通达信行业分类 - 页面 K · 概念表编辑</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <h1>通达信行业分类 <span class="page-tag">页面 K · 概念表编辑</span></h1>
+        </div>
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_c') }}">页面 C</a>
+            <a href="{{ url_for('page_d') }}">页面 D</a>
+            <a href="{{ url_for('page_f') }}">页面 F</a>
+            <a href="{{ url_for('page_g') }}">页面 G</a>
+            <a href="{{ url_for('page_h') }}">页面 H</a>
+            <a href="{{ url_for('page_j') }}">页面 J</a>
+            <a class="active" href="{{ url_for('page_k') }}">页面 K</a>
+            <a href="{{ url_for('page_l') }}">页面 L</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <!-- 统计卡片 -->
+        <div class="stat-row">
+            <div class="stat-card">
+                <div class="stat-num" id="statTotal">{{ concepts|length }}</div>
+                <div class="stat-label">概念总数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num" id="statUsed">{{ concepts | selectattr('usage', 'gt', 0) | list | length }}</div>
+                <div class="stat-label">已使用概念</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num" id="statUnused">{{ concepts | selectattr('usage', 'eq', 0) | list | length }}</div>
+                <div class="stat-label">未使用概念</div>
+            </div>
+        </div>
+
+        <!-- 工具栏 -->
+        <div class="toolbar">
+            <input id="conceptSearch" type="search" placeholder="搜索概念名称或描述..." />
+            <button id="importBtn" class="btn-secondary" type="button"
+                    title="把股票表中出现的所有概念导入概念表（去重）">
+                从股票导入概念
+            </button>
+            <span class="result-count" id="resultCount"></span>
+        </div>
+
+        <!-- 新增概念表单 -->
+        <div class="industry-group-card add-concept-panel">
+            <div class="add-concept-head">
+                <h3>新增概念</h3>
+                <p class="add-concept-tip">概念支持最多五级分类（一级 → 二级 → 三级 → 四级 → 五级），可逐级细分。</p>
+            </div>
+            <form id="addForm" class="concept-add-form" autocomplete="off">
+                <div class="field">
+                    <label for="addParent">上级分类</label>
+                    <select id="addParent">
+                        <option value="">（无 · 作为一级概念）</option>
+                        {% for c in concepts if c.level < 5 %}
+                        <option value="{{ c.id }}">{{ c.path }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="addName">概念名称 <span class="req">*</span></label>
+                    <input id="addName" type="text" placeholder="如：火电 / 材料 / 正极" required />
+                </div>
+                <div class="field">
+                    <label for="addDesc">描述（可选）</label>
+                    <input id="addDesc" type="text" placeholder="如：火力发电相关企业" />
+                </div>
+                <div class="field-submit">
+                    <button type="submit" class="btn-primary">新增概念</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- 概念表 -->
+        <div class="industry-group-card">
+            <table class="concept-table" id="conceptTable">
+                <thead>
+                    <tr>
+                        <th style="width:52px">ID</th>
+                        <th>概念名称</th>
+                        <th style="width:72px">使用数</th>
+                        <th>描述</th>
+                        <th style="width:130px">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in concepts %}
+                    <tr data-id="{{ c.id }}" data-name="{{ c.name }}"
+                        data-level="{{ c.level }}" data-parent="{{ c.parent_id or '' }}"
+                        data-path="{{ c.path }}">
+                        <td class="ct-id">{{ c.id }}</td>
+                        <td class="ct-name" title="{{ c.path }}">
+                            <span class="tree-indent" style="padding-left: {{ (c.level - 1) * 20 }}px"></span>
+                            <span class="lvl-badge lvl-{{ c.level }}">{{ c.level }}级</span>
+                            {{ c.name }}
+                        </td>
+                        <td class="ct-usage">
+                            <span class="usage-badge {{ 'is-used' if c.usage > 0 else '' }}">{{ c.usage }}</span>
+                        </td>
+                        <td class="ct-desc">{{ c.description or '—' }}</td>
+                        <td class="ct-actions">
+                            <button class="btn-edit" type="button">编辑</button>
+                            <button class="btn-del" type="button">删除</button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="empty">— 概念表为空，可点击「从股票导入概念」或手动新增 —</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 编辑弹窗 -->
+        <div class="modal-mask" id="editModal" hidden>
+            <div class="modal-box">
+                <h3>编辑概念</h3>
+                <div class="modal-form">
+                    <div class="field">
+                        <label>概念名称 <span class="req">*</span></label>
+                        <input id="editName" type="text" />
+                    </div>
+                    <div class="field">
+                        <label for="editParent">上级分类</label>
+                        <select id="editParent">
+                            <option value="">（无 · 作为一级概念）</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>描述</label>
+                        <input id="editDesc" type="text" />
+                    </div>
+                    <label class="modal-check">
+                        <input id="editSync" type="checkbox" checked />
+                        同步修改股票数据（把股票概念串中的旧名称替换为新名称）
+                    </label>
+
+                    <!-- 概念下的股票管理 -->
+                    <div class="cs-manager">
+                        <div class="cs-head">
+                            <span class="cs-title">该概念下的股票（<span id="csCount">0</span>）</span>
+                            <button class="btn-link" id="csToggle" type="button">展开管理 ▾</button>
+                        </div>
+
+                        <!-- 当前股票 chips -->
+                        <div class="cs-chips" id="csChips">
+                            <span class="cs-loading">加载中...</span>
+                        </div>
+
+                        <!-- 添加区（展开后可见） -->
+                        <div class="cs-add-zone" id="csAddZone" hidden>
+                            <div class="cs-add-row">
+                                <input id="csStockInput" type="text"
+                                       list="csStockList"
+                                       placeholder="输入股票名称（可自动补全），可加逗号批量" />
+                                <button class="btn-primary" id="csAddBtn" type="button">添加</button>
+                            </div>
+                            <datalist id="csStockList"></datalist>
+                            <p class="cs-tip">多个股票用逗号分隔可批量添加；已拥有该概念的股票会自动跳过。</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-primary" id="editSave" type="button">保存</button>
+                    <button class="btn-secondary" id="editCancel" type="button">取消</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 删除确认弹窗 -->
+        <div class="modal-mask" id="delModal" hidden>
+            <div class="modal-box">
+                <h3>删除概念</h3>
+                <p class="del-msg">确定删除概念「<b id="delName"></b>」？</p>
+                <p class="del-cascade" id="delCascade" hidden>⚠ 该概念下存在子分类，将一并级联删除。</p>
+                <label class="modal-check">
+                    <input id="delSync" type="checkbox" checked />
+                    同步从所有股票的概念串中移除该概念（及其子分类）
+                </label>
+                <div class="modal-actions">
+                    <button class="btn-danger" id="delConfirm" type="button">删除</button>
+                    <button class="btn-secondary" id="delCancel" type="button">取消</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+    var CONCEPTS = {{ concepts | tojson }};
+    (function () {
+        var searchInput = document.getElementById('conceptSearch');
+        var table = document.getElementById('conceptTable');
+        var counter = document.getElementById('resultCount');
+        var importBtn = document.getElementById('importBtn');
+
+        var editModal = document.getElementById('editModal');
+        var delModal = document.getElementById('delModal');
+        var editingId = null;
+        var deletingId = null;
+        var deletingName = '';
+
+        // ---- 搜索过滤 ----
+        function applyFilter() {
+            var kw = (searchInput.value || '').trim().toLowerCase();
+            var rows = table.querySelectorAll('tbody tr[data-id]');
+            var visible = 0;
+            rows.forEach(function (tr) {
+                var name = (tr.getAttribute('data-name') || '').toLowerCase();
+                var desc = (tr.querySelector('.ct-desc').textContent || '').toLowerCase();
+                var show = !kw || name.indexOf(kw) !== -1 || desc.indexOf(kw) !== -1;
+                tr.style.display = show ? '' : 'none';
+                if (show) visible++;
+            });
+            if (counter) {
+                counter.textContent = kw
+                    ? ('匹配 ' + visible + ' / ' + rows.length + ' 个概念')
+                    : ('共 ' + rows.length + ' 个概念');
+            }
+        }
+        if (searchInput) searchInput.addEventListener('input', applyFilter);
+
+        // ---- API 调用封装 ----
+        function api(url, body) {
+            return fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(function (r) {
+                return r.json().then(function (j) { return { status: r.status, body: j }; });
+            });
+        }
+
+        function toast(msg, ok) {
+            // 简易提示条（右上角）
+            var t = document.createElement('div');
+            t.className = 'pagek-toast ' + (ok ? 'is-ok' : 'is-err');
+            t.textContent = msg;
+            document.body.appendChild(t);
+            setTimeout(function () { t.classList.add('show'); }, 10);
+            setTimeout(function () {
+                t.classList.remove('show');
+                setTimeout(function () { t.remove(); }, 300);
+            }, 2600);
+        }
+
+        // ---- 新增概念 ----
+        var addForm = document.getElementById('addForm');
+        addForm.addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            var name = document.getElementById('addName').value.trim();
+            var desc = document.getElementById('addDesc').value.trim();
+            if (!name) return;
+            var parentSel = document.getElementById('addParent');
+            var body = { name: name, description: desc };
+            body.parent_id = parentSel.value === '' ? null : parseInt(parentSel.value, 10);
+            var btn = addForm.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            api('/api/pageK/add_concept', body)
+                .then(function (resp) {
+                    if (resp.body && resp.body.ok) {
+                        toast('已新增概念「' + name + '」', true);
+                        setTimeout(function () { window.location.reload(); }, 800);
+                    } else {
+                        toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                    }
+                })
+                .catch(function (e) { toast('请求失败：' + e, false); })
+                .finally(function () { btn.disabled = false; });
+        });
+
+        // ---- 从股票导入 ----
+        if (importBtn) {
+            importBtn.addEventListener('click', function () {
+                importBtn.disabled = true;
+                importBtn.textContent = '导入中...';
+                api('/api/pageK/import_from_stocks', {})
+                    .then(function (resp) {
+                        if (resp.body && resp.body.ok) {
+                            var added = resp.body.added || 0;
+                            toast('导入完成：新增 ' + added + ' 个概念', true);
+                            setTimeout(function () { window.location.reload(); }, 800);
+                        } else {
+                            toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                        }
+                    })
+                    .catch(function (e) { toast('请求失败：' + e, false); })
+                    .finally(function () {
+                        importBtn.disabled = false;
+                        importBtn.textContent = '从股票导入概念';
+                    });
+            });
+        }
+
+        // ---- 编辑 ----
+        table.addEventListener('click', function (ev) {
+            var btn = ev.target.closest('button');
+            if (!btn) return;
+            var tr = btn.closest('tr[data-id]');
+            if (!tr) return;
+            var id = parseInt(tr.getAttribute('data-id'), 10);
+
+            if (btn.classList.contains('btn-edit')) {
+                openEdit(
+                    id,
+                    tr.getAttribute('data-name'),
+                    tr.querySelector('.ct-desc').textContent
+                );
+            } else if (btn.classList.contains('btn-del')) {
+                openDelete(id, tr.getAttribute('data-name'));
+            }
+        });
+
+        function openEdit(id, name, desc) {
+            editingId = id;
+            document.getElementById('editName').value = (name === '—') ? '' : name;
+            document.getElementById('editDesc').value = (desc === '—') ? '' : desc;
+            document.getElementById('editSync').checked = true;
+            fillEditParent(id);
+            editModal.hidden = false;
+            loadConceptStocks(name);
+        }
+
+        // 填充编辑弹窗的「上级分类」下拉：排除自身及所有子孙（防环），
+        // 且只允许 level < 5 的作为上级（否则会超出五级）。
+        function fillEditParent(selfId) {
+            var sel = document.getElementById('editParent');
+            var banned = new Set([selfId]);
+            var changed = true;
+            while (changed) {
+                changed = false;
+                CONCEPTS.forEach(function (c) {
+                    if (c.parent_id && banned.has(c.parent_id) && !banned.has(c.id)) {
+                        banned.add(c.id);
+                        changed = true;
+                    }
+                });
+            }
+            var cur = null;
+            CONCEPTS.forEach(function (c) { if (c.id === selfId) cur = c.parent_id; });
+
+            sel.innerHTML = '';
+            var rootOpt = document.createElement('option');
+            rootOpt.value = '';
+            rootOpt.textContent = '（无 · 作为一级概念）';
+            sel.appendChild(rootOpt);
+            CONCEPTS.forEach(function (c) {
+                if (c.level >= 3) return;
+                if (banned.has(c.id)) return;
+                var opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.path;
+                if (cur !== null && cur !== undefined && cur === c.id) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
+
+        // ============ 概念下的股票管理 ============
+        var csChips = document.getElementById('csChips');
+        var csCount = document.getElementById('csCount');
+        var csToggle = document.getElementById('csToggle');
+        var csAddZone = document.getElementById('csAddZone');
+        var csStockInput = document.getElementById('csStockInput');
+        var csStockList = document.getElementById('csStockList');
+        var csAddBtn = document.getElementById('csAddBtn');
+        var csCurrentName = '';   // 当前编辑的概念名
+        var allStocksCache = null; // 全股票缓存（datalist）
+
+        csToggle.addEventListener('click', function () {
+            var willShow = csAddZone.hidden;
+            csAddZone.hidden = !willShow;
+            csToggle.textContent = willShow ? '收起管理 ▴' : '展开管理 ▾';
+            if (willShow && allStocksCache === null) loadAllStocks();
+        });
+
+        function loadConceptStocks(name) {
+            csCurrentName = name;
+            csChips.innerHTML = '<span class="cs-loading">加载中...</span>';
+            csCount.textContent = '0';
+            fetch('/api/pageK/concept_stocks?name=' + encodeURIComponent(name))
+                .then(function (r) { return r.json(); })
+                .then(function (j) {
+                    if (!j.ok) { csChips.innerHTML = '<span class="cs-err">' + (j.error || '加载失败') + '</span>'; return; }
+                    renderChips(j.stocks || []);
+                })
+                .catch(function (e) { csChips.innerHTML = '<span class="cs-err">请求失败：' + e + '</span>'; });
+        }
+
+        function renderChips(stocks) {
+            csChips.innerHTML = '';
+            csCount.textContent = stocks.length;
+            if (!stocks.length) {
+                csChips.innerHTML = '<span class="cs-empty">暂无股票使用该概念，可展开管理添加</span>';
+                return;
+            }
+            stocks.forEach(function (s) {
+                var chip = document.createElement('span');
+                chip.className = 'cs-chip';
+                chip.title = s.primary + ' / ' + s.secondary + ' / ' + s.tertiary + (s.code ? ('  (' + s.code + ')') : '');
+                var label = document.createElement('span');
+                label.textContent = s.name;
+                var x = document.createElement('button');
+                x.type = 'button';
+                x.className = 'cs-chip-x';
+                x.textContent = '×';
+                x.title = '从该概念移除此股票';
+                x.addEventListener('click', function () {
+                    if (!confirm('确定从概念「' + csCurrentName + '」移除股票「' + s.name + '」？')) return;
+                    x.disabled = true;
+                    api('/api/pageK/remove_stock_from_concept', { name: csCurrentName, stock: s.name })
+                        .then(function (resp) {
+                            if (resp.body && resp.body.ok) {
+                                toast('已从概念「' + csCurrentName + '」移除 ' + s.name, true);
+                                loadConceptStocks(csCurrentName);
+                            } else {
+                                toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                                x.disabled = false;
+                            }
+                        })
+                        .catch(function (e) { toast('请求失败：' + e, false); x.disabled = false; });
+                });
+                chip.appendChild(label);
+                chip.appendChild(x);
+                csChips.appendChild(chip);
+            });
+        }
+
+        function loadAllStocks() {
+            fetch('/api/pageK/all_stocks')
+                .then(function (r) { return r.json(); })
+                .then(function (j) {
+                    if (!j.ok) return;
+                    allStocksCache = j.stocks || [];
+                    csStockList.innerHTML = '';
+                    allStocksCache.forEach(function (s) {
+                        var opt = document.createElement('option');
+                        opt.value = s.name;
+                        opt.label = s.code ? (s.name + '  (' + s.code + ')') : s.name;
+                        csStockList.appendChild(opt);
+                    });
+                })
+                .catch(function () { /* 静默失败 */ });
+        }
+
+        csAddBtn.addEventListener('click', function () {
+            var raw = csStockInput.value.trim();
+            if (!raw) { toast('请输入股票名称', false); return; }
+            var names = raw.split(/[,，、;；\n]/).map(function (s) { return s.trim(); }).filter(Boolean);
+            if (!names.length) return;
+            csAddBtn.disabled = true;
+            api('/api/pageK/add_stocks_to_concept', { name: csCurrentName, stocks: names })
+                .then(function (resp) {
+                    if (resp.body && resp.body.ok) {
+                        var msg = '已添加 ' + resp.body.added.length + ' 只股票';
+                        if (resp.body.skipped.length) msg += '，跳过已拥有：' + resp.body.skipped.join('、');
+                        if (resp.body.not_found.length) msg += '，未找到：' + resp.body.not_found.join('、');
+                        toast(msg, resp.body.added.length > 0);
+                        csStockInput.value = '';
+                        loadConceptStocks(csCurrentName);
+                    } else {
+                        toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                    }
+                })
+                .catch(function (e) { toast('请求失败：' + e, false); })
+                .finally(function () { csAddBtn.disabled = false; });
+        });
+        // 回车提交
+        csStockInput.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); csAddBtn.click(); }
+        });
+
+        document.getElementById('editCancel').addEventListener('click', function () {
+            editModal.hidden = true;
+            editingId = null;
+        });
+
+        document.getElementById('editSave').addEventListener('click', function () {
+            var name = document.getElementById('editName').value.trim();
+            var desc = document.getElementById('editDesc').value.trim();
+            var sync = document.getElementById('editSync').checked;
+            if (!name) { toast('概念名称不能为空', false); return; }
+            var parentSel = document.getElementById('editParent');
+            var body = { id: editingId, name: name, description: desc, sync_stocks: sync };
+            body.parent_id = parentSel.value === '' ? null : parseInt(parentSel.value, 10);
+            var btn = document.getElementById('editSave');
+            btn.disabled = true;
+            api('/api/pageK/update_concept', body)
+            .then(function (resp) {
+                if (resp.body && resp.body.ok) {
+                    var msg = '已更新概念「' + name + '」';
+                    if (resp.body.synced_stocks > 0) {
+                        msg += '，同步更新 ' + resp.body.synced_stocks + ' 只股票';
+                    }
+                    toast(msg, true);
+                    setTimeout(function () { window.location.reload(); }, 900);
+                } else {
+                    toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                }
+            })
+            .catch(function (e) { toast('请求失败：' + e, false); })
+            .finally(function () {
+                btn.disabled = false;
+                if (!editModal.hidden) { editModal.hidden = true; editingId = null; }
+            });
+        });
+
+        // ---- 删除 ----
+        function openDelete(id, name) {
+            deletingId = id;
+            deletingName = name;
+            document.getElementById('delName').textContent = name;
+            document.getElementById('delSync').checked = true;
+            var hasChildren = CONCEPTS.some(function (c) { return c.parent_id === id; });
+            document.getElementById('delCascade').hidden = !hasChildren;
+            delModal.hidden = false;
+        }
+
+        document.getElementById('delCancel').addEventListener('click', function () {
+            delModal.hidden = true;
+            deletingId = null;
+        });
+
+        document.getElementById('delConfirm').addEventListener('click', function () {
+            var sync = document.getElementById('delSync').checked;
+            var btn = document.getElementById('delConfirm');
+            btn.disabled = true;
+            api('/api/pageK/delete_concept', { id: deletingId, sync_stocks: sync })
+            .then(function (resp) {
+                if (resp.body && resp.body.ok) {
+                    var names = resp.body.names || [resp.body.name] || [deletingName];
+                    var msg = '已删除概念「' + names.join('、') + '」';
+                    if (resp.body.synced_stocks > 0) {
+                        msg += '，从 ' + resp.body.synced_stocks + ' 只股票中移除';
+                    }
+                    toast(msg, true);
+                    setTimeout(function () { window.location.reload(); }, 900);
+                } else {
+                    toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                }
+            })
+            .catch(function (e) { toast('请求失败：' + e, false); })
+            .finally(function () {
+                btn.disabled = false;
+                delModal.hidden = true;
+                deletingId = null;
+            });
+        });
+
+        // 点击遮罩关闭弹窗
+        [editModal, delModal].forEach(function (m) {
+            m.addEventListener('click', function (ev) {
+                if (ev.target === m) { m.hidden = true; }
+            });
+        });
+
+        applyFilter();
+    })();
+    </script>
+</body>
+</html>

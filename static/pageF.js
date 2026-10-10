@@ -189,6 +189,19 @@
         var tb2 = document.createElement("tbody");
         detailRow(tb2, "所在地", it.location, keywords);
         detailRow(tb2, "主营业务", it.main_business, keywords);
+        // 概念：concept1~5 中 concept1 可能是用 - 等分隔符串接的多个概念，拆分合并去重后展示
+        var conceptTexts = [];
+        ["concept1", "concept2", "concept3", "concept4", "concept5"].forEach(function (k) {
+            var raw = it[k] || "";
+            if (!raw) return;
+            raw.split(/[-，,、\s;；]+/).forEach(function (p) {
+                var t = p.trim();
+                if (t && conceptTexts.indexOf(t) === -1) conceptTexts.push(t);
+            });
+        });
+        if (conceptTexts.length) {
+            conceptGroupRow(tb2, "概念", conceptTexts, keywords);
+        }
         t2.appendChild(tb2);
         col2.appendChild(t2);
         cols.appendChild(col2);
