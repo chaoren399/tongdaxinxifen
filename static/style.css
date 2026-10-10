@@ -1306,3 +1306,117 @@ a.concept-card:hover {
     border-radius: 999px;
     padding: 2px 8px;
 }
+
+/* ========== 页面 H：添加概念面板 ========== */
+.add-concept-panel {
+    margin-top: 16px;
+    border-left: 3px solid #2563eb;
+}
+.add-concept-head h3 {
+    margin: 0 0 6px 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: #111827;
+}
+.add-concept-name {
+    color: #2563eb;
+    padding: 0 4px;
+    background: #eff6ff;
+    border-radius: 4px;
+}
+.add-concept-tip {
+    margin: 0 0 12px 0;
+    font-size: 12px;
+    color: #6b7280;
+}
+.add-concept-tip code {
+    background: #f3f4f6;
+    color: #ef4444;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: "SF Mono", Consolas, Monaco, monospace;
+    font-size: 12px;
+}
+.add-concept-form {
+    display: grid;
+    grid-template-columns: 2fr 1fr auto;
+    gap: 10px;
+    align-items: end;
+}
+.add-concept-form .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+.add-concept-form .field label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+}
+.add-concept-form .req { color: #ef4444; }
+.add-concept-form select,
+.add-concept-form input[type="text"] {
+    padding: 9px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 13px;
+    color: #111827;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.add-concept-form select:focus,
+.add-concept-form input[type="text"]:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+.add-concept-form .field-submit {
+    display: flex;
+    align-items: end;
+}
+.add-concept-form button {
+    padding: 9px 18px;
+    border-radius: 8px;
+    background: #2563eb;
+    color: #fff;
+    border: 1px solid #2563eb;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
+}
+.add-concept-form button:hover:not(:disabled) {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+}
+.add-concept-form button:disabled {
+    background: #93c5fd;
+    border-color: #93c5fd;
+    cursor: not-allowed;
+}
+.add-concept-result {
+    margin-top: 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    display: none;
+}
+.add-concept-result.is-ok {
+    display: block;
+    background: #ecfdf5;
+    border: 1px solid #6ee7b7;
+    color: #065f46;
+}
+.add-concept-result.is-err {
+    display: block;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: #991b1b;
+}
+@media (max-width: 720px) {
+    .add-concept-form {
+        grid-template-columns: 1fr;
+    }
+}

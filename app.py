@@ -102,11 +102,11 @@ def load_industry_tree():
                         "code": stock_code,
                         "location": (row.get("所在地") or "").strip(),
                         "main_business": (row.get("主营") or "").strip(),
-                        "concept1": (row.get("概念1") or "").strip(),
-                        "concept2": (row.get("概念2") or "").strip(),
-                        "concept3": (row.get("概念3") or "").strip(),
-                        "concept4": (row.get("概念4") or "").strip(),
-                        "concept5": (row.get("概念5") or "").strip(),
+                        "concept1": (row.get("概念") or "").strip(),
+                        "concept2": "",
+                        "concept3": "",
+                        "concept4": "",
+                        "concept5": "",
                     }
                 )
 
@@ -369,6 +369,136 @@ def page_g():
     )
 
 
+@app.route("/api/pageH/add_concept", methods=["POST"])
+def api_page_h_add_concept():
+    """
+    为指定股票添加一个概念，写入 CSV 「概念」列。
+    多概念以 '-' 分隔（兼容旧的 ','、'，'、'、'、' ' 分隔符）。
+    请求 JSON: {"path": "一级||二级||三级", "name": "股票名称", "concept": "火电"}
+    返回: {"ok": true, "concept": "火电-机器人"} 或 {"ok": false, "error": "..."}
+    """
+    data = request.get_json(silent=True) or {}
+    path = (data.get("path") or "").strip()
+    stock_name = (data.get("name") or "").strip()
+    concept = (data.get("concept") or "").strip()
+
+    if not concept:
+        return jsonify({"ok": False, "error": "概念名称不能为空"}), 400
+    if not stock_name:
+        return jsonify({"ok": False, "error": "请填写股票名称"}), 400
+    if path.count("||") != 2:
+        return jsonify({"ok": False, "error": "行业路径不合法"}), 400
+
+    primary_name, secondary_name, tertiary_name = (s.strip() for s in path.split("||"))
+    primary, secondary, tertiary, err = _find_tertiary(
+        primary_name, secondary_name, tertiary_name
+    )
+    if err:
+        return jsonify({"ok": False, "error": err}), 404
+
+    target = None
+    for st in tertiary["stocks"]:
+        if st["name"] == stock_name:
+            target = st
+            break
+    if target is None:
+        return jsonify({"ok": False, "error": f"未找到股票：{stock_name}"}), 404
+
+    # 检查重复：扫描概念1~5 所有列
+    all_pieces = set()
+    for key in ("concept1", "concept2", "concept3", "concept4", "concept5"):
+        v = target.get(key) or ""
+        if not v:
+            continue
+        norm = (
+            v.replace("-", ",")
+             .replace("，", ",")
+             .replace("、", ",")
+             .replace(" ", ",")
+             .replace(";", ",")
+        )
+        for piece in norm.split(","):
+            piece = piece.strip()
+            if piece:
+                all_pieces.add(piece)
+    if concept in all_pieces:
+        return jsonify({"ok": False, "error": "该股票已有此概念"}), 400
+
+    # 写入策略：CSV 实际只有「概念」一列
+    # 若概念1 已存在则追加（用 '-'），否则直接填入
+    cur = (target.get("concept1") or "").strip()
+    target_key = "concept1"
+    target_value = f"{cur}-{concept}" if cur else concept
+
+    # 写回 CSV
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8-sig", newline="") as f:
+            rows = list(csv.reader(f))
+    except OSError as e:
+        return jsonify({"ok": False, "error": f"读取CSV失败：{e}"}), 500
+
+    if not rows:
+        return jsonify({"ok": False, "error": "CSV文件无表头"}), 500
+
+    header = rows[0]
+    # 兼容：CSV 实际只有「概念」列
+    col_name_to_index = {n: i for i, n in enumerate(header)}
+    if "概念" not in col_name_to_index:
+        header.append("概念")
+        col_name_to_index["概念"] = len(header) - 1
+    rows[0] = header
+
+    # 把所有行对齐到 header 长度
+    for i in range(1, len(rows)):
+        if len(rows[i]) < len(header):
+            rows[i].extend([""] * (len(header) - len(rows[i])))
+
+    # 写入列：实际只写入「概念」列
+    col_target = col_name_to_index["概念"]
+    col_name = col_name_to_index["股票名称"]
+    idx_primary = col_name_to_index["一级行业(30)"]
+    idx_secondary = col_name_to_index["二级行业(128)"]
+    idx_tertiary = col_name_to_index["三级行业(345)"]
+
+    target_idx = -1
+    for i in range(1, len(rows)):
+        r = rows[i]
+        if (
+            r[idx_primary] == primary_name
+            and r[idx_secondary] == secondary_name
+            and r[idx_tertiary] == tertiary_name
+            and r[col_name] == stock_name
+        ):
+            target_idx = i
+            break
+
+    if target_idx < 0:
+        return jsonify({"ok": False, "error": "CSV中未找到该股票行"}), 500
+
+    rows[target_idx][col_target] = target_value
+
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8-sig", newline="") as f:
+            csv.writer(f).writerows(rows)
+    except OSError as e:
+        return jsonify({"ok": False, "error": f"写入CSV失败：{e}"}), 500
+
+    # 同步更新内存树
+    target[target_key] = target_value
+
+    return jsonify({
+        "ok": True,
+        "concept": target_value,
+        "stock": {
+            "name": target["name"],
+            "code": target.get("code", ""),
+            "primary": primary_name,
+            "secondary": secondary_name,
+            "tertiary": tertiary_name,
+        },
+    })
+
+
 @app.route("/pageJ")
 def page_j():
     """
@@ -390,7 +520,16 @@ def page_j():
                     )
                     has_any = False
                     for raw in fields:
-                        for piece in (raw or "").replace("，", ",").split(","):
+                        # 兼容 - , ， 、 空格 ; 等多种分隔符
+                        normalized = (
+                            (raw or "")
+                            .replace("-", ",")
+                            .replace("，", ",")
+                            .replace("、", ",")
+                            .replace(" ", ",")
+                            .replace(";", ",")
+                        )
+                        for piece in normalized.split(","):
                             piece = piece.strip()
                             if not piece:
                                 continue
@@ -414,6 +553,25 @@ def page_j():
     )
 
 
+def _concept_match(raw, concept_name):
+    """
+    判断字段值 raw（可能用 - , ， 、 空格 ; 等分隔）中是否包含概念 concept_name。
+    """
+    if not raw or not concept_name:
+        return False
+    normalized = (
+        raw.replace("-", ",")
+           .replace("，", ",")
+           .replace("、", ",")
+           .replace(" ", ",")
+           .replace(";", ",")
+    )
+    for piece in normalized.split(","):
+        if piece.strip() == concept_name:
+            return True
+    return False
+
+
 @app.route("/pageH")
 def page_h():
     """
@@ -428,8 +586,12 @@ def page_h():
             for secondary_name, secondary in primary["secondaries"].items():
                 for tertiary_name, tertiary in secondary["tertiaries"].items():
                     for st in tertiary["stocks"]:
-                        # 概念1 / 概念2 任一匹配即收录（去重）
-                        if st.get("concept1") == name or st.get("concept2") == name:
+                        # 概念1~5 任一列包含该概念（按多种分隔符切分后匹配）
+                        matched = any(
+                            _concept_match(st.get(k), name)
+                            for k in ("concept1", "concept2", "concept3", "concept4", "concept5")
+                        )
+                        if matched:
                             stocks.append(
                                 {
                                     "name": st["name"],
@@ -437,6 +599,7 @@ def page_h():
                                     "primary": primary_name,
                                     "secondary": secondary_name,
                                     "tertiary": tertiary_name,
+                                    "concept1": st.get("concept1", ""),
                                 }
                             )
         # 概念统计：哪些概念在数据库中存在，方便用 existing
@@ -448,11 +611,36 @@ def page_h():
 
     # 按股票名称升序，便于查找
     stocks.sort(key=lambda s: s["name"])
+
+    # 构造三级行业下拉选项（供「添加概念」面板使用）
+    groups_full, _ = _build_full_groups()
+    tertiary_options = []
+    for g in groups_full:
+        for s in g["secondaries"]:
+            for t in s["tertiaries"]:
+                tertiary_options.append({
+                    "value": f'{g["name"]}||{s["name"]}||{t["name"]}',
+                    "label": f'{g["name"]} / {s["name"]} / {t["name"]}',
+                })
+
+    # 按三级行业路径聚合股票名称（用于 datalist 自动补全）
+    stocks_by_tertiary = {}
+    for primary_name, primary in INDUSTRY_TREE.items():
+        for secondary_name, secondary in primary["secondaries"].items():
+            for tertiary_name, tertiary in secondary["tertiaries"].items():
+                key = f"{primary_name}||{secondary_name}||{tertiary_name}"
+                stocks_by_tertiary[key] = [
+                    {"name": st["name"], "code": st.get("code", "")}
+                    for st in tertiary["stocks"]
+                ]
+
     return render_template(
         "pageH.html",
         concept=concept,
         stocks=stocks,
         query_name=name,
+        tertiary_options=tertiary_options,
+        stocks_by_tertiary=stocks_by_tertiary,
     )
 
 

@@ -33,6 +33,34 @@
             </div>
         </div>
 
+        <!-- 添加概念面板 -->
+        <div class="industry-group-card add-concept-panel">
+            <div class="add-concept-head">
+                <h3>为股票添加「<span class="add-concept-name">{{ concept.name }}</span>」概念</h3>
+                <p class="add-concept-tip">该概念会写入 CSV 文件的「概念」列，多个概念以 <code>-</code> 分隔。</p>
+            </div>
+            <form id="addConceptForm" class="add-concept-form" autocomplete="off">
+                <div class="field">
+                    <label for="addConceptPath">三级行业 <span class="req">*</span></label>
+                    <select id="addConceptPath" required>
+                        <option value="">— 请选择 —</option>
+                        {% for opt in tertiary_options %}
+                        <option value="{{ opt.value }}">{{ opt.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="addConceptStock">股票名称 <span class="req">*</span></label>
+                    <input id="addConceptStock" list="addConceptStockList" type="text" placeholder="先选择三级行业，再输入或选择股票" required />
+                    <datalist id="addConceptStockList"></datalist>
+                </div>
+                <div class="field-submit">
+                    <button type="submit" class="btn-primary">添加概念</button>
+                </div>
+            </form>
+            <div id="addConceptResult" class="add-concept-result"></div>
+        </div>
+
         <div class="industry-group-card">
             {% if stocks %}
             <div class="industry-stock-cloud">
@@ -58,5 +86,82 @@
         </div>
         {% endif %}
     </main>
+
+    <script>
+    (function () {
+        var CONCEPT_NAME = {{ (query_name or '')|tojson }};
+        var STOCKS_BY_TERTIARY = {{ stocks_by_tertiary|tojson }};
+
+        var pathSel = document.getElementById('addConceptPath');
+        var stockInput = document.getElementById('addConceptStock');
+        var dataList = document.getElementById('addConceptStockList');
+        var form = document.getElementById('addConceptForm');
+        var result = document.getElementById('addConceptResult');
+
+        if (!pathSel || !stockInput || !form || !dataList) return;
+
+        function refreshStockOptions() {
+            var key = pathSel.value || '';
+            dataList.innerHTML = '';
+            var list = STOCKS_BY_TERTIARY[key] || [];
+            list.forEach(function (item) {
+                var opt = document.createElement('option');
+                opt.value = item.name;
+                opt.label = item.code ? (item.name + '  (' + item.code + ')') : item.name;
+                dataList.appendChild(opt);
+            });
+        }
+
+        pathSel.addEventListener('change', function () {
+            refreshStockOptions();
+            stockInput.focus();
+        });
+
+        form.addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            result.textContent = '';
+            result.className = 'add-concept-result';
+
+            var payload = {
+                path: pathSel.value,
+                name: (stockInput.value || '').trim(),
+                concept: CONCEPT_NAME
+            };
+
+            if (!payload.path) { showResult(false, '请选择三级行业'); return; }
+            if (!payload.name) { showResult(false, '请输入股票名称'); return; }
+            if (!payload.concept) { showResult(false, '当前页面无概念名称'); return; }
+
+            var btn = form.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            btn.textContent = '处理中...';
+
+            fetch('/api/pageH/add_concept', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+            .then(function (resp) {
+                if (resp.body && resp.body.ok) {
+                    showResult(true, '已为 ' + resp.body.stock.name + ' 添加概念「' + payload.concept + '」。当前概念列：' + resp.body.concept);
+                    setTimeout(function () { window.location.reload(); }, 1200);
+                } else {
+                    showResult(false, (resp.body && resp.body.error) || ('HTTP ' + resp.status));
+                }
+            })
+            .catch(function (err) { showResult(false, '请求失败：' + err); })
+            .finally(function () {
+                btn.disabled = false;
+                btn.textContent = '添加概念';
+            });
+        });
+
+        function showResult(ok, msg) {
+            result.textContent = msg;
+            result.className = 'add-concept-result ' + (ok ? 'is-ok' : 'is-err');
+        }
+    })();
+    </script>
 </body>
 </html>
