@@ -661,6 +661,121 @@ mark.hl {
     white-space: nowrap;
     z-index: 1;
 }
+.batch-edit-btn {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    z-index: 2;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: #2563eb;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 5px;
+    cursor: pointer;
+}
+.batch-edit-btn:hover {
+    background: #dbeafe;
+    border-color: #93c5fd;
+}
+
+.batch-modal-mask {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.batch-modal {
+    background: #fff;
+    border-radius: 10px;
+    width: 420px;
+    max-width: 90vw;
+    padding: 20px 22px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+.batch-modal-wide {
+    width: 520px;
+}
+.batch-modal-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #111827;
+    margin-bottom: 4px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e5e7eb;
+}
+.batch-modal-subtitle {
+    font-size: 12px;
+    color: #6b7280;
+    margin-bottom: 14px;
+    margin-top: -4px;
+}
+.batch-modal-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.batch-modal-row label {
+    width: 80px;
+    flex: none;
+    font-size: 13px;
+    color: #4b5563;
+}
+.batch-modal-row input {
+    flex: 1;
+    box-sizing: border-box;
+    padding: 7px 10px;
+    font-size: 13px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    outline: none;
+}
+.batch-modal-row input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+.batch-modal-row input[required] {
+    border-left: 3px solid #f59e0b;
+}
+.batch-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #f3f4f6;
+}
+.batch-modal-cancel,
+.batch-modal-save {
+    padding: 6px 16px;
+    font-size: 13px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.batch-modal-cancel {
+    background: #fff;
+    border: 1px solid #d1d5db;
+    color: #374151;
+}
+.batch-modal-cancel:hover {
+    background: #f9fafb;
+}
+.batch-modal-save {
+    background: #2563eb;
+    border: 1px solid #2563eb;
+    color: #fff;
+}
+.batch-modal-save:hover {
+    background: #1d4ed8;
+}
+.batch-modal-save:disabled {
+    background: #93c5fd;
+    border-color: #93c5fd;
+    cursor: not-allowed;
+}
 .batch-placeholder-row td {
     padding: 28px 12px;
     text-align: center;
@@ -676,6 +791,20 @@ a.industry-link {
 a.industry-link:hover {
     border-bottom-style: solid;
     border-bottom-color: #1d4ed8;
+}
+a.industry-link.concept-chip {
+    display: inline-block;
+    margin-right: 4px;
+    padding: 1px 6px;
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    border-radius: 4px;
+    font-weight: 600;
+    color: #1d4ed8;
+}
+a.industry-link.concept-chip:hover {
+    background: #dbeafe;
+    border-color: #93c5fd;
 }
 
 /* ========== 页面 G：行业股票列表 ========== */
@@ -769,6 +898,15 @@ a.industry-link:hover {
     border-radius: 5px;
     padding: 4px 10px;
     white-space: nowrap;
+}
+.industry-stock-cloud a.industry-link {
+    border-bottom: none;
+    text-decoration: none;
+}
+.industry-stock-cloud a.industry-link:hover .is-name {
+    color: #2563eb;
+    background: #eff6ff;
+    border-color: #93c5fd;
 }
 
 /* ========== 股票详情卡片（页面 F 使用） ========== */
@@ -1058,3 +1196,113 @@ a.industry-link:hover {
 }
 .arrow { color: #9ca3af; }
 .tag-stock { background: #ec4899; }
+
+/* ========== 页面 J：全部概念 ========== */
+.stat-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+}
+.stat-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 18px 20px;
+    text-align: center;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.stat-card:hover {
+    border-color: #93c5fd;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
+}
+.stat-num {
+    font-size: 28px;
+    font-weight: 700;
+    color: #2563eb;
+    line-height: 1.2;
+    font-family: "SF Mono", Consolas, Monaco, monospace;
+}
+.stat-label {
+    margin-top: 6px;
+    font-size: 13px;
+    color: #6b7280;
+}
+.toolbar-select {
+    padding: 10px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    background: #fff;
+    font-size: 14px;
+    color: #111827;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.toolbar-select:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+.result-count {
+    margin-left: auto;
+    font-size: 13px;
+    color: #6b7280;
+    white-space: nowrap;
+}
+#conceptSearchInput {
+    flex: 1;
+    padding: 11px 16px;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    background: #fff;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+#conceptSearchInput:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+.concept-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+}
+a.concept-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    text-decoration: none;
+    color: #111827;
+    transition: border-color 0.15s, background 0.15s, transform 0.15s, box-shadow 0.15s;
+    min-height: 44px;
+}
+a.concept-card:hover {
+    border-color: #2563eb;
+    background: #eff6ff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.10);
+}
+.concept-card-name {
+    font-size: 14px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: 8px;
+}
+.concept-card-count {
+    flex-shrink: 0;
+    min-width: 26px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    background: #2563eb;
+    border-radius: 999px;
+    padding: 2px 8px;
+}

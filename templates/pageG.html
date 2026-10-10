@@ -19,6 +19,8 @@
             <a href="{{ url_for('page_d') }}">页面 D</a>
             <a href="{{ url_for('page_f') }}">页面 F</a>
             <a class="active" href="{{ url_for('page_g') }}">页面 G</a>
+            <a href="{{ url_for('page_h') }}">页面 H</a>
+            <a href="{{ url_for('page_j') }}">页面 J</a>
         </nav>
     </header>
 
@@ -26,7 +28,6 @@
         {% if industry %}
         <div class="industry-head-card">
             <div class="industry-head-title">
-                <span class="tag tag-primary">{{ industry.level }}</span>
                 <span class="industry-head-name">{{ industry.name }}</span>
                 <span class="industry-head-code">{{ industry.code or '' }}</span>
             </div>
@@ -40,7 +41,6 @@
         <div class="industry-group-card">
             {% if groups | length > 1 %}
             <div class="industry-group-head">
-                <span class="tag tag-tertiary">三级</span>
                 <span class="industry-group-name">{{ g.name }}</span>
                 <span class="industry-group-count">{{ g.stocks | length }} 只</span>
             </div>
@@ -48,7 +48,9 @@
             {% if g.stocks %}
             <div class="industry-stock-cloud">
                 {% for st in g.stocks %}
-                <span class="is-name">{{ st.name }}</span>
+                <a class="industry-link" href="{{ url_for('page_f', q=st.name) }}" title="在页面 F 搜索 {{ st.name }}">
+                    <span class="is-name">{{ st.name }}</span>
+                </a>
                 {% endfor %}
             </div>
             {% else %}

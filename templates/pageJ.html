@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>通达信行业分类 - 页面 J · 全部概念</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <h1>通达信行业分类 <span class="page-tag">页面 J · 全部概念</span></h1>
+        </div>
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_c') }}">页面 C</a>
+            <a href="{{ url_for('page_d') }}">页面 D</a>
+            <a href="{{ url_for('page_f') }}">页面 F</a>
+            <a href="{{ url_for('page_g') }}">页面 G</a>
+            <a href="{{ url_for('page_h') }}">页面 H</a>
+            <a class="active" href="{{ url_for('page_j') }}">页面 J</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <!-- 统计卡片 -->
+        <div class="stat-row">
+            <div class="stat-card">
+                <div class="stat-num">{{ total_concepts }}</div>
+                <div class="stat-label">概念总数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num">{{ total_stocks }}</div>
+                <div class="stat-label">股票总数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num">{{ total_stocks_with_concept }}</div>
+                <div class="stat-label">含概念股票数</div>
+            </div>
+        </div>
+
+        <!-- 工具栏：搜索 + 排序 -->
+        <div class="toolbar">
+            <input id="conceptSearchInput" type="search" placeholder="搜索概念名称..." />
+            <select id="conceptSortSelect" class="toolbar-select">
+                <option value="count_desc">股票数降序</option>
+                <option value="count_asc">股票数升序</option>
+                <option value="name_asc">名称升序</option>
+                <option value="name_desc">名称降序</option>
+            </select>
+            <span class="result-count" id="conceptResultCount"></span>
+        </div>
+
+        <!-- 概念列表（卡片） -->
+        <div class="concept-grid" id="conceptGrid">
+            {% for name, count in concepts %}
+            <a class="concept-card"
+               href="{{ url_for('page_h') }}?name={{ name|urlencode }}"
+               data-name="{{ name }}"
+               data-count="{{ count }}"
+               title="点击查看「{{ name }}」相关股票">
+                <span class="concept-card-name">{{ name }}</span>
+                <span class="concept-card-count">{{ count }}</span>
+            </a>
+            {% else %}
+            <div class="empty">— 暂无任何概念数据 —</div>
+            {% endfor %}
+        </div>
+    </main>
+
+    <script>
+    (function () {
+        var input = document.getElementById('conceptSearchInput');
+        var sortSel = document.getElementById('conceptSortSelect');
+        var grid = document.getElementById('conceptGrid');
+        var counter = document.getElementById('conceptResultCount');
+        if (!grid) return;
+
+        // 备份初始顺序（按后端 count desc / name asc）
+        var originalOrder = Array.prototype.slice.call(grid.querySelectorAll('.concept-card'));
+
+        function apply() {
+            var kw = (input.value || '').trim().toLowerCase();
+            var mode = sortSel.value;
+            var cards = Array.prototype.slice.call(grid.querySelectorAll('.concept-card'));
+
+            // 过滤
+            cards.forEach(function (c) {
+                var name = (c.getAttribute('data-name') || '').toLowerCase();
+                c.style.display = (!kw || name.indexOf(kw) !== -1) ? '' : 'none';
+            });
+
+            // 排序
+            cards.sort(function (a, b) {
+                var na = a.getAttribute('data-name') || '';
+                var nb = b.getAttribute('data-name') || '';
+                var ca = parseInt(a.getAttribute('data-count') || '0', 10);
+                var cb = parseInt(b.getAttribute('data-count') || '0', 10);
+                switch (mode) {
+                    case 'count_asc':  return ca - cb || na.localeCompare(nb, 'zh-Hans-CN');
+                    case 'name_asc':   return na.localeCompare(nb, 'zh-Hans-CN');
+                    case 'name_desc':  return nb.localeCompare(na, 'zh-Hans-CN');
+                    default:           return cb - ca || na.localeCompare(nb, 'zh-Hans-CN');
+                }
+            });
+
+            // 重排 DOM
+            cards.forEach(function (c) { grid.appendChild(c); });
+
+            // 计数
+            var visible = cards.filter(function (c) { return c.style.display !== 'none'; }).length;
+            if (counter) {
+                if (kw) {
+                    counter.textContent = '匹配 ' + visible + ' / ' + cards.length + ' 个概念';
+                } else {
+                    counter.textContent = '共 ' + cards.length + ' 个概念';
+                }
+            }
+        }
+
+        if (input) input.addEventListener('input', apply);
+        if (sortSel) sortSel.addEventListener('change', apply);
+        apply();
+    })();
+    </script>
+</body>
+</html>

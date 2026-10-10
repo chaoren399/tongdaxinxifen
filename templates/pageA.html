@@ -23,6 +23,8 @@
             <a href="{{ url_for('page_d') }}">页面 D</a>
             <a href="{{ url_for('page_f') }}">页面 F</a>
             <a href="{{ url_for('page_g') }}">页面 G</a>
+            <a href="{{ url_for('page_h') }}">页面 H</a>
+            <a href="{{ url_for('page_j') }}">页面 J</a>
         </nav>
     </header>
 
@@ -44,8 +46,9 @@
                     <tr class="primary-row" data-name="{{ g.name }}" data-code="{{ g.code }}">
                         <td class="primary-cell">
                             <div class="primary-info">
-                                <span class="tag tag-primary">一级</span>
-                                <span class="primary-name">{{ g.name }}</span>
+                                <a class="industry-link" href="{{ url_for('page_g', level=1, name=g.name) }}" title="查看「{{ g.name }}」行业下所有股票">
+                                    <span class="primary-name">{{ g.name }}</span>
+                                </a>
                                 <span class="primary-code" hidden>{{ g.code }}</span>
                                 <span class="primary-meta">
                                     {{ g.secondaryCount }} 个二级 ·
@@ -61,8 +64,9 @@
                                 <li class="secondary-item"
                                     data-name="{{ s.name }}"
                                     data-code="{{ s.code }}">
-                                    <span class="tag tag-secondary">二级</span>
-                                    <span class="secondary-name">{{ s.name }}</span>
+                                    <a class="industry-link" href="{{ url_for('page_g', level=2, name=s.name) }}" title="查看「{{ s.name }}」行业下所有股票">
+                                        <span class="secondary-name">{{ s.name }}</span>
+                                    </a>
                                     <span class="secondary-code" hidden>{{ s.code }}</span>
                                 </li>
                                 {% endfor %}
