@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# IDE - PyCharm
+.idea/
+*.iml
+
+# IDE - VS Code
+.vscode/
+
+# 日志文件
+*.log
+logs/
+
+# 数据文件（如需忽略敏感数据可取消注释）
+# data/
+# *.csv
+
+# 系统文件
+.DS_Store
+Thumbs.db
