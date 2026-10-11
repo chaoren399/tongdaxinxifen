@@ -8,7 +8,10 @@
 数据存储：SQLite（data/tongdaxin.db），由 db.py 提供访问层
 """
 import csv  # noqa: F401  （保留 csv 以便兼容旧代码）
+import gzip
 import os
+import threading
+import time
 from collections import OrderedDict
 from typing import Any, Dict
 
@@ -47,7 +50,128 @@ def reload_industry_tree():
     """从 SQLite 重新加载整棵树（在写入操作后调用，保持内存与磁盘一致）。"""
     global INDUSTRY_TREE
     INDUSTRY_TREE = load_industry_tree()
+    _invalidate_caches()
     return INDUSTRY_TREE
+
+
+# ====== 数据/渲染缓存 ======
+# 数据代数：内存树重载或被直接修改时 +1，使所有缓存自动失效
+_DATA_GEN = 0
+_ADDED_VERSION = 0                 # 页面 C「本次新增」列表版本（新增/撤销时 +1）
+_GROUPS_CACHE = {"gen": -1, "value": None}   # _build_full_groups() 结果缓存
+_RENDER_CACHE = {}                # 渲染结果缓存：key=(模板, 版本key, 数据代数)
+
+
+def _invalidate_caches(bump_added: bool = False):
+    """使缓存失效：任何写操作后调用。bump_added 表示页面 C 新增记录有变化。"""
+    global _DATA_GEN, _ADDED_VERSION
+    _DATA_GEN += 1
+    _RENDER_CACHE.clear()
+    if bump_added:
+        _ADDED_VERSION += 1
+
+
+def _build_full_groups_cached():
+    """带代数缓存的 _build_full_groups()：数据未变化时直接复用上次结果。"""
+    if _GROUPS_CACHE["gen"] != _DATA_GEN:
+        _GROUPS_CACHE["gen"] = _DATA_GEN
+        _GROUPS_CACHE["value"] = _build_full_groups()
+    return _GROUPS_CACHE["value"]
+
+
+def _cached_render(template: str, version_key, render_fn):
+    """渲染缓存：相同 (模板, 版本key, 数据代数) 直接返回上次渲染的 HTML。"""
+    key = (template, version_key, _DATA_GEN)
+    html = _RENDER_CACHE.get(key)
+    if html is None:
+        html = render_fn()
+        _RENDER_CACHE[key] = html
+    return html
+
+
+# ====== 请求耗时统计 ======
+_REQUEST_START = {}
+
+
+@app.before_request
+def _timing_before():
+    _REQUEST_START[threading.get_ident()] = time.perf_counter()
+
+
+@app.after_request
+def _timing_after(response):
+    start = _REQUEST_START.pop(threading.get_ident(), None)
+    if start is not None:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        size = response.calculate_content_length() or 0
+        size_kb = size / 1024
+        size_text = f"{size_kb:.1f} KB" if size_kb < 1024 else f"{size_kb / 1024:.2f} MB"
+        app.logger.info(
+            "[%s] %s -> %s  %.1f ms  %s%s",
+            request.method,
+            request.path,
+            response.status_code,
+            elapsed_ms,
+            size_text,
+            "  (gzip)" if response.headers.get("Content-Encoding") == "gzip" else "",
+        )
+    return response
+
+
+class _GzipMiddleware:
+    """轻量 gzip 压缩中间件：对文本类响应（HTML/JS/CSS/JSON）启用压缩。
+    响应在内存中缓冲后压缩，适用于本项目的开发/小型部署场景。"""
+
+    COMPRESSIBLE_PREFIXES = ("text/", "application/json", "application/javascript")
+    MIN_SIZE = 1024
+
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        accept = (environ.get("HTTP_ACCEPT_ENCODING") or "").lower()
+        if "gzip" not in accept:
+            return self.wsgi_app(environ, start_response)
+
+        captured = {}
+
+        def _capture(status, headers, exc_info=None):
+            captured["status"] = status
+            captured["headers"] = list(headers)
+            return lambda data: None
+
+        body = b"".join(
+            chunk
+            for chunk in self.wsgi_app(environ, _capture)
+            if isinstance(chunk, bytes)
+        )
+
+        headers = captured["headers"]
+        has_encoding = any(
+            k.lower() == "content-encoding" for k, _ in headers
+        )
+        content_type = next(
+            (v for k, v in headers if k.lower() == "content-type"), ""
+        )
+        compressible = content_type.lower().startswith(self.COMPRESSIBLE_PREFIXES)
+
+        if has_encoding or not compressible or len(body) < self.MIN_SIZE:
+            start_response(captured["status"], headers)
+            return [body]
+
+        gzipped = gzip.compress(body, 6)
+        headers = [
+            (k, v)
+            for k, v in headers
+            if k.lower() not in ("content-length", "content-encoding")
+        ]
+        headers.append(("Content-Encoding", "gzip"))
+        headers.append(("Content-Length", str(len(gzipped))))
+        start_response(captured["status"], headers)
+        return [gzipped]
+
+
+app.wsgi_app = _GzipMiddleware(app.wsgi_app)
 
 
 def serialize_primary(name, primary):
@@ -214,15 +338,23 @@ def _build_full_groups():
 @app.route("/pageB")
 def page_b():
     """页面 B：展示一级 + 二级 + 三级 + 股票（沿用页面 A 的左列粘性布局）"""
-    groups, stats = _build_full_groups()
-    return render_template("pageB.html", groups=groups, stats=stats)
+    groups, stats = _build_full_groups_cached()
+    return _cached_render(
+        "pageB.html",
+        (),
+        lambda: render_template("pageB.html", groups=groups, stats=stats),
+    )
 
 
 @app.route("/pageD")
 def page_d():
     """页面 D：与页面 B 完全相同（展示一级+二级+三级+股票），股票名称可跳转页面 F 搜索"""
-    groups, stats = _build_full_groups()
-    return render_template("pageD.html", groups=groups, stats=stats)
+    groups, stats = _build_full_groups_cached()
+    return _cached_render(
+        "pageD.html",
+        (),
+        lambda: render_template("pageD.html", groups=groups, stats=stats),
+    )
 
 
 @app.route("/pageF")
@@ -603,7 +735,7 @@ def page_h():
     stocks.sort(key=lambda s: s["name"])
 
     # 构造三级行业下拉选项（供「添加概念」面板使用）
-    groups_full, _ = _build_full_groups()
+    groups_full, _ = _build_full_groups_cached()
     tertiary_options = []
     for g in groups_full:
         for s in g["secondaries"]:
@@ -637,27 +769,35 @@ def page_h():
 @app.route("/pageC")
 def page_c():
     """页面 C：与页面 B 完全相同（展示一级+二级+三级+股票）"""
-    groups, stats = _build_full_groups()
-    # 构造三级下拉选项：含路径 + 名称 + 当前股票数
-    tertiary_options = []
+    groups, stats = _build_full_groups_cached()
+    added = session_store.get("added", [])
+    # 渲染结果缓存：随数据代数 + 新增记录版本一起失效
+    return _cached_render(
+        "pageC.html",
+        ("added", _ADDED_VERSION),
+        lambda: render_template(
+            "pageC.html",
+            groups=groups,
+            stats=stats,
+            tertiary_options=_build_tertiary_options(groups),
+            added=added,
+        ),
+    )
+
+
+def _build_tertiary_options(groups):
+    """构造三级下拉选项：含路径 + 名称 + 当前股票数"""
+    options = []
     for g in groups:
         for s in g["secondaries"]:
             for t in s["tertiaries"]:
-                tertiary_options.append(
+                options.append(
                     {
                         "value": f'{g["name"]}||{s["name"]}||{t["name"]}',
                         "label": f'{g["name"]} / {s["name"]} / {t["name"]}（{t["stockCount"]} 只）',
                     }
                 )
-    # 在页面 C 通过 session 存储的新增记录（重启丢失）
-    added = session_store.get("added", [])
-    return render_template(
-        "pageC.html",
-        groups=groups,
-        stats=stats,
-        tertiary_options=tertiary_options,
-        added=added,
-    )
+    return options
 
 
 # ============== API ==============
@@ -912,6 +1052,7 @@ def api_page_c_add_stock():
         "tertiary_id": tid,
     }
     session_store["added"].append(record)
+    _invalidate_caches(bump_added=True)
 
     return jsonify(
         {
@@ -1109,6 +1250,7 @@ def api_page_c_add_stocks_batch():
                 "stock": new_stock,
             }
         )
+    _invalidate_caches(bump_added=True)
 
     return jsonify(
         {
@@ -1162,6 +1304,7 @@ def api_page_c_reset():
             except Exception as e:
                 print(f"[错误] SQLite 删除失败: {e}")
     session_store["added"] = []
+    _invalidate_caches(bump_added=True)
     return jsonify({"ok": True, "removed": removed})
 
 
