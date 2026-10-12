@@ -5,6 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>通达信行业分类 - 页面 D</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <style>
+        /* 页面 D 专属：股票名称紧凑显示 */
+        .data-table-d .stock-list {
+            grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+            gap: 0 8px;
+            padding-left: 10px;
+        }
+        .data-table-d .stock-row { padding: 1px 0; font-size: 12px; }
+        .data-table-d .stock-row .stock-name { white-space: nowrap; }
+        .data-table-d .stock-link { text-decoration: none; color: inherit; }
+        .data-table-d .stock-link:hover { color: #2563eb; }
+        .data-table-d .stock-code,
+        .data-table-d .stock-loc,
+        .data-table-d .stock-main { display: none; }
+    </style>
 </head>
 <body>
     <header class="topbar">
@@ -23,6 +38,7 @@
             <a href="{{ url_for('page_b') }}">页面 B</a>
             <a href="{{ url_for('page_c') }}">页面 C</a>
             <a class="active" href="{{ url_for('page_d') }}">页面 D</a>
+            <a href="{{ url_for('page_e') }}">页面 E</a>
             <a href="{{ url_for('page_f') }}">页面 F</a>
             <a href="{{ url_for('page_g') }}">页面 G</a>
             <a href="{{ url_for('page_h') }}">页面 H</a>
@@ -38,7 +54,7 @@
         </div>
 
         <div class="table-wrap">
-            <table class="data-table data-table-b">
+            <table class="data-table data-table-d">
                 <thead>
                     <tr>
                         <th style="width: 18%;">一级行业</th>

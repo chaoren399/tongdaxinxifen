@@ -357,6 +357,137 @@ def page_d():
     )
 
 
+@app.route("/pageE")
+def page_e():
+    """页面 E：选择三级行业后，对其中的股票进行 新增 / 编辑 / 删除 管理。"""
+    groups, _ = _build_full_groups_cached()
+    return render_template(
+        "pageE.html",
+        tertiary_options=_build_tertiary_options(groups),
+    )
+
+
+@app.route("/api/pageE/stocks", methods=["GET"])
+def api_page_e_stocks():
+    """页面 E：返回指定三级行业下的全部股票（含全部字段）。"""
+    path = (request.args.get("path") or "").strip()
+    if "||" not in path or path.count("||") != 2:
+        return jsonify({"ok": False, "error": "行业路径不合法"}), 400
+    primary_name, secondary_name, tertiary_name = path.split("||")
+    _, _, tertiary, err = _find_tertiary(
+        primary_name, secondary_name, tertiary_name
+    )
+    if err:
+        return jsonify({"ok": False, "error": err}), 404
+    return jsonify(
+        {
+            "ok": True,
+            "path": path,
+            "stockCount": len(tertiary["stocks"]),
+            "stocks": tertiary["stocks"],
+        }
+    )
+
+
+@app.route("/api/pageE/add_stock", methods=["POST"])
+def api_page_e_add_stock():
+    """页面 E：为指定三级行业新增一只股票（写入 SQLite + 内存树，不进撤销记录）。"""
+    data = request.get_json(silent=True) or {}
+    path = (data.get("path") or "").strip()
+    name = (data.get("name") or "").strip()
+    code = (data.get("code") or "").strip()
+    location = (data.get("location") or "").strip()
+    main_business = (data.get("main_business") or "").strip()
+
+    if not path or path.count("||") != 2:
+        return jsonify({"ok": False, "error": "请选择三级行业"}), 400
+    if not name:
+        return jsonify({"ok": False, "error": "请填写股票名称"}), 400
+
+    primary_name, secondary_name, tertiary_name = path.split("||")
+    primary, secondary, tertiary, err = _find_tertiary(
+        primary_name, secondary_name, tertiary_name
+    )
+    if err:
+        return jsonify({"ok": False, "error": err}), 404
+
+    for st in tertiary["stocks"]:
+        if st["name"] == name:
+            return jsonify(
+                {"ok": False, "error": f"该三级行业下已存在股票「{name}」"}
+            ), 400
+
+    from db import add_stock, find_tertiary_id
+    tid = find_tertiary_id(primary_name, secondary_name, tertiary_name)
+    if tid is None:
+        return jsonify({"ok": False, "error": "SQLite 中未找到该三级行业"}), 404
+    try:
+        add_stock(
+            tid,
+            name=name,
+            code=code,
+            location=location,
+            main_business=main_business,
+            concept="",
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"写入数据库失败: {e}"}), 500
+
+    new_stock = {
+        "name": name,
+        "code": code,
+        "location": location,
+        "main_business": main_business,
+    }
+    tertiary["stocks"].append(new_stock)
+    _invalidate_caches()
+
+    return jsonify(
+        {"ok": True, "stock": new_stock, "stockCount": len(tertiary["stocks"])}
+    )
+
+
+@app.route("/api/pageE/delete_stock", methods=["POST"])
+def api_page_e_delete_stock():
+    """页面 E：从指定三级行业删除一只股票（SQLite + 内存树）。"""
+    data = request.get_json(silent=True) or {}
+    path = (data.get("path") or "").strip()
+    name = (data.get("name") or "").strip()
+
+    if not path or path.count("||") != 2:
+        return jsonify({"ok": False, "error": "行业路径不合法"}), 400
+    if not name:
+        return jsonify({"ok": False, "error": "股票名称不能为空"}), 400
+
+    primary_name, secondary_name, tertiary_name = path.split("||")
+    _, _, tertiary, err = _find_tertiary(
+        primary_name, secondary_name, tertiary_name
+    )
+    if err:
+        return jsonify({"ok": False, "error": err}), 404
+
+    if not any(st["name"] == name for st in tertiary["stocks"]):
+        return jsonify({"ok": False, "error": "未找到该股票"}), 404
+
+    from db import delete_stock, find_tertiary_id
+    tid = find_tertiary_id(primary_name, secondary_name, tertiary_name)
+    if tid is None:
+        return jsonify({"ok": False, "error": "SQLite 中未找到该三级行业"}), 404
+    try:
+        removed = delete_stock(name, tertiary_id=tid)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"数据库删除失败: {e}"}), 500
+    if not removed:
+        return jsonify({"ok": False, "error": "数据库中未找到该股票"}), 404
+
+    tertiary["stocks"] = [
+        st for st in tertiary["stocks"] if st["name"] != name
+    ]
+    _invalidate_caches()
+
+    return jsonify({"ok": True, "removed": removed, "name": name})
+
+
 @app.route("/pageF")
 def page_f():
     """页面 F：多股票批量搜索"""

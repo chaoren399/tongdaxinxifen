@@ -174,6 +174,16 @@
         nameTr.appendChild(nameTd);
         tb1.appendChild(nameTr);
 
+        // 股票代码
+        var codeTr = document.createElement("tr");
+        var codeTh = document.createElement("th");
+        codeTh.textContent = "股票代码";
+        var codeTd = document.createElement("td");
+        escText(codeTd, it.code || "-", keywords);
+        codeTr.appendChild(codeTh);
+        codeTr.appendChild(codeTd);
+        tb1.appendChild(codeTr);
+
         industryRow(tb1, "一级行业", it.primary, 1, keywords);
         industryRow(tb1, "二级行业", it.secondary, 2, keywords);
         industryRow(tb1, "三级行业", it.tertiary, 3, keywords);
