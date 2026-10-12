@@ -942,6 +942,14 @@ def _build_tertiary_options(groups):
 
 # ============== API ==============
 
+@app.route("/api/concepts/primary", methods=["GET"])
+def api_primary_concepts():
+    """返回所有一级概念（level=1）列表，用于编辑弹窗的「概念 1~5」下拉框。"""
+    from db import list_primary_concepts
+    items = list_primary_concepts()
+    return jsonify({"ok": True, "items": items, "total": len(items)})
+
+
 @app.route("/api/stocks/search_batch", methods=["POST"])
 def api_stocks_search_batch():
     """
@@ -971,24 +979,25 @@ def api_stocks_search_batch():
                                if _stock_hit_keyword(st, tertiary_name, kw)]
                     if not matched:
                         continue
-                    items.append(
-                        {
-                            "name": st["name"],
-                            "code": st["code"],
-                            "location": st["location"],
-                            "main_business": st["main_business"],
-                            "concept1": st["concept1"],
-                            "concept2": st["concept2"],
-                            "concept3": st.get("concept3", ""),
-                            "concept4": st.get("concept4", ""),
-                            "concept5": st.get("concept5", ""),
-                            "primary": primary_name,
-                            "secondary": secondary_name,
-                            "tertiary": tertiary_name,
-                            "nameHit": any(kw in st["name"].lower() for kw in matched),
-                            "matched": matched,
-                        }
-                    )
+                    item = {
+                        "name": st["name"],
+                        "code": st["code"],
+                        "location": st["location"],
+                        "main_business": st["main_business"],
+                        "concept1": st["concept1"],
+                        "concept2": st["concept2"],
+                        "concept3": st.get("concept3", ""),
+                        "concept4": st.get("concept4", ""),
+                        "concept5": st.get("concept5", ""),
+                        "primary": primary_name,
+                        "secondary": secondary_name,
+                        "tertiary": tertiary_name,
+                        "nameHit": any(kw in st["name"].lower() for kw in matched),
+                        "matched": matched,
+                    }
+                    for field in STOCK_OPTION_FIELDS:
+                        item[field] = st.get(field, "")
+                    items.append(item)
     # 名称命中优先
     items.sort(key=lambda r: 0 if r["nameHit"] else 1)
     return jsonify(
@@ -998,10 +1007,12 @@ def api_stocks_search_batch():
 
 def _stock_hit_keyword(st, tertiary_name, kw):
     """判断股票 st 在全字段上是否包含关键词 kw（均为小写比较）"""
-    fields = (
+    fields = [
         st["name"], st["code"], st["location"], st["main_business"],
         st["concept1"], st["concept2"], tertiary_name,
-    )
+    ]
+    for field in STOCK_OPTION_FIELDS:
+        fields.append(st.get(field, ""))
     return any(kw in (f or "").lower() for f in fields)
 
 @app.route("/api/primaries")

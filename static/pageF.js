@@ -103,13 +103,20 @@
         table.appendChild(tr);
     }
 
-    /** 多概念合并为一行展示（仅展示非空），每项仍是页面 H 的超链接 */
+    /** 多概念合并为一行展示，每项仍是页面 H 的超链接；空时显示 — */
     function conceptGroupRow(table, label, texts, keywords) {
         var tr = document.createElement("tr");
         var th = document.createElement("th");
         th.textContent = label;
         var td = document.createElement("td");
         var items = (texts || []).filter(function (s) { return !!s; });
+        if (items.length === 0) {
+            td.textContent = "—";
+            tr.appendChild(th);
+            tr.appendChild(td);
+            table.appendChild(tr);
+            return;
+        }
         if (!items.length) {
             escText(td, "—", keywords);
         } else {
@@ -209,9 +216,26 @@
                 if (t && conceptTexts.indexOf(t) === -1) conceptTexts.push(t);
             });
         });
+        // 概念：有数据才展示，无数据不展示
         if (conceptTexts.length) {
             conceptGroupRow(tb2, "概念", conceptTexts, keywords);
         }
+
+        // 选项A ~ 选项H：每个字段都展示一行，空值显示 —
+        var OPTION_FIELDS = [
+            { key: "option_a", label: "选项A" },
+            { key: "option_b", label: "选项B" },
+            { key: "option_c", label: "选项C" },
+            { key: "option_d", label: "选项D" },
+            { key: "option_e", label: "选项E" },
+            { key: "option_f", label: "选项F" },
+            { key: "option_g", label: "选项G" },
+            { key: "option_h", label: "选项H" },
+        ];
+        OPTION_FIELDS.forEach(function (f) {
+            var v = (it[f.key] || "").trim();
+            detailRow(tb2, f.label, v || "—", keywords);
+        });
         t2.appendChild(tb2);
         col2.appendChild(t2);
         cols.appendChild(col2);
@@ -225,113 +249,185 @@
         var exist = document.getElementById("batchEditModal");
         if (exist) exist.remove();
 
-        // 可编辑字段：key => {label, value, maxlength}
-        var fields = [
-            { key: "name", label: "股票名称", value: it.name || "", maxlength: 30, required: true },
-            { key: "code", label: "股票代码", value: it.code || "", maxlength: 10 },
-            { key: "location", label: "所在地", value: it.location || "", maxlength: 40 },
-            { key: "main_business", label: "主营业务", value: it.main_business || "", maxlength: 200 },
-            { key: "concept1", label: "概念 1", value: it.concept1 || "", maxlength: 60 },
-            { key: "concept2", label: "概念 2", value: it.concept2 || "", maxlength: 60 },
-            { key: "concept3", label: "概念 3", value: it.concept3 || "", maxlength: 60 },
-            { key: "concept4", label: "概念 4", value: it.concept4 || "", maxlength: 60 },
-            { key: "concept5", label: "概念 5", value: it.concept5 || "", maxlength: 60 },
-        ];
-
-        var rows = "";
-        fields.forEach(function (f) {
-            var extra = f.required ? " required" : "";
-            var ph = f.required ? ' placeholder="必填"' : "";
-            rows +=
-                '<div class="batch-modal-row">' +
-                    '<label>' + escapeHtml(f.label) + '</label>' +
-                    '<input class="batch-modal-input" data-key="' + f.key + '"' +
-                        ' type="text" maxlength="' + f.maxlength + '"' +
-                        ' value="' + escapeHtml(f.value) + '"' + ph + extra + ' />' +
-                '</div>';
-        });
-
-        var modal = document.createElement("div");
-        modal.id = "batchEditModal";
-        modal.className = "batch-modal-mask";
-        modal.innerHTML =
-            '<div class="batch-modal batch-modal-wide">' +
-                '<div class="batch-modal-title">编辑股票信息</div>' +
-                '<div class="batch-modal-subtitle">所属：' + escapeHtml(it.primary) +
-                    ' / ' + escapeHtml(it.secondary) +
-                    ' / ' + escapeHtml(it.tertiary) + '</div>' +
-                rows +
-                '<div class="batch-modal-actions">' +
-                    '<button class="batch-modal-cancel" type="button">取消</button>' +
-                    '<button class="batch-modal-save" type="button">保存</button>' +
-                '</div>' +
-            '</div>';
-
-        document.body.appendChild(modal);
-
-        var inputs = modal.querySelectorAll(".batch-modal-input");
-        inputs[0].focus();
-
-        function close() {
-            modal.remove();
-            document.removeEventListener("keydown", onKey);
-        }
-        function onKey(e) {
-            if (e.isComposing || e.keyCode === 229) return;
-            if (e.key === "Escape") {
-                e.preventDefault();
-                close();
-            } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault();
-                save();
-            }
-        }
-        function save() {
-            var payload = { path: it.primary + "||" + it.secondary + "||" + it.tertiary, name: it.name, fields: {} };
-            inputs.forEach(function (inp) {
-                payload.fields[inp.getAttribute("data-key")] = inp.value.trim();
-            });
-            if (!payload.fields.name) {
-                alert("股票名称不能为空");
-                return;
-            }
-            var saveBtn = modal.querySelector(".batch-modal-save");
-            saveBtn.disabled = true;
-            saveBtn.textContent = "保存中...";
-            fetch("/api/stock/update_concepts", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
+        // 拉取一级概念列表
+        fetch("/api/concepts/primary")
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var primaryConcepts = (data && data.ok) ? (data.items || []) : [];
+                buildAndShowModal(primaryConcepts);
             })
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                    if (data.ok) {
-                        // 用后端返回的最新值更新当前对象，再重渲染该卡片
-                        Object.keys(data.stock).forEach(function (k) {
-                            it[k] = data.stock[k];
-                        });
-                        var newCard = renderCard(it, lastKeywords);
-                        card.replaceWith(newCard);
-                        close();
-                    } else {
-                        alert("保存失败：" + (data.error || ""));
+            .catch(function () {
+                buildAndShowModal([]);
+            });
+
+        function buildAndShowModal(primaryConcepts) {
+            // 可编辑字段：key => {label, value, maxlength}
+            var fields = [
+                { key: "name", label: "股票名称", value: it.name || "", maxlength: 30, required: true },
+                { key: "code", label: "股票代码", value: it.code || "", maxlength: 10 },
+                { key: "location", label: "所在地", value: it.location || "", maxlength: 40 },
+                { key: "main_business", label: "主营业务", value: it.main_business || "", maxlength: 200 },
+            ];
+
+            // 概念 1~5：从一级概念下拉选择；旧数据可能是 "固态电池-材料X" 这种拼接串，
+            // 这里把它拆成单个一级概念，按顺序填入 concept1~5；不是一级概念的片段不展示也不保存。
+            var primaryNames = {};
+            primaryConcepts.forEach(function (pc) { primaryNames[pc.name] = true; });
+            var conceptPieces = [];
+            ["concept1", "concept2", "concept3", "concept4", "concept5"].forEach(function (k) {
+                var raw = it[k] || "";
+                if (!raw) return;
+                raw.split(/[-，,、\s;；]+/).forEach(function (p) {
+                    var t = p.trim();
+                    if (t && primaryNames[t] && conceptPieces.indexOf(t) === -1) {
+                        conceptPieces.push(t);
+                    }
+                });
+            });
+            var conceptFields = [
+                { key: "concept1", label: "概念 1", value: conceptPieces[0] || "" },
+                { key: "concept2", label: "概念 2", value: conceptPieces[1] || "" },
+                { key: "concept3", label: "概念 3", value: conceptPieces[2] || "" },
+                { key: "concept4", label: "概念 4", value: conceptPieces[3] || "" },
+                { key: "concept5", label: "概念 5", value: conceptPieces[4] || "" },
+            ];
+
+            var optionFields = [
+                { key: "option_a", label: "选项A", value: it.option_a || "", maxlength: 60 },
+                { key: "option_b", label: "选项B", value: it.option_b || "", maxlength: 60 },
+                { key: "option_c", label: "选项C", value: it.option_c || "", maxlength: 60 },
+                { key: "option_d", label: "选项D", value: it.option_d || "", maxlength: 60 },
+                { key: "option_e", label: "选项E", value: it.option_e || "", maxlength: 60 },
+                { key: "option_f", label: "选项F", value: it.option_f || "", maxlength: 60 },
+                { key: "option_g", label: "选项G", value: it.option_g || "", maxlength: 60 },
+                { key: "option_h", label: "选项H", value: it.option_h || "", maxlength: 60 },
+            ];
+
+            function buildRows(list) {
+                return list.map(function (f) {
+                    var extra = f.required ? " required" : "";
+                    var ph = f.required ? ' placeholder="必填"' : "";
+                    return '<div class="batch-modal-row">' +
+                        '<label>' + escapeHtml(f.label) + '</label>' +
+                        '<input class="batch-modal-input" data-key="' + f.key + '"' +
+                            ' type="text" maxlength="' + f.maxlength + '"' +
+                            ' value="' + escapeHtml(f.value) + '"' + ph + extra + ' />' +
+                    '</div>';
+                }).join("");
+            }
+
+            function buildConceptSelects(list) {
+                return list.map(function (f) {
+                    var opts = ['<option value="">（空）</option>'];
+                    var hasCurrent = false;
+                    primaryConcepts.forEach(function (pc) {
+                        var name = pc.name || "";
+                        if (name === f.value) hasCurrent = true;
+                        var usage = pc.usage ? " (" + pc.usage + ")" : "";
+                        var label = name + usage;
+                        opts.push(
+                            '<option value="' + escapeHtml(name) + '"' +
+                            (name === f.value ? " selected" : "") + ">" +
+                            escapeHtml(label) + "</option>"
+                        );
+                    });
+                    return '<div class="batch-modal-row">' +
+                        '<label>' + escapeHtml(f.label) + '</label>' +
+                        '<select class="batch-modal-input" data-key="' + f.key + '">' +
+                            opts.join("") +
+                        '</select>' +
+                    '</div>';
+                }).join("");
+            }
+
+            var rows = buildRows(fields) +
+                '<div class="batch-modal-section-title">概念（从一级概念中选择）</div>' +
+                buildConceptSelects(conceptFields) +
+                '<div class="batch-modal-section-title">选项 A ~ H</div>' +
+                buildRows(optionFields);
+
+            var modal = document.createElement("div");
+            modal.id = "batchEditModal";
+            modal.className = "batch-modal-mask";
+            modal.innerHTML =
+                '<div class="batch-modal batch-modal-wide">' +
+                    '<div class="batch-modal-title">编辑股票信息</div>' +
+                    '<div class="batch-modal-subtitle">所属：' + escapeHtml(it.primary) +
+                        ' / ' + escapeHtml(it.secondary) +
+                        ' / ' + escapeHtml(it.tertiary) + '</div>' +
+                    rows +
+                    '<div class="batch-modal-actions">' +
+                        '<button class="batch-modal-cancel" type="button">取消</button>' +
+                        '<button class="batch-modal-save" type="button">保存</button>' +
+                    '</div>' +
+                '</div>';
+
+            document.body.appendChild(modal);
+
+            var inputs = modal.querySelectorAll(".batch-modal-input");
+            inputs[0].focus();
+
+            function close() {
+                modal.remove();
+                document.removeEventListener("keydown", onKey);
+            }
+            function onKey(e) {
+                if (e.isComposing || e.keyCode === 229) return;
+                if (e.key === "Escape") {
+                    e.preventDefault();
+                    close();
+                } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    save();
+                }
+            }
+            function save() {
+                var payload = { path: it.primary + "||" + it.secondary + "||" + it.tertiary, name: it.name, fields: {} };
+                inputs.forEach(function (inp) {
+                    payload.fields[inp.getAttribute("data-key")] = inp.value.trim();
+                });
+                if (!payload.fields.name) {
+                    alert("股票名称不能为空");
+                    return;
+                }
+                var saveBtn = modal.querySelector(".batch-modal-save");
+                saveBtn.disabled = true;
+                saveBtn.textContent = "保存中...";
+                fetch("/api/stock/update_concepts", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (data.ok) {
+                            // 用后端返回的最新值更新当前对象，再重渲染该卡片
+                            Object.keys(data.stock).forEach(function (k) {
+                                it[k] = data.stock[k];
+                            });
+                            var newCard = renderCard(it, lastKeywords);
+                            card.replaceWith(newCard);
+                            close();
+                        } else {
+                            alert("保存失败：" + (data.error || ""));
+                            saveBtn.disabled = false;
+                            saveBtn.textContent = "保存";
+                        }
+                    })
+                    .catch(function () {
+                        alert("网络错误，请重试");
                         saveBtn.disabled = false;
                         saveBtn.textContent = "保存";
-                    }
-                })
-                .catch(function () {
-                    alert("网络错误，请重试");
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = "保存";
-                });
-        }
+                    });
+            }
 
-        modal.querySelector(".batch-modal-cancel").addEventListener("click", close);
-        modal.querySelector(".batch-modal-save").addEventListener("click", save);
-        modal.addEventListener("click", function (e) {
-            if (e.target === modal) close();
-        });
-        document.addEventListener("keydown", onKey);
+            modal.querySelector(".batch-modal-cancel").addEventListener("click", close);
+            modal.querySelector(".batch-modal-save").addEventListener("click", save);
+            modal.addEventListener("click", function (e) {
+                if (e.target === modal) close();
+            });
+            document.addEventListener("keydown", onKey);
+        }
     }
 
     function escapeHtml(s) {

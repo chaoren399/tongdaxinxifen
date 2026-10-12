@@ -324,13 +324,13 @@
                 <textarea id="fMainBusiness" placeholder="可选"></textarea>
             </div>
             <div class="field">
-                <label>概念（可填多项，每格一个）</label>
+                <label>概念（从一级概念中选择，可留空）</label>
                 <div class="concept-grid">
-                    <input type="text" id="fConcept1" placeholder="概念1" />
-                    <input type="text" id="fConcept2" placeholder="概念2" />
-                    <input type="text" id="fConcept3" placeholder="概念3" />
-                    <input type="text" id="fConcept4" placeholder="概念4" />
-                    <input type="text" id="fConcept5" placeholder="概念5" />
+                    <select id="fConcept1"><option value="">（空）</option></select>
+                    <select id="fConcept2"><option value="">（空）</option></select>
+                    <select id="fConcept3"><option value="">（空）</option></select>
+                    <select id="fConcept4"><option value="">（空）</option></select>
+                    <select id="fConcept5"><option value="">（空）</option></select>
                 </div>
             </div>
             <div class="field">
@@ -355,6 +355,6 @@
     </div>
 
     <script>window.TERTIARY_OPTIONS = {{ tertiary_options|tojson }};</script>
-    <script src="{{ url_for('static', filename='pageE.js') }}"></script>
+    <script src="{{ url_for('static', filename='pageE.js') }}?v=2"></script>
 </body>
 </html>

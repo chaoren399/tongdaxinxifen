@@ -252,11 +252,62 @@
         modalTitle.textContent = title;
         modalMsg.textContent = "";
         const d = data || {};
+        // 先设置非概念字段
         Object.keys(fields).forEach((k) => {
-            fields[k].value = (d[k] || "").toString();
+            if (!/^concept[1-5]$/.test(k)) {
+                fields[k].value = (d[k] || "").toString();
+            }
         });
-        modal.hidden = false;
-        fields.name.focus();
+        // 拉取一级概念，拆分已有概念后按顺序填入 concept1~5，再显示弹窗
+        fetch("/api/concepts/primary")
+            .then((r) => r.json())
+            .then((cd) => {
+                const list = (cd && cd.ok) ? (cd.items || []) : [];
+                populateConceptSelects(list);
+                const primaryNames = {};
+                list.forEach((c) => { primaryNames[c.name] = true; });
+                const pieces = [];
+                ["concept1", "concept2", "concept3", "concept4", "concept5"].forEach((k) => {
+                    const raw = d[k] || "";
+                    if (!raw) return;
+                    raw.split(/[-，,、\s;；]+/).forEach((p) => {
+                        const t = p.trim();
+                        if (t && primaryNames[t] && pieces.indexOf(t) === -1) {
+                            pieces.push(t);
+                        }
+                    });
+                });
+                fields.concept1.value = pieces[0] || "";
+                fields.concept2.value = pieces[1] || "";
+                fields.concept3.value = pieces[2] || "";
+                fields.concept4.value = pieces[3] || "";
+                fields.concept5.value = pieces[4] || "";
+                modal.hidden = false;
+                fields.name.focus();
+            })
+            .catch(() => {
+                populateConceptSelects([]);
+                modal.hidden = false;
+                fields.name.focus();
+            });
+    }
+
+    function populateConceptSelects(list) {
+        ["fConcept1", "fConcept2", "fConcept3", "fConcept4", "fConcept5"].forEach((id) => {
+            const sel = document.getElementById(id);
+            if (!sel) return;
+            const current = sel.value;
+            sel.innerHTML = '<option value="">（空）</option>';
+            list.forEach((c) => {
+                const name = c.name || "";
+                const usage = c.usage ? " (" + c.usage + ")" : "";
+                const opt = document.createElement("option");
+                opt.value = name;
+                opt.textContent = name + usage;
+                sel.appendChild(opt);
+            });
+            sel.value = current;
+        });
     }
 
     function closeModal() {

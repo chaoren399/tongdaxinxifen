@@ -678,6 +678,36 @@ def list_concepts(db_path=None):
     return _build_concept_tree_order(concepts, usage)
 
 
+def list_primary_concepts(db_path=None):
+    """
+    返回所有一级概念（level=1），按名称排序。
+    每条：{name, description, usage}
+    """
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT name, description FROM concepts "
+        "WHERE level = 1 ORDER BY name"
+    )
+    items = [
+        {"name": r["name"], "description": r["description"] or ""}
+        for r in cur.fetchall()
+    ]
+    # 统计每条概念在股票中的使用次数
+    usage = {}
+    cur.execute(
+        "SELECT concept FROM stocks "
+        "WHERE concept IS NOT NULL AND concept != ''"
+    )
+    for row in cur.fetchall():
+        for piece in _split_concept_raw(row["concept"]):
+            usage[piece] = usage.get(piece, 0) + 1
+    conn.close()
+    for it in items:
+        it["usage"] = usage.get(it["name"], 0)
+    return items
+
+
 def add_concept(name, description="", level=None, parent_id=None, db_path=None):
     """
     新增概念（支持最多五级分类）。
