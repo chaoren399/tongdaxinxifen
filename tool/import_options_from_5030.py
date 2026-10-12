@@ -52,6 +52,7 @@ def http_get_json(url, timeout=10):
         return json.loads(r.read().decode("utf-8"))
 
 
+
 def fetch_options(base, name):
     """调 /api/export-stock?name=<name>，返回 (data dict 或 None, 错误信息)"""
     url = base.rstrip("/") + "/api/export-stock?" + urllib.parse.urlencode({"name": name})
