@@ -42,6 +42,10 @@ if not os.path.exists(DB_FILE):
 from db import ensure_concepts_table  # noqa: E402
 ensure_concepts_table()
 
+# 增量迁移：确保 stocks 表存在「选项A ~ 选项H」8 个列（旧数据库升级）
+from db import ensure_stocks_columns, STOCK_OPTION_FIELDS  # noqa: E402
+ensure_stocks_columns()
+
 # 模块级 INDUSTRY_TREE，启动时一次性从 SQLite 加载到内存；写入时同步刷新
 INDUSTRY_TREE: Dict[str, dict] = load_industry_tree()
 
@@ -398,6 +402,9 @@ def api_page_e_add_stock():
     code = (data.get("code") or "").strip()
     location = (data.get("location") or "").strip()
     main_business = (data.get("main_business") or "").strip()
+    options = {}
+    for field in STOCK_OPTION_FIELDS:
+        options[field] = (data.get(field) or "").strip()
 
     if not path or path.count("||") != 2:
         return jsonify({"ok": False, "error": "请选择三级行业"}), 400
@@ -429,6 +436,7 @@ def api_page_e_add_stock():
             location=location,
             main_business=main_business,
             concept="",
+            options=options,
         )
     except Exception as e:
         return jsonify({"ok": False, "error": f"写入数据库失败: {e}"}), 500
@@ -439,6 +447,7 @@ def api_page_e_add_stock():
         "location": location,
         "main_business": main_business,
     }
+    new_stock.update(options)
     tertiary["stocks"].append(new_stock)
     _invalidate_caches()
 
@@ -1237,6 +1246,7 @@ def api_update_stock_concepts():
         "name", "code", "location", "main_business",
         "concept1", "concept2", "concept3", "concept4", "concept5",
     }
+    allowed.update(STOCK_OPTION_FIELDS)
     update = {}
     for k in allowed:
         if k in fields:
@@ -1308,6 +1318,7 @@ def api_update_stock_concepts():
                 "concept3": target.get("concept3", ""),
                 "concept4": target.get("concept4", ""),
                 "concept5": target.get("concept5", ""),
+                **{f: target.get(f, "") for f in STOCK_OPTION_FIELDS},
             },
         }
     )

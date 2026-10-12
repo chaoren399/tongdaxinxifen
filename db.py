@@ -23,6 +23,12 @@ CSV_FILE = os.path.join(
     "data", "通达信一级二级三级行业汇总20261007 - 副本.csv",
 )
 
+# 股票表新增的 8 个可编辑「选项」列（选项A ~ 选项H）
+STOCK_OPTION_FIELDS = [
+    "option_a", "option_b", "option_c", "option_d",
+    "option_e", "option_f", "option_g", "option_h",
+]
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS industries (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,6 +48,14 @@ CREATE TABLE IF NOT EXISTS stocks (
     location      TEXT,
     main_business TEXT,
     concept       TEXT DEFAULT '',
+    option_a      TEXT DEFAULT '',
+    option_b      TEXT DEFAULT '',
+    option_c      TEXT DEFAULT '',
+    option_d      TEXT DEFAULT '',
+    option_e      TEXT DEFAULT '',
+    option_f      TEXT DEFAULT '',
+    option_g      TEXT DEFAULT '',
+    option_h      TEXT DEFAULT '',
     FOREIGN KEY(tertiary_id) REFERENCES industries(id)
 );
 
@@ -90,6 +104,26 @@ def ensure_concepts_table(db_path=None):
         conn.execute("ALTER TABLE concepts ADD COLUMN parent_id INTEGER")
     conn.commit()
     conn.close()
+
+
+def ensure_stocks_columns(db_path=None):
+    """
+    确保 stocks 表存在「选项A ~ 选项H」8 个列（对旧库的增量迁移，不动其他数据）。
+    缺失的列会用 ALTER TABLE ADD COLUMN 补上，默认值为空串。
+    返回本次新增的列名列表。
+    """
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(stocks)")
+    cols = {row["name"] for row in cur.fetchall()}
+    added = []
+    for field in STOCK_OPTION_FIELDS:
+        if field not in cols:
+            conn.execute(f"ALTER TABLE stocks ADD COLUMN {field} TEXT DEFAULT ''")
+            added.append(field)
+    conn.commit()
+    conn.close()
+    return added
 
 
 def _split_concept_raw(raw):
@@ -273,15 +307,16 @@ def load_industry_tree(db_path=None):
                 tertiary_by_id[r["id"]] = ter_node
 
     # 加载股票
+    option_cols = ", ".join(STOCK_OPTION_FIELDS)
     cur.execute(
-        "SELECT tertiary_id, name, code, location, main_business, concept "
-        "FROM stocks ORDER BY name"
+        "SELECT tertiary_id, name, code, location, main_business, concept, "
+        f"{option_cols} FROM stocks ORDER BY name"
     )
     for s in cur.fetchall():
         t_node = tertiary_by_id.get(s["tertiary_id"])
         if t_node is None:
             continue
-        t_node["stocks"].append({
+        stock = {
             "name": s["name"],
             "code": s["code"] or "",
             "location": s["location"] or "",
@@ -291,7 +326,10 @@ def load_industry_tree(db_path=None):
             "concept3": "",
             "concept4": "",
             "concept5": "",
-        })
+        }
+        for field in STOCK_OPTION_FIELDS:
+            stock[field] = s[field] or ""
+        t_node["stocks"].append(stock)
 
     # 一级行业按 id 排序（与原 csv 加载行为一致）
     primary_by_name = OrderedDict()
@@ -332,19 +370,26 @@ def add_stock(
     location="",
     main_business="",
     concept="",
+    options=None,
     db_path=None,
 ):
     """
     新增一只股票到指定三级行业。
+    options: 可选 dict，键为 option_a ~ option_h（选项A ~ 选项H）。
     返回新插入股票的 id。
     """
+    options = options or {}
+    cols = ["tertiary_id", "name", "code", "location", "main_business", "concept"]
+    cols += STOCK_OPTION_FIELDS
+    vals = [tertiary_id, name, code, location, main_business, concept]
+    vals += [(options.get(f) or "") for f in STOCK_OPTION_FIELDS]
+    placeholders = ", ".join("?" * len(cols))
     conn = get_conn(db_path)
     cur = conn.cursor()
     try:
         cur.execute(
-            "INSERT INTO stocks (tertiary_id, name, code, location, "
-            "main_business, concept) VALUES (?, ?, ?, ?, ?, ?)",
-            (tertiary_id, name, code, location, main_business, concept),
+            f"INSERT INTO stocks ({', '.join(cols)}) VALUES ({placeholders})",
+            vals,
         )
         conn.commit()
         return cur.lastrowid
@@ -362,19 +407,18 @@ def add_stocks_batch(tertiary_id, stock_list, db_path=None):
     cur = conn.cursor()
     try:
         data = [
-            (
-                tertiary_id,
-                s.get("name", ""),
-                s.get("code", ""),
-                s.get("location", ""),
-                s.get("main_business", ""),
-                s.get("concept", ""),
+            tuple(
+                [tertiary_id, s.get("name", ""), s.get("code", ""),
+                 s.get("location", ""), s.get("main_business", ""), s.get("concept", "")]
+                + [s.get(f, "") or "" for f in STOCK_OPTION_FIELDS]
             )
             for s in stock_list
         ]
+        cols = ["tertiary_id", "name", "code", "location", "main_business", "concept"]
+        cols += STOCK_OPTION_FIELDS
+        placeholders = ", ".join("?" * len(cols))
         cur.executemany(
-            "INSERT INTO stocks (tertiary_id, name, code, location, "
-            "main_business, concept) VALUES (?, ?, ?, ?, ?, ?)",
+            f"INSERT INTO stocks ({', '.join(cols)}) VALUES ({placeholders})",
             data,
         )
         conn.commit()
@@ -441,6 +485,12 @@ def update_stock(tertiary_id, name, fields, db_path=None):
         if "main_business" in fields:
             sets.append("main_business = ?")
             params.append((fields["main_business"] or "").strip())
+
+        # 选项A~选项H
+        for field in STOCK_OPTION_FIELDS:
+            if field in fields:
+                sets.append(f"{field} = ?")
+                params.append((fields[field] or "").strip())
 
         # concept1~5 合并为一个 concept 列
         concept_parts = []

@@ -124,19 +124,19 @@
     }
 
     async function loadStocks(path) {
-        $body.innerHTML = '<tr><td colspan="7"><div class="e-empty">加载中...</div></td></tr>';
+        $body.innerHTML = '<tr><td colspan="8"><div class="e-empty">加载中...</div></td></tr>';
         try {
             const r = await fetch("/api/pageE/stocks?path=" + encodeURIComponent(path));
             const data = await r.json();
             if (!data.ok) {
-                $body.innerHTML = '<tr><td colspan="7"><div class="e-empty">' +
+                $body.innerHTML = '<tr><td colspan="8"><div class="e-empty">' +
                     (data.error || "加载失败") + "</div></td></tr>";
                 return;
             }
             $count.textContent = data.stockCount;
             renderStocks(data.stocks || []);
         } catch (err) {
-            $body.innerHTML = '<tr><td colspan="7"><div class="e-empty">加载失败：' +
+            $body.innerHTML = '<tr><td colspan="8"><div class="e-empty">加载失败：' +
                 err.message + "</div></td></tr>";
         }
     }
@@ -144,7 +144,7 @@
     function renderStocks(stocks) {
         $body.innerHTML = "";
         if (stocks.length === 0) {
-            $body.innerHTML = '<tr><td colspan="7"><div class="e-empty">该三级行业下暂无股票</div></td></tr>';
+            $body.innerHTML = '<tr><td colspan="8"><div class="e-empty">该三级行业下暂无股票</div></td></tr>';
             return;
         }
         stocks.forEach((st, i) => {
@@ -170,6 +170,10 @@
             tdConcept.className = "td-wrap";
             tdConcept.textContent = conceptsOf(st) || "-";
 
+            const tdOption = document.createElement("td");
+            tdOption.className = "td-wrap";
+            tdOption.textContent = optionsOf(st) || "-";
+
             const tdAct = document.createElement("td");
             tdAct.className = "actions";
 
@@ -194,6 +198,7 @@
             tr.appendChild(tdLoc);
             tr.appendChild(tdMain);
             tr.appendChild(tdConcept);
+            tr.appendChild(tdOption);
             tr.appendChild(tdAct);
             $body.appendChild(tr);
         });
@@ -213,7 +218,31 @@
         concept3: document.getElementById("fConcept3"),
         concept4: document.getElementById("fConcept4"),
         concept5: document.getElementById("fConcept5"),
+        option_a: document.getElementById("fOptionA"),
+        option_b: document.getElementById("fOptionB"),
+        option_c: document.getElementById("fOptionC"),
+        option_d: document.getElementById("fOptionD"),
+        option_e: document.getElementById("fOptionE"),
+        option_f: document.getElementById("fOptionF"),
+        option_g: document.getElementById("fOptionG"),
+        option_h: document.getElementById("fOptionH"),
     };
+
+    const OPTION_KEYS = [
+        "option_a", "option_b", "option_c", "option_d",
+        "option_e", "option_f", "option_g", "option_h",
+    ];
+    const OPTION_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+
+    function optionsOf(st) {
+        return OPTION_KEYS
+            .map((k, i) => {
+                const v = (st[k] || "").toString().trim();
+                return v ? OPTION_LABELS[i] + ":" + v : "";
+            })
+            .filter(Boolean)
+            .join(" / ");
+    }
 
     let mode = "add";      // add | edit
     let editOriginName = "";
@@ -276,6 +305,9 @@
             concept4: fields.concept4.value.trim(),
             concept5: fields.concept5.value.trim(),
         };
+        OPTION_KEYS.forEach((k) => {
+            payloadFields[k] = fields[k].value.trim();
+        });
 
         try {
             let r;
