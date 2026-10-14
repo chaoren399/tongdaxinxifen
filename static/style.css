@@ -983,7 +983,7 @@ a.industry-link.concept-chip:hover {
 }
 .stock-detail-columns {
     display: grid;
-    grid-template-columns: 1fr 220px;
+    grid-template-columns: 1fr 220px 130px;  /* 内容 | 图片 | 修改历史 */
     gap: 0 20px;
 }
 /* 详情卡头部：股票名称 · 代码 · 一级 › 二级 › 三级 一行展示 */
@@ -1021,6 +1021,57 @@ a.industry-link.concept-chip:hover {
     color: #1d4ed8;
     border-bottom-color: currentColor;
 }
+/* 卡片头部下方的「修改历史」行：YYYY-MM-DD chip 列表 */
+.stock-detail-history {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 8px;
+    font-size: 13px;
+    color: #4b5563;
+    margin: 8px 0 14px;
+    padding: 6px 10px;
+    background: #f9fafb;
+    border: 1px dashed #e5e7eb;
+    border-radius: 6px;
+}
+.stock-detail-history-label {
+    color: #6b7280;
+    font-weight: 500;
+    flex-shrink: 0;
+}
+.stock-detail-history-dates {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+    align-items: baseline;
+}
+.stock-detail-history-date {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    color: #111827;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.4;
+}
+.stock-detail-history-date.is-latest {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #b91c1c;
+    font-weight: 600;
+}
+.stock-detail-history-sep {
+    color: #9ca3af;
+    font-size: 12px;
+    margin: 0 1px;
+}
+.stock-detail-history-empty {
+    color: #9ca3af;
+    font-style: italic;
+}
 .stock-detail-table tr > th:empty { display: none; }
 .stock-detail-image-col {
     border-left: 1px dashed #e5e7eb;
@@ -1029,6 +1080,40 @@ a.industry-link.concept-chip:hover {
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
+}
+/* 第三独立列：修改历史（标题 + 纵向 chip 列表） */
+.stock-detail-history-col {
+    border-left: 1px dashed #e5e7eb;
+    padding-left: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+.stock-detail-history-col-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #6b7280;
+    text-align: center;
+    letter-spacing: 0.4px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #e5e7eb;
+    margin: 0;
+}
+.stock-detail-history-col-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+.stock-detail-history-col-list .stock-detail-history-date {
+    width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+    padding: 2px 6px;
+    font-size: 11.5px;
 }
 .stock-image-wrap {
     width: 180px;

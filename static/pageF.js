@@ -288,7 +288,7 @@
         }
         card.appendChild(header);
 
-        // 两列布局：左侧概念+选项，右侧图片
+        // 三列布局：左侧概念+选项，中部图片，右侧修改历史
         var cols = document.createElement("div");
         cols.className = "stock-detail-columns";
 
@@ -365,6 +365,36 @@
             col3.appendChild(imgWrap);
         }
         cols.appendChild(col3);
+
+        // 第三列：修改历史（独立列）
+        var col4 = document.createElement("div");
+        col4.className = "stock-detail-col stock-detail-history-col";
+        var histTitle = document.createElement("div");
+        histTitle.className = "stock-detail-history-col-title";
+        histTitle.textContent = "修改历史";
+        col4.appendChild(histTitle);
+        var histList = document.createElement("div");
+        histList.className = "stock-detail-history-col-list";
+        var historyDates = Array.isArray(it.modification_dates)
+            ? it.modification_dates
+            : [];
+        if (historyDates.length === 0) {
+            var empty = document.createElement("span");
+            empty.className = "stock-detail-history-empty";
+            empty.textContent = "—";
+            histList.appendChild(empty);
+        } else {
+            historyDates.forEach(function (d, idx) {
+                var chip = document.createElement("span");
+                chip.className = "stock-detail-history-date";
+                chip.textContent = d;
+                // 高亮第一个（最新一次）日期
+                if (idx === 0) chip.classList.add("is-latest");
+                histList.appendChild(chip);
+            });
+        }
+        col4.appendChild(histList);
+        cols.appendChild(col4);
 
         card.appendChild(cols);
         return card;

@@ -10,6 +10,7 @@ SQLite 数据访问层。
 - find_stock_by_name(stock_name)：通过名称查 (tertiary_id, full_path)
 """
 import csv
+import datetime
 import os
 import sqlite3
 from collections import OrderedDict
@@ -186,6 +187,109 @@ def ensure_stock_images_table(db_path=None):
         return migrated
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 修改日志表：每只股票每日一条，去重
+# ---------------------------------------------------------------------------
+STOCK_MODIFICATION_LOG_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS stock_modification_log (
+    stock_id      INTEGER NOT NULL,
+    modified_date TEXT NOT NULL,
+    modified_at   TEXT NOT NULL,
+    PRIMARY KEY (stock_id, modified_date),
+    FOREIGN KEY(stock_id) REFERENCES stocks(id)
+);
+CREATE INDEX IF NOT EXISTS idx_stock_mod_log_stock
+    ON stock_modification_log(stock_id, modified_date DESC);
+"""
+
+
+def ensure_stock_modification_log_table(db_path=None):
+    """
+    确保 stock_modification_log 表存在。幂等。
+    """
+    conn = get_conn(db_path)
+    try:
+        conn.executescript(STOCK_MODIFICATION_LOG_TABLE_DDL)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _now_date_str():
+    return datetime.date.today().isoformat()
+
+
+def _now_datetime_str():
+    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _record_modification_in_conn(conn_or_cur, stock_id):
+    """
+    在同一事务（外部 conn）内写入一条"今日修改"记录。
+    由于 PRIMARY KEY (stock_id, modified_date) 约束，同一只股票
+    同一天多次调用只会保留一行（保留最早 modified_at）。
+    stock_id 非法则跳过。
+    """
+    if not stock_id:
+        return
+    today = _now_date_str()
+    now = _now_datetime_str()
+    conn_or_cur.execute(
+        "INSERT OR IGNORE INTO stock_modification_log "
+        "(stock_id, modified_date, modified_at) "
+        "VALUES (?, ?, ?)",
+        (stock_id, today, now),
+    )
+
+
+def get_stock_modification_dates(stock_ids, db_path=None):
+    """
+    批量查询多只股票的修改日期列表（YYYY-MM-DD 字符串数组），
+    按日期倒序，相同 stock_id 一起返回。
+    返回 {stock_id: [date1, date2, ...]}；没有记录的股票不会出现在结果中。
+    """
+    ids = [i for i in (stock_ids or []) if i]
+    if not ids:
+        return {}
+    conn = get_conn(db_path)
+    try:
+        placeholders = ",".join("?" * len(ids))
+        cur = conn.execute(
+            f"SELECT stock_id, modified_date FROM stock_modification_log "
+            f"WHERE stock_id IN ({placeholders}) "
+            f"ORDER BY stock_id, modified_date DESC",
+            ids,
+        )
+        result = {}
+        for r in cur.fetchall():
+            result.setdefault(r["stock_id"], []).append(r["modified_date"])
+        return result
+    finally:
+        conn.close()
+
+
+def delete_stock_modification_log(stock_id, conn=None):
+    """
+    删除指定股票的全部修改日志。股票被删除时同步清理。
+    若 conn 已传入，则参与外部事务（不 commit）；否则自己开/关。
+    """
+    if not stock_id:
+        return
+    own_conn = conn is None
+    if own_conn:
+        conn = get_conn()
+    try:
+        conn.execute(
+            "DELETE FROM stock_modification_log WHERE stock_id = ?",
+            (stock_id,),
+        )
+        if own_conn:
+            conn.commit()
+    finally:
+        if own_conn:
+            conn.close()
 
 
 def _split_concept_raw(raw):
@@ -434,6 +538,7 @@ def load_industry_tree(db_path=None):
         if t_node is None:
             continue
         stock = {
+            "id": s["id"],   # 供搜索接口批量取修改历史等使用
             "name": s["name"],
             "code": s["code"] or "",
             "concept1": s["concept"] or "",
@@ -507,8 +612,11 @@ def add_stock(
             f"INSERT INTO stocks ({', '.join(cols)}) VALUES ({placeholders})",
             vals,
         )
+        new_id = cur.lastrowid
+        # 新增即视为首次修改，记入日志
+        _record_modification_in_conn(cur, new_id)
         conn.commit()
-        return cur.lastrowid
+        return new_id
     finally:
         conn.close()
 
@@ -519,6 +627,8 @@ def add_stocks_batch(tertiary_id, stock_list, db_path=None):
     stock_list: [{"name": "...", "code": "...", ...}, ...]
     返回插入的行数。
     """
+    if not stock_list:
+        return 0
     conn = get_conn(db_path)
     cur = conn.cursor()
     try:
@@ -536,6 +646,17 @@ def add_stocks_batch(tertiary_id, stock_list, db_path=None):
             f"INSERT INTO stocks ({', '.join(cols)}) VALUES ({placeholders})",
             data,
         )
+        # 取回此次插入的所有 stock_id（按 name 反查）
+        names = [s.get("name", "") for s in stock_list if s.get("name")]
+        if names:
+            ph = ",".join("?" * len(names))
+            cur.execute(
+                f"SELECT id, name FROM stocks "
+                f"WHERE tertiary_id = ? AND name IN ({ph})",
+                [tertiary_id] + names,
+            )
+            for r in cur.fetchall():
+                _record_modification_in_conn(cur, r["id"])
         conn.commit()
         return cur.rowcount
     finally:
@@ -546,11 +667,25 @@ def delete_stock(stock_name, tertiary_id=None, db_path=None):
     """
     删除股票（撤销新增时用）。
     - tertiary_id 可选，提供时精确匹配
-    - 返回删除的行数
+    - 返回删除的行数（同步清理该股票的修改日志）
     """
     conn = get_conn(db_path)
     cur = conn.cursor()
     try:
+        # 先取出要删除的 stock_id（可能多条同名跨三级行业）
+        if tertiary_id is not None:
+            cur.execute(
+                "SELECT id FROM stocks WHERE name = ? AND tertiary_id = ?",
+                (stock_name, tertiary_id),
+            )
+        else:
+            cur.execute("SELECT id FROM stocks WHERE name = ?", (stock_name,))
+        stock_ids = [r["id"] for r in cur.fetchall()]
+        for sid in stock_ids:
+            cur.execute(
+                "DELETE FROM stock_modification_log WHERE stock_id = ?",
+                (sid,),
+            )
         if tertiary_id is not None:
             cur.execute(
                 "DELETE FROM stocks WHERE name = ? AND tertiary_id = ?",
@@ -620,6 +755,8 @@ def update_stock(tertiary_id, name, fields, db_path=None):
             f"UPDATE stocks SET {', '.join(sets)} WHERE id = ?",
             params,
         )
+        # 编辑就视为修改（即使内容实际相同，也计一次）
+        _record_modification_in_conn(cur, row["id"])
         conn.commit()
         return cur.rowcount, new_name
     finally:
@@ -673,6 +810,7 @@ def update_stock_concept(
             "UPDATE stocks SET concept = ? WHERE id = ?",
             (new_full, row["id"]),
         )
+        _record_modification_in_conn(cur, row["id"])
         conn.commit()
         return new_full
     finally:
@@ -1075,6 +1213,8 @@ def remove_concept_from_stock(stock_name, concept_name, db_path=None):
             "UPDATE stocks SET concept = ? WHERE id = ?",
             (new_val, row["id"]),
         )
+        # 概念被移除也算修改（保持可见的"修改历史"语义）
+        _record_modification_in_conn(cur, row["id"])
         conn.commit()
         return new_val, True
     finally:
@@ -1114,8 +1254,9 @@ def list_stock_images(tertiary_id, stock_name, db_path=None):
 
 def add_stock_image(tertiary_id, stock_name, filename, db_path=None):
     """
-    追加一张图片，并把 stocks.image_path 同步为第一张（兼容旧逻辑）。
+    追加一张图片到指定股票。
     返回更新后的文件名列表；股票不存在抛 LookupError。
+    图片操作也视为对该股票的修改，自动写入修改日志。
     """
     conn = get_conn(db_path)
     try:
@@ -1135,6 +1276,7 @@ def add_stock_image(tertiary_id, stock_name, filename, db_path=None):
             "VALUES (?, ?, ?, '')",
             (stock_id, filename, next_order),
         )
+        _record_modification_in_conn(conn, stock_id)
         images = _list_images_conn(conn, stock_id)
         conn.commit()
         return images
@@ -1146,6 +1288,7 @@ def delete_stock_image(tertiary_id, stock_name, filename="", db_path=None):
     """
     删除该股票的一张图片（filename 为空则删除全部）。
     返回删除后剩余的文件名列表；股票不存在抛 LookupError。
+    图片操作也视为对该股票的修改，自动写入修改日志。
     """
     conn = get_conn(db_path)
     try:
@@ -1163,6 +1306,7 @@ def delete_stock_image(tertiary_id, stock_name, filename="", db_path=None):
             conn.execute(
                 "DELETE FROM stock_images WHERE stock_id = ?", (stock_id,)
             )
+        _record_modification_in_conn(conn, stock_id)
         images = _list_images_conn(conn, stock_id)
         conn.commit()
         return images

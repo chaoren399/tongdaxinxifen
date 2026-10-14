@@ -72,6 +72,13 @@ ensure_stock_images_table()
 from db import drop_obsolete_stock_columns  # noqa: E402
 drop_obsolete_stock_columns()
 
+# 增量迁移：确保 stock_modification_log 修改日志表存在
+from db import (  # noqa: E402
+    ensure_stock_modification_log_table,
+    get_stock_modification_dates,
+)
+ensure_stock_modification_log_table()
+
 # 模块级 INDUSTRY_TREE，启动时一次性从 SQLite 加载到内存；写入时同步刷新
 INDUSTRY_TREE: Dict[str, dict] = load_industry_tree()
 
@@ -991,6 +998,7 @@ def api_stocks_search_batch():
         return jsonify({"keywords": [], "items": [], "total": 0})
 
     items = []
+    stock_ids = []
     for primary_name, primary in INDUSTRY_TREE.items():
         for secondary_name, secondary in primary["secondaries"].items():
             for tertiary_name, tertiary in secondary["tertiaries"].items():
@@ -1021,9 +1029,18 @@ def api_stocks_search_batch():
                     item["image_url"] = (
                         f"/stock_images/{img_list[0]}" if img_list else ""
                     )
+                    # 每只股票带 stock_id 用于批量取修改历史
+                    if st.get("id") is not None:
+                        stock_ids.append(st["id"])
+                        item["id"] = st["id"]
                     items.append(item)
     # 名称命中优先
     items.sort(key=lambda r: 0 if r["nameHit"] else 1)
+    # 一次性批量查询所有股票的修改日期（YYYY-MM-DD 字符串数组）
+    mod_map = get_stock_modification_dates(stock_ids) if stock_ids else {}
+    for item in items:
+        sid = item.get("id")
+        item["modification_dates"] = list(mod_map.get(sid, []))
     return jsonify(
         {"keywords": keywords, "items": items, "total": len(items)}
     )
