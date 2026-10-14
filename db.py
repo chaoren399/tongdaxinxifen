@@ -205,6 +205,171 @@ CREATE INDEX IF NOT EXISTS idx_stock_mod_log_stock
 """
 
 
+# ---------------------------------------------------------------------------
+# 搜索历史表：保存最近 30 天的搜索关键词
+# ---------------------------------------------------------------------------
+SEARCH_HISTORY_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS search_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    keyword     TEXT NOT NULL,
+    searched_at TEXT NOT NULL,
+    hit_count   INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_search_history_time
+    ON search_history(searched_at DESC);
+CREATE INDEX IF NOT EXISTS idx_search_history_keyword
+    ON search_history(keyword, searched_at DESC);
+"""
+
+# 搜索历史保留天数（30 天）
+SEARCH_HISTORY_RETENTION_DAYS = 30
+
+
+def ensure_search_history_table(db_path=None):
+    """
+    确保 search_history 表存在。幂等。
+    同时清理超过 SEARCH_HISTORY_RETENTION_DAYS 天的旧记录。
+    """
+    conn = get_conn(db_path)
+    try:
+        conn.executescript(SEARCH_HISTORY_TABLE_DDL)
+        conn.commit()
+    finally:
+        conn.close()
+    # 启动时顺手清理一次 30 天前的旧记录
+    prune_search_history(days=SEARCH_HISTORY_RETENTION_DAYS, db_path=db_path)
+
+
+def record_search_history(keyword, hit_count=0, conn=None):
+    """
+    记录一次搜索关键词。空字符串会被忽略。
+    hit_count 写入时直接覆盖。
+    若 conn 已传入则参与外部事务；否则自管连接。
+    """
+    kw = (keyword or "").strip()
+    if not kw:
+        return
+    own_conn = conn is None
+    if own_conn:
+        conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO search_history (keyword, searched_at, hit_count) "
+            "VALUES (?, ?, ?)",
+            (kw, _now_datetime_str(), int(hit_count or 0)),
+        )
+        if own_conn:
+            conn.commit()
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def record_search_history_batch(keywords, hit_count=0, db_path=None):
+    """
+    一次请求里多个关键词一起写入（按 keyword 去重；同一个搜索里的
+    重复词只写一次，hit_count 相同）。
+    """
+    seen = set()
+    items = []
+    for kw in keywords or []:
+        n = (kw or "").strip()
+        if not n:
+            continue
+        lk = n.lower()
+        if lk in seen:
+            continue
+        seen.add(lk)
+        items.append(n)
+    if not items:
+        return
+    conn = get_conn(db_path)
+    try:
+        now = _now_datetime_str()
+        conn.executemany(
+            "INSERT INTO search_history (keyword, searched_at, hit_count) "
+            "VALUES (?, ?, ?)",
+            [(kw, now, int(hit_count or 0)) for kw in items],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def prune_search_history(days=SEARCH_HISTORY_RETENTION_DAYS, db_path=None):
+    """
+    删除 searched_at 早于 (今天 - days) 的旧记录。
+    返回删除的条数。
+    """
+    try:
+        d = int(days)
+    except (TypeError, ValueError):
+        d = SEARCH_HISTORY_RETENTION_DAYS
+    cutoff = (datetime.date.today() - datetime.timedelta(days=d)).isoformat()
+    conn = get_conn(db_path)
+    try:
+        cur = conn.execute(
+            "DELETE FROM search_history WHERE substr(searched_at, 1, 10) < ?",
+            (cutoff,),
+        )
+        deleted = cur.rowcount or 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
+def get_recent_search_history(limit=20, days=SEARCH_HISTORY_RETENTION_DAYS, db_path=None):
+    """
+    返回最近一次搜索的关键词（去重），按最新搜索时间倒序。
+    每条返回 {"keyword": str, "searched_at": str, "hit_count": int}。
+    limit 控制返回条数。
+    """
+    try:
+        d = int(days)
+    except (TypeError, ValueError):
+        d = SEARCH_HISTORY_RETENTION_DAYS
+    cutoff = (datetime.date.today() - datetime.timedelta(days=d)).isoformat()
+    conn = get_conn(db_path)
+    try:
+        cur = conn.execute(
+            """
+            SELECT keyword, MAX(searched_at) AS last_at,
+                   (SELECT hit_count FROM search_history sh2
+                    WHERE sh2.keyword = sh1.keyword
+                    ORDER BY sh2.searched_at DESC LIMIT 1) AS hit_count
+            FROM search_history sh1
+            WHERE substr(searched_at, 1, 10) >= ?
+            GROUP BY keyword
+            ORDER BY last_at DESC
+            LIMIT ?
+            """,
+            (cutoff, int(limit or 20)),
+        )
+        return [
+            {
+                "keyword": row["keyword"],
+                "searched_at": row["last_at"],
+                "hit_count": row["hit_count"] or 0,
+            }
+            for row in cur.fetchall()
+        ]
+    finally:
+        conn.close()
+
+
+def clear_search_history(db_path=None):
+    """清空全部搜索历史。返回删除条数。"""
+    conn = get_conn(db_path)
+    try:
+        cur = conn.execute("DELETE FROM search_history")
+        deleted = cur.rowcount or 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
 def ensure_stock_modification_log_table(db_path=None):
     """
     确保 stock_modification_log 表存在。幂等。

@@ -5,7 +5,8 @@
     var input = document.getElementById("batchSearchInput");
     var btn = document.getElementById("batchSearchBtn");
     var list = document.getElementById("batchResultList");
-    var summary = document.getElementById("batchSummary");
+    var historyRow = document.getElementById("searchHistoryRow");
+    var historyChips = document.getElementById("searchHistoryChips");
     var lastKeywords = [];
 
     function escText(el, text, keywords) {
@@ -84,6 +85,25 @@
         tr.appendChild(th);
         tr.appendChild(td);
         table.appendChild(tr);
+    }
+
+    /** 卡片式字段项：左侧蓝色竖条 + 蓝色标签 + 内容（如 A: xxx） */
+    function cardFieldItem(container, label, text, keywords) {
+        var row = document.createElement("div");
+        row.className = "stock-detail-card-item";
+
+        var left = document.createElement("span");
+        left.className = "stock-detail-card-label";
+        left.textContent = label + ":";
+
+        var value = document.createElement("span");
+        value.className = "stock-detail-card-value";
+        value.title = text || "";
+        escText(value, text, keywords);
+
+        row.appendChild(left);
+        row.appendChild(value);
+        container.appendChild(row);
     }
 
     /** 多概念合并为一行展示，每项仍是页面 H 的超链接；空时显示 — */
@@ -292,13 +312,7 @@
         var cols = document.createElement("div");
         cols.className = "stock-detail-columns";
 
-        // 左侧列：概念、选项A~H
-        var col2 = document.createElement("div");
-        col2.className = "stock-detail-col";
-        var t2 = document.createElement("table");
-        t2.className = "stock-detail-table";
-        var tb2 = document.createElement("tbody");
-        // 概念：concept1~5 中 concept1 可能是用 - 等分隔符串接的多个概念，拆分合并去重后展示
+        // 计算概念文本（拆分合并去重），后续概念独立列会用到
         var conceptTexts = [];
         ["concept1", "concept2", "concept3", "concept4", "concept5"].forEach(function (k) {
             var raw = it[k] || "";
@@ -308,13 +322,39 @@
                 if (t && conceptTexts.indexOf(t) === -1) conceptTexts.push(t);
             });
         });
-        // 概念：有数据才展示，无数据不展示
-        if (conceptTexts.length) {
-            conceptGroupRow(tb2, "概念", conceptTexts, keywords);
-        }
 
-        // 选项A ~ 选项H：标签简化为 A/B/C/.../H，内容为空时显示 —，
-        // 关键词高亮仍然生效
+        // 第一列：概念（独立列，最左侧）
+        var col5 = document.createElement("div");
+        col5.className = "stock-detail-col stock-detail-concept-col";
+        var conceptTitle = document.createElement("div");
+        conceptTitle.className = "stock-detail-concept-col-title";
+        conceptTitle.textContent = "概念";
+        col5.appendChild(conceptTitle);
+        var conceptList = document.createElement("div");
+        conceptList.className = "stock-detail-concept-col-list";
+        if (conceptTexts.length) {
+            conceptTexts.forEach(function (txt) {
+                // 概念保持原有的"点击跳转 pageH"超链接行为
+                var a = document.createElement("a");
+                a.className = "stock-detail-concept-chip";
+                a.href = "/pageH?name=" + encodeURIComponent(txt);
+                a.title = "查看包含「" + txt + "」概念的所有股票";
+                escText(a, txt, keywords);
+                conceptList.appendChild(a);
+            });
+        } else {
+            var conceptEmpty = document.createElement("span");
+            conceptEmpty.className = "stock-detail-history-empty";
+            conceptEmpty.textContent = "—";
+            conceptList.appendChild(conceptEmpty);
+        }
+        col5.appendChild(conceptList);
+        cols.appendChild(col5);
+
+        // 左侧列：选项A~H（概念已挪到 col5，不再在表格里）
+        var col2 = document.createElement("div");
+        col2.className = "stock-detail-col";
+        // 选项A ~ 选项H：改成卡片式字段（左侧蓝色竖线 + 蓝色标签 A: + 内容）
         var OPTION_FIELDS = [
             { key: "option_a", label: "A" },
             { key: "option_b", label: "B" },
@@ -325,12 +365,13 @@
             { key: "option_g", label: "G" },
             { key: "option_h", label: "H" },
         ];
+        var optionsBox = document.createElement("div");
+        optionsBox.className = "stock-detail-options";
         OPTION_FIELDS.forEach(function (f) {
             var v = (it[f.key] || "").trim();
-            detailRow(tb2, f.label, v || "—", keywords);
+            cardFieldItem(optionsBox, f.label, v || "—", keywords);
         });
-        t2.appendChild(tb2);
-        col2.appendChild(t2);
+        col2.appendChild(optionsBox);
         cols.appendChild(col2);
 
         // 第三列：图片（只读预览，支持多张；编辑入口在「编辑」弹窗里）
@@ -340,20 +381,27 @@
         if (urls.length) {
             var grid = document.createElement("div");
             grid.className = "stock-image-grid";
-            urls.forEach(function (u, i) {
-                var cell = document.createElement("div");
-                cell.className = "stock-image-cell";
-                var img = document.createElement("img");
-                img.src = u;
-                img.alt = it.name;
-                img.className = "stock-image";
-                img.loading = "lazy";
-                img.addEventListener("click", function () {
-                    openLightbox(urls, i, it.name);
-                });
-                cell.appendChild(img);
-                grid.appendChild(cell);
+            // 默认只渲染第 1 张：多图时右下角叠 "+N" 角标，点击进入灯箱
+            var cell = document.createElement("div");
+            cell.className = "stock-image-cell";
+            var img = document.createElement("img");
+            img.src = urls[0];
+            img.alt = it.name;
+            img.className = "stock-image";
+            img.loading = "lazy";
+            cell.appendChild(img);
+            if (urls.length > 1) {
+                var more = document.createElement("button");
+                more.type = "button";
+                more.className = "stock-image-more";
+                more.textContent = "+" + (urls.length - 1);
+                more.title = "还有 " + (urls.length - 1) + " 张图片，点击查看全部";
+                cell.appendChild(more);
+            }
+            cell.addEventListener("click", function () {
+                openLightbox(urls, 0, it.name);
             });
+            grid.appendChild(cell);
             col3.appendChild(grid);
         } else {
             var imgWrap = document.createElement("div");
@@ -752,19 +800,6 @@
         lastKeywords = data.keywords || [];
         list.innerHTML = "";
 
-        // 汇总信息
-        summary.hidden = false;
-        summary.innerHTML = "";
-        var kwSpan = document.createElement("span");
-        kwSpan.className = "batch-summary-kw";
-        kwSpan.textContent = "关键词（" + lastKeywords.length + " 个）：" + lastKeywords.join("、");
-        var cntSpan = document.createElement("span");
-        cntSpan.className = "batch-summary-cnt";
-        cntSpan.textContent = "命中 " + data.total + " 只股票" +
-            (data.total > data.items.length ? "（仅展示前 " + data.items.length + " 条）" : "");
-        summary.appendChild(kwSpan);
-        summary.appendChild(cntSpan);
-
         if (!data.items.length) {
             emptyCard("没有匹配的股票");
             return;
@@ -778,7 +813,6 @@
     function doSearch() {
         var q = input.value.trim();
         if (!q) {
-            summary.hidden = true;
             emptyCard("请输入关键词");
             return;
         }
@@ -792,7 +826,6 @@
             .then(function (r) { return r.json(); })
             .then(render)
             .catch(function () {
-                summary.hidden = true;
                 alert("搜索失败，请重试");
             })
             .finally(function () {
@@ -817,4 +850,59 @@
         input.value = initQ.trim();
         doSearch();
     }
+
+    // ====== 搜索历史：渲染、点击回填、清空 ======
+    function renderSearchHistory(items) {
+        if (!historyRow || !historyChips) return;
+        historyChips.innerHTML = "";
+        if (!items || !items.length) {
+            historyRow.hidden = true;
+            return;
+        }
+        items.forEach(function (it) {
+            var chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "search-history-chip";
+            chip.title = (it.searched_at || "") +
+                " · 命中 " + (it.hit_count || 0) + " 只";
+            // 关键词文本
+            var txt = document.createElement("span");
+            txt.className = "search-history-chip-text";
+            txt.textContent = it.keyword;
+            chip.appendChild(txt);
+            // 命中数量徽标（>0 时显示）
+            var cnt = it.hit_count || 0;
+            if (cnt > 0) {
+                var badge = document.createElement("span");
+                badge.className = "search-history-chip-count";
+                badge.textContent = String(cnt);
+                chip.appendChild(badge);
+            }
+            chip.addEventListener("click", function () {
+                input.value = it.keyword;
+                doSearch();
+            });
+            historyChips.appendChild(chip);
+        });
+        historyRow.hidden = false;
+    }
+
+    function loadSearchHistory() {
+        fetch("/api/search_history/recent?limit=10", { method: "GET" })
+            .then(function (r) { return r.json(); })
+            .then(function (data) { renderSearchHistory(data.items || []); })
+            .catch(function () {
+                if (historyRow) historyRow.hidden = true;
+            });
+    }
+
+    // 在 render 完成后刷新历史（搜索成功才记录新历史）
+    var _origRender = render;
+    render = function (data) {
+        _origRender(data);
+        loadSearchHistory();
+    };
+
+    // 初始加载一次历史
+    loadSearchHistory();
 })();

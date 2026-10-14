@@ -79,6 +79,17 @@ from db import (  # noqa: E402
 )
 ensure_stock_modification_log_table()
 
+# 增量迁移：确保 search_history 搜索历史表存在
+from db import (  # noqa: E402
+    ensure_search_history_table,
+    get_recent_search_history,
+    clear_search_history,
+    prune_search_history,
+    record_search_history_batch,
+    SEARCH_HISTORY_RETENTION_DAYS,
+)
+ensure_search_history_table()
+
 # 模块级 INDUSTRY_TREE，启动时一次性从 SQLite 加载到内存；写入时同步刷新
 INDUSTRY_TREE: Dict[str, dict] = load_industry_tree()
 
@@ -1041,9 +1052,48 @@ def api_stocks_search_batch():
     for item in items:
         sid = item.get("id")
         item["modification_dates"] = list(mod_map.get(sid, []))
+    # 记录本次搜索历史（去重，hit_count 记本次命中的股票数）
+    try:
+        record_search_history_batch(keywords, hit_count=len(items))
+    except Exception as e:
+        app.logger.warning("record_search_history failed: %s", e)
     return jsonify(
         {"keywords": keywords, "items": items, "total": len(items)}
     )
+
+
+@app.route("/api/search_history/recent", methods=["GET"])
+def api_search_history_recent():
+    """
+    返回最近 30 天内的去重搜索历史。
+    Query: ?limit=N（默认 20，最大 100）
+    返回: {"items": [{"keyword", "searched_at", "hit_count"}], "retention_days": 30}
+    """
+    try:
+        limit = int(request.args.get("limit", 20))
+    except (TypeError, ValueError):
+        limit = 20
+    limit = max(1, min(limit, 100))
+    items = get_recent_search_history(limit=limit)
+    return jsonify({
+        "items": items,
+        "total": len(items),
+        "retention_days": SEARCH_HISTORY_RETENTION_DAYS,
+    })
+
+
+@app.route("/api/search_history/clear", methods=["POST"])
+def api_search_history_clear():
+    """清空全部搜索历史。"""
+    deleted = clear_search_history()
+    return jsonify({"ok": True, "deleted": deleted})
+
+
+@app.route("/api/search_history/prune", methods=["POST"])
+def api_search_history_prune():
+    """手动触发清理 30 天前的旧记录。"""
+    deleted = prune_search_history()
+    return jsonify({"ok": True, "deleted": deleted})
 
 
 def _stock_hit_keyword(st, tertiary_name, kw):

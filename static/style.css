@@ -20,6 +20,9 @@ body {
     top: 0;
     z-index: 10;
 }
+.topbar.topbar-pageF {
+    padding: 8px 0;          /* 页面 F 只保留导航条，整体更紧凑上移 */
+}
 .topbar-inner {
     max-width: 1280px;
     margin: 0 auto;
@@ -48,10 +51,13 @@ body {
 }
 .topnav {
     max-width: 1280px;
-    margin: 12px auto 0;
+    margin: 0 auto;
     padding: 0 24px;
     display: flex;
     gap: 6px;
+}
+.topbar-pageF .topnav {
+    margin-top: 0;           /* 页面 F 的导航条紧贴 bar 上沿 */
 }
 .topnav a {
     color: rgba(255, 255, 255, 0.78);
@@ -547,82 +553,142 @@ mark.hl {
 
 /* ========== 页面 F：多股票批量搜索 ========== */
 .batch-search-box {
-    max-width: 1200px;
-    margin: 0 auto 16px;
+    max-width: 380px;
+    margin: 0 auto 20px;
+}
+/* 搜索历史行：脱离 .batch-search-box 的 380px 宽度限制，跟随视口宽度 */
+.batch-search-box .search-history-row {
+    max-width: min(calc(100vw - 48px), 1400px);
+    margin-left: calc(50% - 50vw + 24px);
+    margin-right: calc(50% - 50vw + 24px);
 }
 .batch-search-row {
     display: flex;
-    gap: 10px;
-    align-items: stretch;
+    gap: 8px;
+    align-items: center;
 }
-.batch-search-row textarea {
+.batch-search-row input {
     flex: 1;
     box-sizing: border-box;
-    padding: 10px 14px;
+    height: 38px;
+    padding: 0 12px;
     font-size: 14px;
     border: 1px solid #d1d5db;
-    border-radius: 8px;
+    border-radius: 6px;
     outline: none;
-    resize: vertical;
     font-family: inherit;
-    line-height: 1.6;
+    transition: border-color 0.15s, box-shadow 0.15s;
 }
-.batch-search-row textarea:focus {
+.batch-search-row input::placeholder {
+    color: #9ca3af;
+}
+.batch-search-row input:focus {
     border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
 }
 .batch-search-row button {
     flex: none;
-    padding: 0 28px;
-    font-size: 15px;
+    height: 38px;
+    padding: 0 16px;
+    font-size: 14px;
     font-weight: 600;
     color: #fff;
     background: #2563eb;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
+    transition: background 0.15s;
 }
 .batch-search-row button:hover {
     background: #1d4ed8;
 }
+.batch-search-row button:active {
+    transform: translateY(1px);
+}
 .batch-search-row button:disabled {
     background: #93c5fd;
     cursor: not-allowed;
+    transform: none;
 }
-.batch-summary {
-    max-width: 1200px;
-    margin: 0 auto 12px;
+
+/* 搜索历史行：紧贴搜索框下方，宽度由上层 .batch-search-box .search-history-row 控制（突破至全屏） */
+.search-history-row {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 8px 16px;
-    font-size: 13px;
-    color: #374151;
-    background: #f9fafb;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: nowrap;
+}
+.search-history-label {
+    font-size: 12px;
+    color: #6b7280;
+    flex: none;
+}
+.search-history-chips {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.search-history-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+    max-width: 180px;
+    padding: 3px 9px;
+    font-size: 12px;
+    color: #1f2937;
+    background: #f3f4f6;
     border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 8px 14px;
-}
-.batch-summary-kw {
-    color: #4b5563;
-    word-break: break-all;
-}
-.batch-summary-cnt {
-    margin-left: auto;
-    color: #2563eb;
-    font-weight: 600;
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: inherit;
     white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.search-history-chip:hover {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+.search-history-chip:active {
+    background: #dbeafe;
+}
+.search-history-chip-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 110px;
+}
+.search-history-chip-count {
+    flex: none;
+    min-width: 16px;
+    padding: 0 5px;
+    font-size: 11px;
+    line-height: 14px;
+    text-align: center;
+    color: #2563eb;
+    background: #dbeafe;
+    border-radius: 999px;
+    font-weight: 600;
+}
+.search-history-row[hidden] {
+    display: none;
 }
 .batch-result-list {
     display: flex;
     flex-direction: column;
     gap: 16px;
-    max-width: 900px;
+    max-width: 1100px;
     margin: 0 auto;
 }
 .batch-result-list .stock-detail-card {
     position: relative;
     margin: 0;
+    max-width: none;
+    width: 100%;
 }
 .batch-result-list .stock-detail-card mark.ssi-hl {
     background: #fde68a;
@@ -634,7 +700,12 @@ mark.hl {
     font-weight: 700;
 }
 .batch-result-list .stock-detail-card.name-hit {
+    /* 名称命中：仅保留"高亮"样式（蓝边框 + 阴影），不再做全屏突破，
+       避免和后续非 name-hit 卡片宽度差距过大 */
     border-color: #93c5fd;
+    box-shadow:
+        0 1px 3px rgba(0, 0, 0, 0.06),
+        0 4px 16px rgba(147, 197, 253, 0.25);
 }
 .batch-name-link {
     color: #1d4ed8;
@@ -983,8 +1054,8 @@ a.industry-link.concept-chip:hover {
 }
 .stock-detail-columns {
     display: grid;
-    grid-template-columns: 1fr 220px 130px;  /* 内容 | 图片 | 修改历史 */
-    gap: 0 20px;
+    grid-template-columns: 120px minmax(380px, 1.8fr) 270px 130px;  /* 概念 | 选项 | 图片 | 修改历史 */
+    gap: 0 16px;
 }
 /* 详情卡头部：股票名称 · 代码 · 一级 › 二级 › 三级 一行展示 */
 .stock-detail-header {
@@ -1115,6 +1186,83 @@ a.industry-link.concept-chip:hover {
     padding: 2px 6px;
     font-size: 11.5px;
 }
+/* 第一独立列：概念（标题 + 概念 chip 列表），最左侧列 */
+.stock-detail-concept-col {
+    border-right: 1px dashed #e5e7eb;
+    padding-right: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+.stock-detail-concept-col-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #6b7280;
+    text-align: center;
+    letter-spacing: 0.4px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #e5e7eb;
+    margin: 0;
+}
+.stock-detail-concept-col-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+.stock-detail-concept-chip {
+    display: inline-block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px 8px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    color: #1d4ed8;
+    font-size: 12px;
+    text-align: center;
+    word-break: break-word;
+    text-decoration: none;
+    transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.15s;
+}
+.stock-detail-concept-chip:hover {
+    background: #dbeafe;
+    border-color: #93c5fd;
+    color: #1e3a8a;
+    text-decoration: underline;
+    transform: translateX(1px);
+}
+/* 第二列：选项 A~H 的卡片式字段展示（左侧蓝色竖线 + 蓝色标签 + 内容） */
+.stock-detail-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.stock-detail-card-item {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 10px 14px;
+    background: #ffffff;
+    border-left: 4px solid #3b82f6;
+    border-radius: 0 6px 6px 0;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.stock-detail-card-label {
+    flex-shrink: 0;
+    color: #3b82f6;
+    font-weight: 700;
+    font-size: 16px;
+    min-width: 22px;
+}
+.stock-detail-card-value {
+    color: #111827;
+    font-size: 16px;
+    word-break: break-word;
+}
 .stock-image-wrap {
     width: 180px;
     height: 180px;
@@ -1142,15 +1290,17 @@ a.industry-link.concept-chip:hover {
 /* 多图缩略图网格（卡片第三列） */
 .stock-image-grid {
     width: 100%;
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;                  /* 单图居中 */
     gap: 6px;
     max-height: 240px;
     overflow-y: auto;
 }
 .stock-image-cell {
-    width: 100%;
-    aspect-ratio: 1 / 1;
+    position: relative;
+    width: 120px;
+    height: 120px;
     border: 1px solid #e5e7eb;
     border-radius: 6px;
     overflow: hidden;
@@ -1159,6 +1309,27 @@ a.industry-link.concept-chip:hover {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+/* 多图时的"+N"角标 */
+.stock-image-more {
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    min-width: 28px;
+    height: 24px;
+    padding: 0 8px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 24px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.stock-image-more:hover {
+    background: rgba(0, 0, 0, 0.75);
 }
 .stock-image-cell .stock-image {
     width: 100%;

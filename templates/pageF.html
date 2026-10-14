@@ -4,13 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>通达信行业分类 - 页面 F · 多股票搜索</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=11" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=34" />
 </head>
 <body>
-    <header class="topbar">
-        <div class="topbar-inner">
-            <h1>通达信行业分类 <span class="page-tag">页面 F · 多股票搜索</span></h1>
-        </div>
+    <header class="topbar topbar-pageF">
         <nav class="topnav">
             <a href="{{ url_for('index') }}">首页</a>
             <a href="{{ url_for('page_a') }}">页面 A</a>
@@ -30,12 +27,14 @@
     <main class="container">
         <div class="batch-search-box">
             <div class="batch-search-row">
-                <textarea id="batchSearchInput" rows="4"></textarea>
+                <input type="text" id="batchSearchInput" placeholder="输入股票名称/代码/概念/关键词" />
                 <button id="batchSearchBtn" type="button">搜 索</button>
             </div>
+            <div class="search-history-row" id="searchHistoryRow" hidden>
+                <span class="search-history-label">最近搜索：</span>
+                <div class="search-history-chips" id="searchHistoryChips"></div>
+            </div>
         </div>
-
-        <div id="batchSummary" class="batch-summary" hidden></div>
 
         <div id="batchResultList" class="batch-result-list">
             <div class="stock-detail-card stock-detail-empty">
@@ -44,6 +43,6 @@
         </div>
     </main>
 
-    <script src="{{ url_for('static', filename='pageF.js') }}?v=17"></script>
+    <script src="{{ url_for('static', filename='pageF.js') }}?v=32"></script>
 </body>
 </html>
