@@ -983,9 +983,45 @@ a.industry-link.concept-chip:hover {
 }
 .stock-detail-columns {
     display: grid;
-    grid-template-columns: 1fr 1fr 220px;
+    grid-template-columns: 1fr 220px;
     gap: 0 20px;
 }
+/* 详情卡头部：股票名称 · 代码 · 一级 › 二级 › 三级 一行展示 */
+.stock-detail-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 10px;
+    font-size: 14px;
+    color: #374151;
+    margin: 0 0 14px;
+    padding-right: 64px;  /* 给右上角「编辑」按钮留位 */
+    line-height: 1.6;
+}
+.stock-detail-name {
+    font-size: 18px;
+    font-weight: 700;
+    color: #111827;
+}
+.stock-detail-code {
+    color: #6b7280;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.stock-detail-sep {
+    color: #9ca3af;
+    font-size: 12px;
+}
+.stock-detail-industry {
+    color: #2563eb;
+    text-decoration: none;
+    border-bottom: 1px dashed transparent;
+    transition: border-color 0.15s, color 0.15s;
+}
+.stock-detail-industry:hover {
+    color: #1d4ed8;
+    border-bottom-color: currentColor;
+}
+.stock-detail-table tr > th:empty { display: none; }
 .stock-detail-image-col {
     border-left: 1px dashed #e5e7eb;
     padding-left: 16px;

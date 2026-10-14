@@ -86,23 +86,6 @@
         table.appendChild(tr);
     }
 
-    /** 行业字段行：带超链接跳转页面 G，展示该行业下全部股票 */
-    function industryRow(table, label, text, level, keywords) {
-        var tr = document.createElement("tr");
-        var th = document.createElement("th");
-        th.textContent = label;
-        var td = document.createElement("td");
-        var a = document.createElement("a");
-        a.className = "industry-link";
-        a.href = "/pageG?level=" + level + "&name=" + encodeURIComponent(text);
-        a.title = "查看「" + text + "」行业下所有股票";
-        escText(a, text, keywords);
-        td.appendChild(a);
-        tr.appendChild(th);
-        tr.appendChild(td);
-        table.appendChild(tr);
-    }
-
     /** 多概念合并为一行展示，每项仍是页面 H 的超链接；空时显示 — */
     function conceptGroupRow(table, label, texts, keywords) {
         var tr = document.createElement("tr");
@@ -259,46 +242,57 @@
         });
         card.appendChild(editBtn);
 
-        // 两列布局（同页面 E）
+        // 头部信息行：股票名称 · 代码 · 一级 / 二级 / 三级行业
+        var header = document.createElement("div");
+        header.className = "stock-detail-header";
+        var nameSpan = document.createElement("span");
+        nameSpan.className = "stock-detail-name";
+        escText(nameSpan, it.name, keywords);
+        header.appendChild(nameSpan);
+
+        if (it.code) {
+            var codeSpan = document.createElement("span");
+            codeSpan.className = "stock-detail-code";
+            codeSpan.textContent = it.code;
+            header.appendChild(codeSpan);
+        }
+
+        function industryTag(text, level) {
+            var a = document.createElement("a");
+            a.className = "stock-detail-industry";
+            a.href = "/pageG?level=" + level + "&name=" + encodeURIComponent(text);
+            a.title = "查看「" + text + "」行业下所有股票";
+            a.textContent = text;
+            return a;
+        }
+        if (it.primary) {
+            var sep1 = document.createElement("span");
+            sep1.className = "stock-detail-sep";
+            sep1.textContent = "›";
+            header.appendChild(sep1);
+            header.appendChild(industryTag(it.primary, 1));
+        }
+        if (it.secondary) {
+            var sep2 = document.createElement("span");
+            sep2.className = "stock-detail-sep";
+            sep2.textContent = "›";
+            header.appendChild(sep2);
+            header.appendChild(industryTag(it.secondary, 2));
+        }
+        if (it.tertiary) {
+            var sep3 = document.createElement("span");
+            sep3.className = "stock-detail-sep";
+            sep3.textContent = "›";
+            header.appendChild(sep3);
+            header.appendChild(industryTag(it.tertiary, 3));
+        }
+        card.appendChild(header);
+
+        // 两列布局：左侧概念+选项，右侧图片
         var cols = document.createElement("div");
         cols.className = "stock-detail-columns";
 
-        // 第一列：股票名称、一/二/三级行业
-        var col1 = document.createElement("div");
-        col1.className = "stock-detail-col";
-        var t1 = document.createElement("table");
-        t1.className = "stock-detail-table";
-        var tb1 = document.createElement("tbody");
-
-        // 股票名称（纯文本展示）
-        var nameTr = document.createElement("tr");
-        var nameTh = document.createElement("th");
-        nameTh.textContent = "股票名称";
-        var nameTd = document.createElement("td");
-        nameTd.className = "batch-name-text";
-        escText(nameTd, it.name, keywords);
-        nameTr.appendChild(nameTh);
-        nameTr.appendChild(nameTd);
-        tb1.appendChild(nameTr);
-
-        // 股票代码
-        var codeTr = document.createElement("tr");
-        var codeTh = document.createElement("th");
-        codeTh.textContent = "股票代码";
-        var codeTd = document.createElement("td");
-        escText(codeTd, it.code || "-", keywords);
-        codeTr.appendChild(codeTh);
-        codeTr.appendChild(codeTd);
-        tb1.appendChild(codeTr);
-
-        industryRow(tb1, "一级行业", it.primary, 1, keywords);
-        industryRow(tb1, "二级行业", it.secondary, 2, keywords);
-        industryRow(tb1, "三级行业", it.tertiary, 3, keywords);
-        t1.appendChild(tb1);
-        col1.appendChild(t1);
-        cols.appendChild(col1);
-
-        // 第二列：概念、选项A~H
+        // 左侧列：概念、选项A~H
         var col2 = document.createElement("div");
         col2.className = "stock-detail-col";
         var t2 = document.createElement("table");
@@ -319,16 +313,17 @@
             conceptGroupRow(tb2, "概念", conceptTexts, keywords);
         }
 
-        // 选项A ~ 选项H：每个字段都展示一行，空值显示 —
+        // 选项A ~ 选项H：标签简化为 A/B/C/.../H，内容为空时显示 —，
+        // 关键词高亮仍然生效
         var OPTION_FIELDS = [
-            { key: "option_a", label: "选项A" },
-            { key: "option_b", label: "选项B" },
-            { key: "option_c", label: "选项C" },
-            { key: "option_d", label: "选项D" },
-            { key: "option_e", label: "选项E" },
-            { key: "option_f", label: "选项F" },
-            { key: "option_g", label: "选项G" },
-            { key: "option_h", label: "选项H" },
+            { key: "option_a", label: "A" },
+            { key: "option_b", label: "B" },
+            { key: "option_c", label: "C" },
+            { key: "option_d", label: "D" },
+            { key: "option_e", label: "E" },
+            { key: "option_f", label: "F" },
+            { key: "option_g", label: "G" },
+            { key: "option_h", label: "H" },
         ];
         OPTION_FIELDS.forEach(function (f) {
             var v = (it[f.key] || "").trim();
