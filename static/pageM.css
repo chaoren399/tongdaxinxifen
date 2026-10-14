@@ -1,0 +1,223 @@
+.pageM-main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px 24px 60px;
+    box-sizing: border-box;
+}
+
+.pageM-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.pageM-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    color: #1f2937;
+}
+.pageM-stats {
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+    color: #4b5563;
+}
+.pageM-stat-item b {
+    color: #1d4ed8;
+    font-weight: 700;
+    margin: 0 2px;
+}
+
+.pageM-toolbar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.pageM-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #4b5563;
+}
+.pageM-field select,
+.pageM-field input {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 13px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pageM-field select:focus,
+.pageM-field input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+.pageM-field input {
+    width: 220px;
+}
+.pageM-btn {
+    height: 32px;
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: #2563eb;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+}
+.pageM-btn:hover {
+    background: #1d4ed8;
+}
+.pageM-btn:disabled {
+    background: #93c5fd;
+    cursor: not-allowed;
+}
+
+.pageM-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.pageM-loading,
+.pageM-empty {
+    text-align: center;
+    padding: 40px 0;
+    color: #6b7280;
+    font-size: 14px;
+}
+
+.pageM-group {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.pageM-group-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 13px;
+    color: #4b5563;
+}
+.pageM-group-date {
+    font-weight: 700;
+    color: #1f2937;
+    font-size: 14px;
+}
+.pageM-group-date.is-today {
+    color: #1d4ed8;
+}
+.pageM-group-stats {
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+    color: #6b7280;
+}
+.pageM-group-stats b {
+    color: #1f2937;
+    font-weight: 600;
+}
+
+.pageM-rows {
+    display: flex;
+    flex-direction: column;
+}
+.pageM-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 13px;
+    color: #374151;
+    transition: background 0.12s;
+}
+.pageM-row:last-child {
+    border-bottom: none;
+}
+.pageM-row:hover {
+    background: #f9fafb;
+}
+.pageM-row-time {
+    flex: none;
+    width: 90px;
+    color: #6b7280;
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+}
+.pageM-row-keyword {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #111827;
+    font-weight: 500;
+}
+.pageM-row-keyword mark {
+    background: #fde68a;
+    color: #92400e;
+    border-radius: 2px;
+    padding: 0 2px;
+}
+.pageM-row-hits {
+    flex: none;
+    min-width: 60px;
+    text-align: right;
+    color: #2563eb;
+    font-size: 12px;
+    font-weight: 600;
+}
+.pageM-row-hits.zero {
+    color: #9ca3af;
+    font-weight: 400;
+}
+.pageM-row-id {
+    flex: none;
+    width: 56px;
+    text-align: right;
+    color: #cbd5e1;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+.pageM-row-actions {
+    flex: none;
+}
+.pageM-row-btn {
+    height: 24px;
+    padding: 0 10px;
+    font-size: 12px;
+    color: #2563eb;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    text-decoration: none;
+    transition: background 0.15s, color 0.15s;
+}
+.pageM-row-btn:hover {
+    background: #2563eb;
+    color: #fff;
+}

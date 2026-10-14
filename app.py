@@ -83,6 +83,7 @@ ensure_stock_modification_log_table()
 from db import (  # noqa: E402
     ensure_search_history_table,
     get_recent_search_history,
+    list_search_history,
     clear_search_history,
     prune_search_history,
     record_search_history_batch,
@@ -1094,6 +1095,55 @@ def api_search_history_prune():
     """手动触发清理 30 天前的旧记录。"""
     deleted = prune_search_history()
     return jsonify({"ok": True, "deleted": deleted})
+
+
+@app.route("/api/search_history/list", methods=["GET"])
+def api_search_history_list():
+    """
+    返回最近 N 天全部搜索记录（不去重），按时间倒序、按日期分组。
+    Query:
+      - days=N（默认 30，<=0 表示不限；上限 90）
+      - limit=N（默认 1000，上限 5000）
+    返回:
+      {
+        "items":       全部记录（每条 {id, keyword, searched_at, hit_count}）,
+        "groups":      [{date: "YYYY-MM-DD", count: int, hits: int}],  按日期倒序,
+        "total":       记录总数,
+        "retention_days": 30,
+      }
+    """
+    try:
+        days = int(request.args.get("days", SEARCH_HISTORY_RETENTION_DAYS))
+    except (TypeError, ValueError):
+        days = SEARCH_HISTORY_RETENTION_DAYS
+    days = max(0, min(days, 90))
+    try:
+        limit = int(request.args.get("limit", 1000))
+    except (TypeError, ValueError):
+        limit = 1000
+    limit = max(1, min(limit, 5000))
+
+    items = list_search_history(days=days, limit=limit)
+    # 按日期分组汇总（保持日期倒序）
+    groups_map = {}
+    for it in items:
+        d = (it["searched_at"] or "")[:10]  # YYYY-MM-DD
+        g = groups_map.setdefault(d, {"date": d, "count": 0, "hits": 0})
+        g["count"] += 1
+        g["hits"] += int(it.get("hit_count") or 0)
+    groups = sorted(groups_map.values(), key=lambda g: g["date"], reverse=True)
+    return jsonify({
+        "items": items,
+        "groups": groups,
+        "total": len(items),
+        "retention_days": SEARCH_HISTORY_RETENTION_DAYS,
+    })
+
+
+@app.route("/pageM")
+def page_m():
+    """页面 M：展示最近 30 天的搜索记录明细（按日期分组）。"""
+    return render_template("pageM.html")
 
 
 def _stock_hit_keyword(st, tertiary_name, kw):

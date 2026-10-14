@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>通达信行业分类 - 页面 M · 搜索历史（最近 30 天）</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=35" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='pageM.css') }}?v=1" />
+</head>
+<body>
+    <header class="topbar topbar-pageF">
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_c') }}">页面 C</a>
+            <a href="{{ url_for('page_d') }}">页面 D</a>
+            <a href="{{ url_for('page_e') }}">页面 E</a>
+            <a href="{{ url_for('page_f') }}">页面 F</a>
+            <a href="{{ url_for('page_g') }}">页面 G</a>
+            <a href="{{ url_for('page_h') }}">页面 H</a>
+            <a href="{{ url_for('page_j') }}">页面 J</a>
+            <a href="{{ url_for('page_k') }}">页面 K</a>
+            <a href="{{ url_for('page_l') }}">页面 L</a>
+            <a class="active" href="{{ url_for('page_m') }}">页面 M</a>
+        </nav>
+    </header>
+
+    <main class="pageM-main">
+        <div class="pageM-head">
+            <h1 class="pageM-title">最近 30 天的搜索记录</h1>
+            <div class="pageM-stats" id="pageMStats">
+                <span class="pageM-stat-item">总搜索 <b id="pageMTotal">-</b> 次</span>
+                <span class="pageM-stat-item">覆盖 <b id="pageMDays">-</b> 天</span>
+                <span class="pageM-stat-item">总命中 <b id="pageMHits">-</b> 只</span>
+            </div>
+        </div>
+
+        <div class="pageM-toolbar">
+            <label class="pageM-field">
+                <span>天数：</span>
+                <select id="pageMDaysSelect">
+                    <option value="7">最近 7 天</option>
+                    <option value="30" selected>最近 30 天</option>
+                    <option value="60">最近 60 天</option>
+                    <option value="90">最近 90 天</option>
+                </select>
+            </label>
+            <label class="pageM-field">
+                <input type="text" id="pageMFilterInput" placeholder="按关键词过滤（实时筛选）" />
+            </label>
+            <button type="button" id="pageMRefreshBtn" class="pageM-btn">刷 新</button>
+        </div>
+
+        <div id="pageMList" class="pageM-list">
+            <div class="pageM-loading">加载中…</div>
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='pageM.js') }}?v=1"></script>
+</body>
+</html>

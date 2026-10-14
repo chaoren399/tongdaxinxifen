@@ -319,6 +319,43 @@ def prune_search_history(days=SEARCH_HISTORY_RETENTION_DAYS, db_path=None):
         conn.close()
 
 
+def list_search_history(days=SEARCH_HISTORY_RETENTION_DAYS, limit=1000, db_path=None):
+    """
+    返回最近 N 天内**全部**搜索记录（不去重），按时间倒序。
+    每条返回 {"id": int, "keyword": str, "searched_at": str, "hit_count": int}。
+    用于页面 M：完整展示 30 天内的搜索明细。
+    limit 防止单次拉取过多，默认 1000。
+    """
+    try:
+        d = int(days)
+    except (TypeError, ValueError):
+        d = SEARCH_HISTORY_RETENTION_DAYS
+    cutoff = (datetime.date.today() - datetime.timedelta(days=d)).isoformat()
+    conn = get_conn(db_path)
+    try:
+        cur = conn.execute(
+            """
+            SELECT id, keyword, searched_at, hit_count
+            FROM search_history
+            WHERE substr(searched_at, 1, 10) >= ?
+            ORDER BY searched_at DESC
+            LIMIT ?
+            """,
+            (cutoff, int(limit or 1000)),
+        )
+        return [
+            {
+                "id": row["id"],
+                "keyword": row["keyword"],
+                "searched_at": row["searched_at"],
+                "hit_count": row["hit_count"] or 0,
+            }
+            for row in cur.fetchall()
+        ]
+    finally:
+        conn.close()
+
+
 def get_recent_search_history(limit=20, days=SEARCH_HISTORY_RETENTION_DAYS, db_path=None):
     """
     返回最近一次搜索的关键词（去重），按最新搜索时间倒序。
