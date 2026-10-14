@@ -257,8 +257,6 @@
             li.innerHTML = `
                 <span class="stock-name">${escapeHtml(s.name)}</span>
                 <span class="stock-code" hidden>${escapeHtml(s.code || "-")}</span>
-                <span class="stock-loc">${escapeHtml(s.location || "-")}</span>
-                <span class="stock-main">${escapeHtml(s.main_business || "-")}</span>
             `;
             ul.appendChild(li);
         });

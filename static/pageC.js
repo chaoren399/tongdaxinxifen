@@ -6,8 +6,6 @@
     const $path = document.getElementById("tertiaryPath");
     const $name = document.getElementById("stockName");
     const $code = document.getElementById("stockCode");
-    const $loc = document.getElementById("stockLoc");
-    const $main = document.getElementById("stockMain");
     const $result = document.getElementById("addResult");
     const $addedCount = document.getElementById("addedCount");
     const $reset = document.getElementById("resetAdded");
@@ -29,8 +27,6 @@
             path: $path.value.trim(),
             name: $name.value.trim(),
             code: $code.value.trim(),
-            location: $loc.value.trim(),
-            main_business: $main.value.trim(),
         };
         if (!payload.path) {
             showResult(false, "请选择三级行业");
@@ -58,11 +54,9 @@
             } else {
                 showResult(true, `已新增「${data.record.stock.name}」到「${data.record.tertiary}」`);
                 $addedCount.textContent = String(parseInt($addedCount.textContent || "0", 10) + 1);
-                // 重置名称、代码、所在地、主营（保留行业选择，方便连续添加）
+                // 重置名称、代码（保留行业选择，方便连续添加）
                 $name.value = "";
                 $code.value = "";
-                $loc.value = "";
-                $main.value = "";
                 $name.focus();
             }
         } catch (err) {

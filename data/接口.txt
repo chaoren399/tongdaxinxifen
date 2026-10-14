@@ -1,0 +1,37 @@
+调用示例：
+http://10.10.10.3:5030//api/export-stock?name=中国平安
+
+GET /api/export-stock?name=中国平安
+
+返回 JSON：
+
+{
+  "success": true,
+  "message": "success",
+  "data": {
+    "id": 123,
+    "theme_code": "001",
+    "theme_name": "金融",
+    "question": "题干内容",
+    "option_a": "选项A",
+    "option_b": "选项B",
+    "option_c": "选项C",
+    "option_d": "选项D",
+    "option_e": "选项E",
+    "option_f": "选项F",
+    "option_g": "选项G",
+    "option_h": "选项H",
+    "analysis": "解析",
+    "score":5,
+    "answer": "B",
+    "tags": "标签",
+    "image_url": "图片URL",
+    "updated_at": "2026-01-01 10:00:00",
+    "modification_dates": ["2026-01-01 10:00:00", "..."]
+  },
+  "query": {
+    "name": "中国平安",
+    "theme": ""
+  },
+  "match_count": 3
+}

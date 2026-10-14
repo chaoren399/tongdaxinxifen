@@ -137,6 +137,106 @@
         table.appendChild(tr);
     }
 
+    /** 取一只股票的所有图片 URL（兼容旧的单图字段） */
+    function cardImageUrls(it) {
+        var arr = it && it.images;
+        if (Object.prototype.toString.call(arr) === "[object Array]" && arr.length) {
+            return arr.map(function (x) {
+                return x.url || ("/stock_images/" + x.filename);
+            });
+        }
+        return (it && it.image_url) ? [it.image_url] : [];
+    }
+
+    /**
+     * 点击缩略图后的大图查看层，支持在当前股票的所有图片间翻看。
+     * @param {string[]} urls  当前股票的全部图片 URL
+     * @param {number}   startIdx  初始显示的索引
+     * @param {string}   [alt]     alt 文本
+     */
+    function openLightbox(urls, startIdx, alt) {
+        var exist = document.getElementById("stockImageLightbox");
+        if (exist) exist.remove();
+        if (!urls || !urls.length) return;
+        var idx = Math.max(0, Math.min(startIdx || 0, urls.length - 1));
+
+        var box = document.createElement("div");
+        box.id = "stockImageLightbox";
+        box.className = "stock-lightbox";
+
+        var img = document.createElement("img");
+        img.alt = alt || "";
+        img.className = "stock-lightbox-img";
+        img.addEventListener("click", function (e) { e.stopPropagation(); });
+
+        var prevBtn = document.createElement("button");
+        prevBtn.type = "button";
+        prevBtn.className = "stock-lightbox-nav stock-lightbox-prev";
+        prevBtn.textContent = "‹";
+        prevBtn.title = "上一张 (←)";
+        prevBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            navigate(-1);
+        });
+
+        var nextBtn = document.createElement("button");
+        nextBtn.type = "button";
+        nextBtn.className = "stock-lightbox-nav stock-lightbox-next";
+        nextBtn.textContent = "›";
+        nextBtn.title = "下一张 (→)";
+        nextBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            navigate(1);
+        });
+
+        var counter = document.createElement("div");
+        counter.className = "stock-lightbox-counter";
+
+        var closeBtn = document.createElement("button");
+        closeBtn.type = "button";
+        closeBtn.className = "stock-lightbox-close";
+        closeBtn.textContent = "×";
+        closeBtn.title = "关闭 (Esc)";
+        closeBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            close();
+        });
+
+        box.appendChild(prevBtn);
+        box.appendChild(img);
+        box.appendChild(nextBtn);
+        box.appendChild(counter);
+        box.appendChild(closeBtn);
+        box.addEventListener("click", close);
+        document.body.appendChild(box);
+
+        function show() {
+            img.src = urls[idx];
+            counter.textContent = (idx + 1) + " / " + urls.length;
+            var multi = urls.length > 1;
+            prevBtn.style.display = multi ? "" : "none";
+            nextBtn.style.display = multi ? "" : "none";
+        }
+        function navigate(delta) {
+            idx = (idx + delta + urls.length) % urls.length;
+            show();
+        }
+        function close() {
+            box.remove();
+            document.removeEventListener("keydown", onKey);
+        }
+        function onKey(e) {
+            if (e.key === "Escape") { e.preventDefault(); close(); }
+            else if (e.key === "ArrowLeft" && urls.length > 1) {
+                e.preventDefault(); navigate(-1);
+            } else if (e.key === "ArrowRight" && urls.length > 1) {
+                e.preventDefault(); navigate(1);
+            }
+        }
+        document.addEventListener("keydown", onKey);
+        show();
+    }
+
     function renderCard(it, keywords) {
         var card = document.createElement("div");
         card.className = "stock-detail-card" + (it.nameHit ? " name-hit" : "");
@@ -198,14 +298,12 @@
         col1.appendChild(t1);
         cols.appendChild(col1);
 
-        // 第二列：所在地、主营业务
+        // 第二列：概念、选项A~H
         var col2 = document.createElement("div");
         col2.className = "stock-detail-col";
         var t2 = document.createElement("table");
         t2.className = "stock-detail-table";
         var tb2 = document.createElement("tbody");
-        detailRow(tb2, "所在地", it.location, keywords);
-        detailRow(tb2, "主营业务", it.main_business, keywords);
         // 概念：concept1~5 中 concept1 可能是用 - 等分隔符串接的多个概念，拆分合并去重后展示
         var conceptTexts = [];
         ["concept1", "concept2", "concept3", "concept4", "concept5"].forEach(function (k) {
@@ -240,6 +338,39 @@
         col2.appendChild(t2);
         cols.appendChild(col2);
 
+        // 第三列：图片（只读预览，支持多张；编辑入口在「编辑」弹窗里）
+        var col3 = document.createElement("div");
+        col3.className = "stock-detail-col stock-detail-image-col";
+        var urls = cardImageUrls(it);
+        if (urls.length) {
+            var grid = document.createElement("div");
+            grid.className = "stock-image-grid";
+            urls.forEach(function (u, i) {
+                var cell = document.createElement("div");
+                cell.className = "stock-image-cell";
+                var img = document.createElement("img");
+                img.src = u;
+                img.alt = it.name;
+                img.className = "stock-image";
+                img.loading = "lazy";
+                img.addEventListener("click", function () {
+                    openLightbox(urls, i, it.name);
+                });
+                cell.appendChild(img);
+                grid.appendChild(cell);
+            });
+            col3.appendChild(grid);
+        } else {
+            var imgWrap = document.createElement("div");
+            imgWrap.className = "stock-image-wrap";
+            var ph = document.createElement("div");
+            ph.className = "stock-image-placeholder";
+            ph.textContent = "暂无图片\n点击右上「编辑」上传";
+            imgWrap.appendChild(ph);
+            col3.appendChild(imgWrap);
+        }
+        cols.appendChild(col3);
+
         card.appendChild(cols);
         return card;
     }
@@ -265,8 +396,6 @@
             var fields = [
                 { key: "name", label: "股票名称", value: it.name || "", maxlength: 30, required: true },
                 { key: "code", label: "股票代码", value: it.code || "", maxlength: 10 },
-                { key: "location", label: "所在地", value: it.location || "", maxlength: 40 },
-                { key: "main_business", label: "主营业务", value: it.main_business || "", maxlength: 200 },
             ];
 
             // 概念 1~5：从一级概念下拉选择；旧数据可能是 "固态电池-材料X" 这种拼接串，
@@ -344,7 +473,16 @@
                 '<div class="batch-modal-section-title">概念（从一级概念中选择）</div>' +
                 buildConceptSelects(conceptFields) +
                 '<div class="batch-modal-section-title">选项 A ~ H</div>' +
-                buildRows(optionFields);
+                buildRows(optionFields) +
+                '<div class="batch-modal-section-title">图片（可上传多张）</div>' +
+                '<div class="batch-modal-images">' +
+                    '<div class="batch-modal-image-grid" id="modalImageGrid"></div>' +
+                    '<div class="batch-modal-image-actions">' +
+                        '<input type="file" accept="image/*" id="modalImageInput" multiple hidden />' +
+                        '<button type="button" class="batch-btn" id="modalUploadBtn">添加图片</button>' +
+                        '<span class="batch-modal-image-hint">可多选，或直接按 Ctrl+V 粘贴图片</span>' +
+                    '</div>' +
+                '</div>';
 
             var modal = document.createElement("div");
             modal.id = "batchEditModal";
@@ -355,7 +493,7 @@
                     '<div class="batch-modal-subtitle">所属：' + escapeHtml(it.primary) +
                         ' / ' + escapeHtml(it.secondary) +
                         ' / ' + escapeHtml(it.tertiary) + '</div>' +
-                    rows +
+                    '<div class="batch-modal-body">' + rows + '</div>' +
                     '<div class="batch-modal-actions">' +
                         '<button class="batch-modal-cancel" type="button">取消</button>' +
                         '<button class="batch-modal-save" type="button">保存</button>' +
@@ -368,6 +506,9 @@
             inputs[0].focus();
 
             function close() {
+                // 释放暂存图片的本地预览 URL（未保存的改动直接丢弃）
+                pendingUploads.forEach(function (p) { URL.revokeObjectURL(p.url); });
+                pendingUploads = [];
                 modal.remove();
                 document.removeEventListener("keydown", onKey);
             }
@@ -393,31 +534,48 @@
                 var saveBtn = modal.querySelector(".batch-modal-save");
                 saveBtn.disabled = true;
                 saveBtn.textContent = "保存中...";
-                fetch("/api/stock/update_concepts", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload),
-                })
-                    .then(function (r) { return r.json(); })
-                    .then(function (data) {
-                        if (data.ok) {
-                            // 用后端返回的最新值更新当前对象，再重渲染该卡片
-                            Object.keys(data.stock).forEach(function (k) {
-                                it[k] = data.stock[k];
-                            });
-                            var newCard = renderCard(it, lastKeywords);
-                            card.replaceWith(newCard);
-                            close();
-                        } else {
-                            alert("保存失败：" + (data.error || ""));
-                            saveBtn.disabled = false;
-                            saveBtn.textContent = "保存";
-                        }
+
+                function fail(msg) {
+                    alert("保存失败：" + msg);
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = "保存";
+                }
+
+                // 统一提交：先处理图片（删除 -> 上传），全部成功后再提交字段
+                var seq = Promise.resolve();
+                pendingDeletes.forEach(function (fn) {
+                    seq = seq.then(function () { return apiDeleteImage(fn); });
+                });
+                pendingUploads.forEach(function (p) {
+                    seq = seq.then(function () { return apiUploadImage(p.file); });
+                });
+
+                seq
+                    .then(function () {
+                        return fetch("/api/stock/update_concepts", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(payload),
+                        }).then(function (r) { return r.json(); });
                     })
-                    .catch(function () {
-                        alert("网络错误，请重试");
-                        saveBtn.disabled = false;
-                        saveBtn.textContent = "保存";
+                    .then(function (data) {
+                        if (!data.ok) { fail(data.error || ""); return; }
+                        // 用后端返回的最新字段值更新当前对象
+                        Object.keys(data.stock).forEach(function (k) {
+                            it[k] = data.stock[k];
+                        });
+                        // 图片以服务器最终结果为准
+                        if (serverImages !== null) {
+                            it.images = serverImages;
+                            it.image_path = serverImages.length ? serverImages[0].filename : "";
+                            it.image_url = serverImages.length ? serverImages[0].url : "";
+                        }
+                        var newCard = renderCard(it, lastKeywords);
+                        card.replaceWith(newCard);
+                        close();
+                    })
+                    .catch(function (err) {
+                        fail((err && err.message) || "网络错误，请重试");
                     });
             }
 
@@ -425,6 +583,135 @@
             modal.querySelector(".batch-modal-save").addEventListener("click", save);
             modal.addEventListener("click", function (e) {
                 if (e.target === modal) close();
+            });
+
+            // ===== 图片：编辑期间仅暂存，点击「保存」后才真正提交 =====
+            var imgInput = modal.querySelector("#modalImageInput");
+            var imgGrid = modal.querySelector("#modalImageGrid");
+            var uploadBtn = modal.querySelector("#modalUploadBtn");
+
+            // 本次编辑开始时，服务器上已有的图片（快照）
+            var baseImages = cardImageUrls(it);
+            var pendingDeletes = [];   // 待删除的已存在图片文件名
+            var pendingUploads = [];   // 待上传的新图片 [{file, url}]
+            var serverImages = null;   // 保存流程中服务器返回的最新图片列表
+
+            function imageFilename(url) {
+                return url.split("?")[0].split("/").pop();
+            }
+
+            function makeImageItem(url, alt, onRemove) {
+                var cell = document.createElement("div");
+                cell.className = "batch-modal-image-item";
+                var img = document.createElement("img");
+                img.src = url;
+                img.alt = alt || "";
+                var del = document.createElement("button");
+                del.type = "button";
+                del.className = "batch-modal-image-del";
+                del.title = "移除这张图片";
+                del.textContent = "×";
+                del.addEventListener("click", onRemove);
+                cell.appendChild(img);
+                cell.appendChild(del);
+                return cell;
+            }
+
+            function renderImageGrid() {
+                imgGrid.innerHTML = "";
+                var shown = 0;
+                // 已存在图片（排除本次标记删除的）
+                baseImages.forEach(function (u) {
+                    var fn = imageFilename(u);
+                    if (pendingDeletes.indexOf(fn) !== -1) return;
+                    shown++;
+                    imgGrid.appendChild(makeImageItem(u, it.name, function () {
+                        if (pendingDeletes.indexOf(fn) === -1) pendingDeletes.push(fn);
+                        renderImageGrid();
+                    }));
+                });
+                // 暂存的新图片（本地预览）
+                pendingUploads.forEach(function (p) {
+                    shown++;
+                    imgGrid.appendChild(makeImageItem(p.url, "待保存的新图片", function () {
+                        var i = pendingUploads.indexOf(p);
+                        if (i !== -1) {
+                            URL.revokeObjectURL(p.url);
+                            pendingUploads.splice(i, 1);
+                        }
+                        renderImageGrid();
+                    }));
+                });
+                if (!shown) {
+                    var empty = document.createElement("span");
+                    empty.className = "batch-modal-image-empty";
+                    empty.textContent = "暂无图片";
+                    imgGrid.appendChild(empty);
+                }
+            }
+            renderImageGrid();
+
+            // 把选择的文件暂存为本地预览（不提交）
+            function stageFiles(files) {
+                Array.prototype.slice.call(files || []).forEach(function (f) {
+                    if (!f) return;
+                    pendingUploads.push({ file: f, url: URL.createObjectURL(f) });
+                });
+                imgInput.value = "";
+                renderImageGrid();
+            }
+
+            uploadBtn.addEventListener("click", function () { imgInput.click(); });
+            imgInput.addEventListener("change", function () { stageFiles(imgInput.files); });
+
+            // 真正提交：删除一张已存在图片（保存时调用）
+            function apiDeleteImage(filename) {
+                return fetch("/api/stock/delete_image", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        path: it.primary + "||" + it.secondary + "||" + it.tertiary,
+                        name: it.name,
+                        filename: filename,
+                    }),
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (!data.ok) throw new Error(data.error || "删除图片失败");
+                        serverImages = data.images || [];
+                    });
+            }
+
+            // 真正提交：上传一张新图片（保存时调用）
+            function apiUploadImage(file) {
+                var fd = new FormData();
+                fd.append("path", it.primary + "||" + it.secondary + "||" + it.tertiary);
+                fd.append("name", it.name);
+                fd.append("file", file);
+                return fetch("/api/stock/upload_image", { method: "POST", body: fd })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (!data.ok) throw new Error(data.error || "上传图片失败");
+                        serverImages = data.images || [];
+                    });
+            }
+
+            // 支持在编辑弹窗内 Ctrl+V 粘贴图片（暂存，保存时才上传）
+            modal.addEventListener("paste", function (e) {
+                var items = (e.clipboardData && e.clipboardData.items) || [];
+                for (var i = 0; i < items.length; i++) {
+                    var item = items[i];
+                    if (item.kind === "file" && item.type && item.type.indexOf("image") === 0) {
+                        var blob = item.getAsFile();
+                        if (!blob) continue;
+                        e.preventDefault();
+                        var sub = (item.type.split("/")[1] || "png").replace("jpeg", "jpg");
+                        var file = new File([blob], "pasted_" + Date.now() + "." + sub,
+                            { type: item.type });
+                        stageFiles([file]);
+                        break;
+                    }
+                }
             });
             document.addEventListener("keydown", onKey);
         }

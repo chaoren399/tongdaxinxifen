@@ -29,24 +29,14 @@ STOCK_OPTION_FIELDS = [
     "option_e", "option_f", "option_g", "option_h",
 ]
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS industries (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    level        INTEGER NOT NULL,   -- 1 / 2 / 3
-    code         TEXT,
-    acode        TEXT,               -- 一级专用列 "一级编码"
-    name         TEXT NOT NULL,
-    parent_id    INTEGER,
-    FOREIGN KEY(parent_id) REFERENCES industries(id)
-);
-
+# 最新 stocks 表结构（已废弃的 location / main_business / image_path 不再包含；
+# 图片统一存于 stock_images 表）
+STOCKS_TABLE_DDL = """
 CREATE TABLE IF NOT EXISTS stocks (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     tertiary_id   INTEGER NOT NULL,
     name          TEXT NOT NULL,
     code          TEXT,
-    location      TEXT,
-    main_business TEXT,
     concept       TEXT DEFAULT '',
     option_a      TEXT DEFAULT '',
     option_b      TEXT DEFAULT '',
@@ -58,6 +48,29 @@ CREATE TABLE IF NOT EXISTS stocks (
     option_h      TEXT DEFAULT '',
     FOREIGN KEY(tertiary_id) REFERENCES industries(id)
 );
+"""
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS industries (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    level        INTEGER NOT NULL,   -- 1 / 2 / 3
+    code         TEXT,
+    acode        TEXT,               -- 一级专用列 "一级编码"
+    name         TEXT NOT NULL,
+    parent_id    INTEGER,
+    FOREIGN KEY(parent_id) REFERENCES industries(id)
+);
+""" + STOCKS_TABLE_DDL + """
+-- 一只股票可挂多张图片；filename 为 data/stock_images 下的文件名
+CREATE TABLE IF NOT EXISTS stock_images (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    stock_id   INTEGER NOT NULL,
+    filename   TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT '',
+    FOREIGN KEY(stock_id) REFERENCES stocks(id)
+);
+CREATE INDEX IF NOT EXISTS idx_stock_images_stock ON stock_images(stock_id);
 
 CREATE TABLE IF NOT EXISTS concepts (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,22 +121,71 @@ def ensure_concepts_table(db_path=None):
 
 def ensure_stocks_columns(db_path=None):
     """
-    确保 stocks 表存在「选项A ~ 选项H」8 个列（对旧库的增量迁移，不动其他数据）。
-    缺失的列会用 ALTER TABLE ADD COLUMN 补上，默认值为空串。
+    确保 stocks 表存在所有可编辑列（选项A~H），对旧库做增量迁移。
     返回本次新增的列名列表。
     """
     conn = get_conn(db_path)
     cur = conn.cursor()
     cur.execute("PRAGMA table_info(stocks)")
     cols = {row["name"] for row in cur.fetchall()}
+    extra = list(STOCK_OPTION_FIELDS)
     added = []
-    for field in STOCK_OPTION_FIELDS:
+    for field in extra:
         if field not in cols:
             conn.execute(f"ALTER TABLE stocks ADD COLUMN {field} TEXT DEFAULT ''")
             added.append(field)
     conn.commit()
     conn.close()
     return added
+
+
+def ensure_stock_images_table(db_path=None):
+    """
+    确保 stock_images 表存在；若旧库仍有单图字段 stocks.image_path，
+    则把它迁移为 stock_images 中的一条记录（幂等）。返回本次迁移的图片条数。
+    """
+    conn = get_conn(db_path)
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS stock_images (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                stock_id   INTEGER NOT NULL,
+                filename   TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT DEFAULT '',
+                FOREIGN KEY(stock_id) REFERENCES stocks(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_stock_images_stock
+                ON stock_images(stock_id);
+            """
+        )
+        cur = conn.cursor()
+        # 只有在旧库仍存在 image_path 列时才迁移（新库该列已删除）
+        cur.execute("PRAGMA table_info(stocks)")
+        stock_cols = {r["name"] for r in cur.fetchall()}
+        migrated = 0
+        if "image_path" in stock_cols:
+            cur.execute("SELECT DISTINCT stock_id FROM stock_images")
+            have = {r["stock_id"] for r in cur.fetchall()}
+            cur.execute(
+                "SELECT id, image_path FROM stocks "
+                "WHERE COALESCE(image_path, '') <> ''"
+            )
+            for r in cur.fetchall():
+                if r["id"] in have:
+                    continue
+                conn.execute(
+                    "INSERT INTO stock_images "
+                    "(stock_id, filename, sort_order, created_at) "
+                    "VALUES (?, ?, 0, '')",
+                    (r["id"], r["image_path"]),
+                )
+                migrated += 1
+        conn.commit()
+        return migrated
+    finally:
+        conn.close()
 
 
 def _split_concept_raw(raw):
@@ -216,14 +278,12 @@ def init_db_from_csv(csv_path=None, db_path=None):
             stock_name = (row.get("股票名称") or "").strip()
             if stock_name and ter_id is not None:
                 cur.execute(
-                    "INSERT INTO stocks (tertiary_id, name, code, location, "
-                    "main_business, concept) VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO stocks (tertiary_id, name, code, concept) "
+                    "VALUES (?, ?, ?, ?)",
                     (
                         ter_id,
                         stock_name,
                         (row.get("股票代码") or "").strip() or None,
-                        (row.get("所在地") or "").strip() or None,
-                        (row.get("主营") or "").strip() or None,
                         (row.get("概念") or "").strip(),
                     ),
                 )
@@ -236,6 +296,50 @@ def init_db_from_csv(csv_path=None, db_path=None):
         "stocks": stock_rows,
         "db_path": db_path,
     }
+
+
+def drop_obsolete_stock_columns(db_path=None):
+    """
+    物理删除 stocks 表中已废弃的 location / main_business / image_path 三列。
+    SQLite < 3.35 不支持 ALTER TABLE DROP COLUMN，因此统一采用「重建表」方式：
+    新建最新结构 -> 复制数据 -> 删旧表 -> 重命名。
+    幂等：这些列都已不存在时返回 False。
+    """
+    conn = get_conn(db_path)
+    try:
+        conn.isolation_level = None  # 自动提交，确保 PRAGMA / DDL 立即生效
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(stocks)")
+        cols = [r["name"] for r in cur.fetchall()]
+        drop_cols = [
+            c for c in ("location", "main_business", "image_path") if c in cols
+        ]
+        if not drop_cols:
+            return False
+
+        keep_cols = [c for c in cols if c not in drop_cols]
+        col_list = ", ".join(keep_cols)
+
+        # 重建期间关闭外键约束（stock_images 引用 stocks.id）
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.execute("DROP TABLE IF EXISTS stocks_new")
+        conn.executescript(STOCKS_TABLE_DDL.replace("stocks", "stocks_new"))
+        conn.execute(
+            f"INSERT INTO stocks_new ({col_list}) SELECT {col_list} FROM stocks"
+        )
+        conn.execute("DROP TABLE stocks")
+        conn.execute("ALTER TABLE stocks_new RENAME TO stocks")
+        conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_stocks_tertiary ON stocks(tertiary_id);
+            CREATE INDEX IF NOT EXISTS idx_stocks_name     ON stocks(name);
+            CREATE INDEX IF NOT EXISTS idx_stocks_concept  ON stocks(concept);
+            """
+        )
+        conn.execute("PRAGMA foreign_keys=ON")
+        return True
+    finally:
+        conn.close()
 
 
 def load_industry_tree(db_path=None):
@@ -306,10 +410,23 @@ def load_industry_tree(db_path=None):
                 parent_secondary["tertiaries"][r["name"]] = ter_node
                 tertiary_by_id[r["id"]] = ter_node
 
+    # 加载每只股票的多张图片（stock_images 表，按 sort_order 排序）
+    images_by_stock = {}
+    try:
+        cur.execute(
+            "SELECT stock_id, filename FROM stock_images "
+            "ORDER BY stock_id, sort_order, id"
+        )
+        for r in cur.fetchall():
+            images_by_stock.setdefault(r["stock_id"], []).append(r["filename"])
+    except sqlite3.OperationalError:
+        # 旧库尚未建 stock_images 表时忽略（启动迁移会补建）
+        images_by_stock = {}
+
     # 加载股票
     option_cols = ", ".join(STOCK_OPTION_FIELDS)
     cur.execute(
-        "SELECT tertiary_id, name, code, location, main_business, concept, "
+        "SELECT id, tertiary_id, name, code, concept, "
         f"{option_cols} FROM stocks ORDER BY name"
     )
     for s in cur.fetchall():
@@ -319,8 +436,6 @@ def load_industry_tree(db_path=None):
         stock = {
             "name": s["name"],
             "code": s["code"] or "",
-            "location": s["location"] or "",
-            "main_business": s["main_business"] or "",
             "concept1": s["concept"] or "",
             "concept2": "",
             "concept3": "",
@@ -329,6 +444,9 @@ def load_industry_tree(db_path=None):
         }
         for field in STOCK_OPTION_FIELDS:
             stock[field] = s[field] or ""
+        images = list(images_by_stock.get(s["id"], []))
+        stock["images"] = images
+        stock["image_path"] = images[0] if images else ""
         t_node["stocks"].append(stock)
 
     # 一级行业按 id 排序（与原 csv 加载行为一致）
@@ -367,8 +485,6 @@ def add_stock(
     tertiary_id,
     name,
     code="",
-    location="",
-    main_business="",
     concept="",
     options=None,
     db_path=None,
@@ -379,9 +495,9 @@ def add_stock(
     返回新插入股票的 id。
     """
     options = options or {}
-    cols = ["tertiary_id", "name", "code", "location", "main_business", "concept"]
+    cols = ["tertiary_id", "name", "code", "concept"]
     cols += STOCK_OPTION_FIELDS
-    vals = [tertiary_id, name, code, location, main_business, concept]
+    vals = [tertiary_id, name, code, concept]
     vals += [(options.get(f) or "") for f in STOCK_OPTION_FIELDS]
     placeholders = ", ".join("?" * len(cols))
     conn = get_conn(db_path)
@@ -408,13 +524,12 @@ def add_stocks_batch(tertiary_id, stock_list, db_path=None):
     try:
         data = [
             tuple(
-                [tertiary_id, s.get("name", ""), s.get("code", ""),
-                 s.get("location", ""), s.get("main_business", ""), s.get("concept", "")]
+                [tertiary_id, s.get("name", ""), s.get("code", ""), s.get("concept", "")]
                 + [s.get(f, "") or "" for f in STOCK_OPTION_FIELDS]
             )
             for s in stock_list
         ]
-        cols = ["tertiary_id", "name", "code", "location", "main_business", "concept"]
+        cols = ["tertiary_id", "name", "code", "concept"]
         cols += STOCK_OPTION_FIELDS
         placeholders = ", ".join("?" * len(cols))
         cur.executemany(
@@ -452,7 +567,7 @@ def delete_stock(stock_name, tertiary_id=None, db_path=None):
 def update_stock(tertiary_id, name, fields, db_path=None):
     """
     更新一只股票的可编辑字段。
-    fields 可包含: name/code/location/main_business/concept1~5。
+    fields 可包含: name/code/concept1~5/option_a~h。
     - concept1~5 会合并（用 '-' 连接非空项）后写入 concept 列
     - 若修改了 name，会返回新名字
     返回 (updated_count, new_name)。
@@ -479,12 +594,6 @@ def update_stock(tertiary_id, name, fields, db_path=None):
         if "code" in fields:
             sets.append("code = ?")
             params.append((fields["code"] or "").strip())
-        if "location" in fields:
-            sets.append("location = ?")
-            params.append((fields["location"] or "").strip())
-        if "main_business" in fields:
-            sets.append("main_business = ?")
-            params.append((fields["main_business"] or "").strip())
 
         # 选项A~选项H
         for field in STOCK_OPTION_FIELDS:
@@ -968,6 +1077,126 @@ def remove_concept_from_stock(stock_name, concept_name, db_path=None):
         )
         conn.commit()
         return new_val, True
+    finally:
+        conn.close()
+
+
+def _stock_row_id(cur, tertiary_id, stock_name):
+    cur.execute(
+        "SELECT id FROM stocks WHERE tertiary_id = ? AND name = ?",
+        (tertiary_id, stock_name),
+    )
+    return cur.fetchone()
+
+
+def _list_images_conn(conn, stock_id):
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT filename FROM stock_images WHERE stock_id = ? "
+        "ORDER BY sort_order, id",
+        (stock_id,),
+    )
+    return [r["filename"] for r in cur.fetchall()]
+
+
+def list_stock_images(tertiary_id, stock_name, db_path=None):
+    """返回该股票的图片文件名列表（按顺序）；股票不存在返回 []。"""
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        row = _stock_row_id(cur, tertiary_id, stock_name)
+        if row is None:
+            return []
+        return _list_images_conn(conn, row["id"])
+    finally:
+        conn.close()
+
+
+def add_stock_image(tertiary_id, stock_name, filename, db_path=None):
+    """
+    追加一张图片，并把 stocks.image_path 同步为第一张（兼容旧逻辑）。
+    返回更新后的文件名列表；股票不存在抛 LookupError。
+    """
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        row = _stock_row_id(cur, tertiary_id, stock_name)
+        if row is None:
+            raise LookupError(f"未找到股票：{stock_name}")
+        stock_id = row["id"]
+        cur.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order "
+            "FROM stock_images WHERE stock_id = ?",
+            (stock_id,),
+        )
+        next_order = cur.fetchone()["next_order"]
+        conn.execute(
+            "INSERT INTO stock_images (stock_id, filename, sort_order, created_at) "
+            "VALUES (?, ?, ?, '')",
+            (stock_id, filename, next_order),
+        )
+        images = _list_images_conn(conn, stock_id)
+        conn.commit()
+        return images
+    finally:
+        conn.close()
+
+
+def delete_stock_image(tertiary_id, stock_name, filename="", db_path=None):
+    """
+    删除该股票的一张图片（filename 为空则删除全部）。
+    返回删除后剩余的文件名列表；股票不存在抛 LookupError。
+    """
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        row = _stock_row_id(cur, tertiary_id, stock_name)
+        if row is None:
+            raise LookupError(f"未找到股票：{stock_name}")
+        stock_id = row["id"]
+        if filename:
+            conn.execute(
+                "DELETE FROM stock_images WHERE stock_id = ? AND filename = ?",
+                (stock_id, filename),
+            )
+        else:
+            conn.execute(
+                "DELETE FROM stock_images WHERE stock_id = ?", (stock_id,)
+            )
+        images = _list_images_conn(conn, stock_id)
+        conn.commit()
+        return images
+    finally:
+        conn.close()
+
+
+def get_stock_image(tertiary_id, stock_name, db_path=None):
+    """返回该股票的第一张图片文件名（不存在则返回 ''），用于路由读取。"""
+    imgs = list_stock_images(tertiary_id, stock_name, db_path)
+    return imgs[0] if imgs else ""
+
+
+def set_stock_image(tertiary_id, stock_name, image_path, db_path=None):
+    """
+    （兼容旧接口）把该股票的图片列表整体替换为单张 image_path（空则清空）。
+    股票不存在抛 LookupError。不会删除磁盘文件（删除请走路由层）。
+    """
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        row = _stock_row_id(cur, tertiary_id, stock_name)
+        if row is None:
+            raise LookupError(f"未找到股票：{stock_name}")
+        stock_id = row["id"]
+        conn.execute("DELETE FROM stock_images WHERE stock_id = ?", (stock_id,))
+        if image_path:
+            conn.execute(
+                "INSERT INTO stock_images (stock_id, filename, sort_order, created_at) "
+                "VALUES (?, ?, 0, '')",
+                (stock_id, image_path),
+            )
+        conn.commit()
+        return image_path or ""
     finally:
         conn.close()
 

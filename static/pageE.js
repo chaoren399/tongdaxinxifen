@@ -144,7 +144,7 @@
     function renderStocks(stocks) {
         $body.innerHTML = "";
         if (stocks.length === 0) {
-            $body.innerHTML = '<tr><td colspan="8"><div class="e-empty">该三级行业下暂无股票</div></td></tr>';
+            $body.innerHTML = '<tr><td colspan="6"><div class="e-empty">该三级行业下暂无股票</div></td></tr>';
             return;
         }
         stocks.forEach((st, i) => {
@@ -158,13 +158,6 @@
 
             const tdCode = document.createElement("td");
             tdCode.textContent = st.code || "-";
-
-            const tdLoc = document.createElement("td");
-            tdLoc.textContent = st.location || "-";
-
-            const tdMain = document.createElement("td");
-            tdMain.className = "td-wrap";
-            tdMain.textContent = st.main_business || "-";
 
             const tdConcept = document.createElement("td");
             tdConcept.className = "td-wrap";
@@ -195,8 +188,6 @@
             tr.appendChild(tdIdx);
             tr.appendChild(tdName);
             tr.appendChild(tdCode);
-            tr.appendChild(tdLoc);
-            tr.appendChild(tdMain);
             tr.appendChild(tdConcept);
             tr.appendChild(tdOption);
             tr.appendChild(tdAct);
@@ -211,8 +202,6 @@
     const fields = {
         name: document.getElementById("fName"),
         code: document.getElementById("fCode"),
-        location: document.getElementById("fLocation"),
-        main_business: document.getElementById("fMainBusiness"),
         concept1: document.getElementById("fConcept1"),
         concept2: document.getElementById("fConcept2"),
         concept3: document.getElementById("fConcept3"),
@@ -348,8 +337,6 @@
         const payloadFields = {
             name: name,
             code: fields.code.value.trim(),
-            location: fields.location.value.trim(),
-            main_business: fields.main_business.value.trim(),
             concept1: fields.concept1.value.trim(),
             concept2: fields.concept2.value.trim(),
             concept3: fields.concept3.value.trim(),

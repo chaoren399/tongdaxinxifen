@@ -195,14 +195,6 @@
                     <label for="stockCode">股票代码</label>
                     <input id="stockCode" name="code" type="text" maxlength="10" placeholder="例如：600519" />
                 </div>
-                <div class="field">
-                    <label for="stockLoc">所在地</label>
-                    <input id="stockLoc" name="location" type="text" maxlength="40" placeholder="例如：贵州贵阳" />
-                </div>
-                <div class="field field-wide">
-                    <label for="stockMain">主营业务</label>
-                    <input id="stockMain" name="main_business" type="text" maxlength="120" placeholder="例如：白酒生产销售" />
-                </div>
                 <div class="field field-submit">
                     <button type="submit" class="btn-primary">新增</button>
                 </div>
@@ -346,6 +338,6 @@
 
     <script src="{{ url_for('static', filename='pageB.js') }}"></script>
     <script>window.TERTIARY_OPTIONS = {{ tertiary_options|tojson }};</script>
-    <script src="{{ url_for('static', filename='pageC.js') }}"></script>
+    <script src="{{ url_for('static', filename='pageC.js') }}?v=2"></script>
 </body>
 </html>

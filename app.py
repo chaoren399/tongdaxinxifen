@@ -12,10 +12,11 @@ import gzip
 import os
 import threading
 import time
+import uuid
 from collections import OrderedDict
 from typing import Any, Dict
 
-from flask import Flask, jsonify, render_template, abort, request
+from flask import Flask, jsonify, render_template, abort, request, send_from_directory
 
 from db import (
     DB_FILE,
@@ -28,6 +29,23 @@ from db import (
 )
 
 app = Flask(__name__)
+
+# 股票图片：最大 8 MB，仅允许常见图片格式
+STOCK_IMAGES_DIR = os.path.join(os.path.dirname(DB_FILE), "stock_images")
+os.makedirs(STOCK_IMAGES_DIR, exist_ok=True)
+app.config["STOCK_IMAGES_DIR"] = STOCK_IMAGES_DIR
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
+ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+# 单只股票最多可保存的图片张数
+MAX_IMAGES_PER_STOCK = 20
+
+
+def _images_payload(filenames):
+    """把文件名列表转成前端使用的 [{filename, url}] 结构。"""
+    return [
+        {"filename": fn, "url": f"/stock_images/{fn}"}
+        for fn in (filenames or [])
+    ]
 
 # 启动期检测：若 SQLite 数据库不存在则从 CSV 自动迁移
 if not os.path.exists(DB_FILE):
@@ -45,6 +63,14 @@ ensure_concepts_table()
 # 增量迁移：确保 stocks 表存在「选项A ~ 选项H」8 个列（旧数据库升级）
 from db import ensure_stocks_columns, STOCK_OPTION_FIELDS  # noqa: E402
 ensure_stocks_columns()
+
+# 增量迁移：确保 stock_images 多图表存在，并把旧的单图迁移进来
+from db import ensure_stock_images_table  # noqa: E402
+ensure_stock_images_table()
+
+# 增量迁移：物理删除已废弃的 stocks.location / main_business / image_path 三列
+from db import drop_obsolete_stock_columns  # noqa: E402
+drop_obsolete_stock_columns()
 
 # 模块级 INDUSTRY_TREE，启动时一次性从 SQLite 加载到内存；写入时同步刷新
 INDUSTRY_TREE: Dict[str, dict] = load_industry_tree()
@@ -400,8 +426,6 @@ def api_page_e_add_stock():
     path = (data.get("path") or "").strip()
     name = (data.get("name") or "").strip()
     code = (data.get("code") or "").strip()
-    location = (data.get("location") or "").strip()
-    main_business = (data.get("main_business") or "").strip()
     options = {}
     for field in STOCK_OPTION_FIELDS:
         options[field] = (data.get(field) or "").strip()
@@ -433,8 +457,6 @@ def api_page_e_add_stock():
             tid,
             name=name,
             code=code,
-            location=location,
-            main_business=main_business,
             concept="",
             options=options,
         )
@@ -444,8 +466,6 @@ def api_page_e_add_stock():
     new_stock = {
         "name": name,
         "code": code,
-        "location": location,
-        "main_business": main_business,
     }
     new_stock.update(options)
     tertiary["stocks"].append(new_stock)
@@ -955,7 +975,7 @@ def api_stocks_search_batch():
     """
     批量搜索多只股票（页面 F）。
     请求 JSON: {"q": "关键词串"}，关键词按换行 / 逗号 / 顿号 / 空格分隔。
-    对每只股票做全字段模糊匹配（名称/代码/所在地/主营/概念/三级行业），
+    对每只股票做全字段模糊匹配（名称/代码/概念/选项/三级行业），
     返回所有至少命中一个关键词的股票，附命中关键词列表（名称命中的排前）。
     """
     data = request.get_json(silent=True) or {}
@@ -982,8 +1002,6 @@ def api_stocks_search_batch():
                     item = {
                         "name": st["name"],
                         "code": st["code"],
-                        "location": st["location"],
-                        "main_business": st["main_business"],
                         "concept1": st["concept1"],
                         "concept2": st["concept2"],
                         "concept3": st.get("concept3", ""),
@@ -997,6 +1015,12 @@ def api_stocks_search_batch():
                     }
                     for field in STOCK_OPTION_FIELDS:
                         item[field] = st.get(field, "")
+                    img_list = list(st.get("images") or [])
+                    item["images"] = _images_payload(img_list)
+                    item["image_path"] = img_list[0] if img_list else ""
+                    item["image_url"] = (
+                        f"/stock_images/{img_list[0]}" if img_list else ""
+                    )
                     items.append(item)
     # 名称命中优先
     items.sort(key=lambda r: 0 if r["nameHit"] else 1)
@@ -1008,7 +1032,7 @@ def api_stocks_search_batch():
 def _stock_hit_keyword(st, tertiary_name, kw):
     """判断股票 st 在全字段上是否包含关键词 kw（均为小写比较）"""
     fields = [
-        st["name"], st["code"], st["location"], st["main_business"],
+        st["name"], st["code"],
         st["concept1"], st["concept2"], tertiary_name,
     ]
     for field in STOCK_OPTION_FIELDS:
@@ -1102,7 +1126,7 @@ def _find_tertiary(primary_name, secondary_name, tertiary_name):
 def _insert_stock_row_to_csv(row):
     """
     （已迁移至 SQLite）兼容占位：新股票插入改为调用 db.add_stock。
-    row 参数保留旧格式 [一级编码, ..., 三级行业, 股票名称, 股票代码, 所在地, 主营, ...]。
+    row 参数保留旧格式 [一级编码, ..., 三级行业, 股票名称, 股票代码, 概念, ...]。
     """
     from db import add_stock, find_tertiary_id
     primary_name, secondary_name, tertiary_name = row[2], row[4], row[6]
@@ -1114,8 +1138,6 @@ def _insert_stock_row_to_csv(row):
             tid,
             name=row[7],
             code=row[8] if len(row) > 8 else "",
-            location=row[9] if len(row) > 9 else "",
-            main_business=row[10] if len(row) > 10 else "",
             concept=row[11] if len(row) > 11 else "",
         )
     except Exception as e:
@@ -1149,8 +1171,6 @@ def api_page_c_add_stock():
     path = (data.get("path") or "").strip()
     name = (data.get("name") or "").strip()
     code = (data.get("code") or "").strip()
-    location = (data.get("location") or "").strip()
-    main_business = (data.get("main_business") or "").strip()
 
     if not path or "||" not in path:
         return jsonify({"ok": False, "error": "请选择三级行业"}), 400
@@ -1171,8 +1191,6 @@ def api_page_c_add_stock():
     new_stock = {
         "name": name,
         "code": code,
-        "location": location,
-        "main_business": main_business,
     }
 
     # 写入 SQLite
@@ -1185,8 +1203,6 @@ def api_page_c_add_stock():
             tid,
             name=name,
             code=code,
-            location=location,
-            main_business=main_business,
             concept="",
         )
     except Exception as e:
@@ -1219,6 +1235,165 @@ def api_page_c_add_stock():
     )
 
 
+@app.route("/api/stock/upload_image", methods=["POST"])
+def api_upload_stock_image():
+    """
+    给一只股票追加一张图片（一只股票可保存多张）。
+    请求 form:
+        path  = "一级||二级||三级"
+        name  = 股票名
+        file  = 图片文件
+    """
+    from db import find_tertiary_id, add_stock_image, list_stock_images
+
+    path = (request.form.get("path") or "").strip()
+    name = (request.form.get("name") or "").strip()
+    if "||" not in path or path.count("||") != 2 or not name:
+        return jsonify({"ok": False, "error": "参数不合法"}), 400
+
+    f = request.files.get("file")
+    if f is None or not f.filename:
+        return jsonify({"ok": False, "error": "未收到文件"}), 400
+
+    # 校验扩展名
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in ALLOWED_IMAGE_EXTS:
+        return jsonify({"ok": False, "error": f"不支持的图片类型: {ext}"}), 400
+
+    parts = path.split("||")
+    primary_name, secondary_name, tertiary_name = parts
+    primary, secondary, tertiary, err = _find_tertiary(
+        primary_name, secondary_name, tertiary_name
+    )
+    if err:
+        return jsonify({"ok": False, "error": err}), 404
+    target = next((s for s in tertiary["stocks"] if s["name"] == name), None)
+    if target is None:
+        return jsonify({"ok": False, "error": "未找到该股票"}), 404
+
+    tid = find_tertiary_id(primary_name, secondary_name, tertiary_name)
+    if tid is None:
+        return jsonify({"ok": False, "error": "SQLite 中未找到该三级行业"}), 404
+
+    # 限制单只股票图片数量
+    if len(list_stock_images(tid, name)) >= MAX_IMAGES_PER_STOCK:
+        return jsonify({
+            "ok": False,
+            "error": f"最多上传 {MAX_IMAGES_PER_STOCK} 张图片",
+        }), 400
+
+    # 文件名：<stock_id>_<随机>.<ext>，多张互不覆盖
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM stocks WHERE tertiary_id=? AND name=?", (tid, name))
+    row = cur.fetchone()
+    conn.close()
+    if row is None:
+        return jsonify({"ok": False, "error": "未找到该股票"}), 404
+    stock_id = row["id"]
+
+    new_filename = f"{stock_id}_{uuid.uuid4().hex[:10]}{ext}"
+    new_abs = os.path.join(STOCK_IMAGES_DIR, new_filename)
+
+    # 保存新文件
+    try:
+        f.save(new_abs)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"保存失败: {e}"}), 500
+
+    # 写 DB（追加一条图片记录）
+    try:
+        images = add_stock_image(tid, name, new_filename)
+    except LookupError as e:
+        _safe_remove(new_abs)
+        return jsonify({"ok": False, "error": str(e)}), 404
+    except Exception as e:
+        _safe_remove(new_abs)
+        return jsonify({"ok": False, "error": f"数据库写入失败: {e}"}), 500
+
+    # 同步内存树
+    target["images"] = images
+    target["image_path"] = images[0] if images else ""
+    _invalidate_caches()
+
+    first = target["image_path"]
+    return jsonify({
+        "ok": True,
+        "images": _images_payload(images),
+        "image_path": first,
+        "image_url": f"/stock_images/{first}" if first else "",
+    })
+
+
+def _safe_remove(abs_path):
+    """尽力删除磁盘文件，失败忽略。"""
+    try:
+        if abs_path and os.path.exists(abs_path):
+            os.remove(abs_path)
+    except OSError:
+        pass
+
+
+@app.route("/api/stock/delete_image", methods=["POST"])
+def api_delete_stock_image():
+    """
+    删除一只股票的图片。
+    请求 JSON: {path, name, filename?}
+        filename 指定则只删该张；不传则删除该股票全部图片。
+    """
+    from db import find_tertiary_id, delete_stock_image
+
+    data = request.get_json(silent=True) or {}
+    path = (data.get("path") or "").strip()
+    name = (data.get("name") or "").strip()
+    filename = (data.get("filename") or "").strip()
+    if "||" not in path or path.count("||") != 2 or not name:
+        return jsonify({"ok": False, "error": "参数不合法"}), 400
+
+    parts = path.split("||")
+    primary_name, secondary_name, tertiary_name = parts
+    primary, secondary, tertiary, err = _find_tertiary(*parts)
+    if err:
+        return jsonify({"ok": False, "error": err}), 404
+    target = next((s for s in tertiary["stocks"] if s["name"] == name), None)
+    if target is None:
+        return jsonify({"ok": False, "error": "未找到该股票"}), 404
+
+    tid = find_tertiary_id(primary_name, secondary_name, tertiary_name)
+    if tid is None:
+        return jsonify({"ok": False, "error": "SQLite 中未找到该三级行业"}), 404
+
+    # 待删除的物理文件（basename 防止路径穿越）
+    if filename:
+        to_remove = [os.path.basename(filename)]
+    else:
+        to_remove = [os.path.basename(fn) for fn in (target.get("images") or [])]
+
+    try:
+        images = delete_stock_image(tid, name, filename)
+    except LookupError as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"数据库写入失败: {e}"}), 500
+
+    for fn in to_remove:
+        _safe_remove(os.path.join(STOCK_IMAGES_DIR, fn))
+
+    target["images"] = images
+    target["image_path"] = images[0] if images else ""
+    _invalidate_caches()
+    return jsonify({"ok": True, "images": _images_payload(images)})
+
+
+@app.route("/stock_images/<path:filename>")
+def serve_stock_image(filename):
+    """提供股票图片的静态访问。"""
+    safe_name = os.path.basename(filename)
+    if safe_name != filename or "/" in filename or "\\" in filename:
+        return jsonify({"ok": False, "error": "非法文件名"}), 400
+    return send_from_directory(STOCK_IMAGES_DIR, safe_name)
+
+
 @app.route("/api/stock/update_concepts", methods=["POST"])
 def api_update_stock_concepts():
     """
@@ -1229,8 +1404,6 @@ def api_update_stock_concepts():
         "fields": {                       # 任意可编辑字段
             "name": "...",                # 新的股票名称（可选）
             "code": "...",
-            "location": "...",
-            "main_business": "...",
             "concept1": "...",
             "concept2": "...",
             "concept3": "...",
@@ -1254,7 +1427,7 @@ def api_update_stock_concepts():
 
     # 白名单字段
     allowed = {
-        "name", "code", "location", "main_business",
+        "name", "code",
         "concept1", "concept2", "concept3", "concept4", "concept5",
     }
     allowed.update(STOCK_OPTION_FIELDS)
@@ -1322,8 +1495,6 @@ def api_update_stock_concepts():
             "stock": {
                 "name": target["name"],
                 "code": target.get("code", ""),
-                "location": target.get("location", ""),
-                "main_business": target.get("main_business", ""),
                 "concept1": target.get("concept1", ""),
                 "concept2": target.get("concept2", ""),
                 "concept3": target.get("concept3", ""),
@@ -1375,7 +1546,7 @@ def api_page_c_add_stocks_batch():
     if tid is None:
         return jsonify({"ok": False, "error": "SQLite 中未找到该三级行业"}), 404
 
-    stock_list = [{"name": n, "code": "", "location": "", "main_business": "", "concept": ""} for n in names]
+    stock_list = [{"name": n, "code": "", "concept": ""} for n in names]
     try:
         inserted = add_stocks_batch(tid, stock_list)
     except Exception as e:
@@ -1385,7 +1556,7 @@ def api_page_c_add_stocks_batch():
     # 更新内存树 + 记录
     records = []
     for n, s_data in zip(names, stock_list):
-        new_stock = {"name": n, "code": "", "location": "", "main_business": ""}
+        new_stock = {"name": n, "code": ""}
         tertiary["stocks"].append(new_stock)
         record = {
             "primary": primary_name,

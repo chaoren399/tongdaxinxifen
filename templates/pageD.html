@@ -16,9 +16,7 @@
         .data-table-d .stock-row .stock-name { white-space: nowrap; }
         .data-table-d .stock-link { text-decoration: none; color: inherit; }
         .data-table-d .stock-link:hover { color: #2563eb; }
-        .data-table-d .stock-code,
-        .data-table-d .stock-loc,
-        .data-table-d .stock-main { display: none; }
+        .data-table-d .stock-code { display: none; }
     </style>
 </head>
 <body>
@@ -111,8 +109,6 @@
                                                     <span class="stock-name">{{ st.name }}</span>
                                                     {% endif %}
                                                     <span class="stock-code" hidden>{{ st.code or '-' }}</span>
-                                                    <span class="stock-loc">{{ st.location or '' }}</span>
-                                                    <span class="stock-main">{{ st.main_business or '' }}</span>
                                                 </li>
                                                 {% endfor %}
                                             </ul>

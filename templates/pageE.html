@@ -287,8 +287,6 @@
                         <th>#</th>
                         <th>股票名称</th>
                         <th>代码</th>
-                        <th>地区</th>
-                        <th class="td-wrap">主营业务</th>
                         <th class="td-wrap">概念</th>
                         <th class="td-wrap">选项</th>
                         <th>操作</th>
@@ -314,14 +312,6 @@
                     <label>股票代码</label>
                     <input type="text" id="fCode" placeholder="可选" />
                 </div>
-                <div class="field">
-                    <label>地区</label>
-                    <input type="text" id="fLocation" placeholder="可选" />
-                </div>
-            </div>
-            <div class="field">
-                <label>主营业务</label>
-                <textarea id="fMainBusiness" placeholder="可选"></textarea>
             </div>
             <div class="field">
                 <label>概念（从一级概念中选择，可留空）</label>
@@ -355,6 +345,6 @@
     </div>
 
     <script>window.TERTIARY_OPTIONS = {{ tertiary_options|tojson }};</script>
-    <script src="{{ url_for('static', filename='pageE.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='pageE.js') }}?v=3"></script>
 </body>
 </html>
