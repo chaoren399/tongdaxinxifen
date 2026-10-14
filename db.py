@@ -221,8 +221,8 @@ CREATE INDEX IF NOT EXISTS idx_search_history_keyword
     ON search_history(keyword, searched_at DESC);
 """
 
-# 搜索历史保留天数（30 天）
-SEARCH_HISTORY_RETENTION_DAYS = 30
+# 搜索历史保留天数（3 年）
+SEARCH_HISTORY_RETENTION_DAYS = 3 * 365
 
 
 def ensure_search_history_table(db_path=None):

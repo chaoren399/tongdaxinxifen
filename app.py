@@ -1068,7 +1068,7 @@ def api_search_history_recent():
     """
     返回最近 30 天内的去重搜索历史。
     Query: ?limit=N（默认 20，最大 100）
-    返回: {"items": [{"keyword", "searched_at", "hit_count"}], "retention_days": 30}
+    返回: {"items": [{"keyword", "searched_at", "hit_count"}], "retention_days": 1095}
     """
     try:
         limit = int(request.args.get("limit", 20))
@@ -1109,14 +1109,14 @@ def api_search_history_list():
         "items":       全部记录（每条 {id, keyword, searched_at, hit_count}）,
         "groups":      [{date: "YYYY-MM-DD", count: int, hits: int}],  按日期倒序,
         "total":       记录总数,
-        "retention_days": 30,
+        "retention_days": 1095,
       }
     """
     try:
         days = int(request.args.get("days", SEARCH_HISTORY_RETENTION_DAYS))
     except (TypeError, ValueError):
         days = SEARCH_HISTORY_RETENTION_DAYS
-    days = max(0, min(days, 90))
+    days = max(0, min(days, 3 * 365))
     try:
         limit = int(request.args.get("limit", 1000))
     except (TypeError, ValueError):

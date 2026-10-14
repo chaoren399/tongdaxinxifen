@@ -12,7 +12,7 @@
     var state = {
         items: [],
         groups: [],
-        days: 30,
+        days: 1095,
         filter: "",
         loading: false,
     };
@@ -146,7 +146,7 @@
     }
 
     daysSel.addEventListener("change", function () {
-        state.days = parseInt(daysSel.value, 10) || 30;
+        state.days = parseInt(daysSel.value, 10) || 1095;
         load();
     });
 

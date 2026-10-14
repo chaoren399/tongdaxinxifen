@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>通达信行业分类 - 页面 M · 搜索历史（最近 30 天）</title>
+    <title>通达信行业分类 - 页面 M · 搜索历史（最近 3 年）</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=35" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='pageM.css') }}?v=1" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='pageM.css') }}?v=2" />
 </head>
 <body>
     <header class="topbar topbar-pageF">
@@ -28,7 +28,7 @@
 
     <main class="pageM-main">
         <div class="pageM-head">
-            <h1 class="pageM-title">最近 30 天的搜索记录</h1>
+            <h1 class="pageM-title">最近 3 年的搜索记录</h1>
             <div class="pageM-stats" id="pageMStats">
                 <span class="pageM-stat-item">总搜索 <b id="pageMTotal">-</b> 次</span>
                 <span class="pageM-stat-item">覆盖 <b id="pageMDays">-</b> 天</span>
@@ -41,9 +41,10 @@
                 <span>天数：</span>
                 <select id="pageMDaysSelect">
                     <option value="7">最近 7 天</option>
-                    <option value="30" selected>最近 30 天</option>
-                    <option value="60">最近 60 天</option>
+                    <option value="30">最近 30 天</option>
                     <option value="90">最近 90 天</option>
+                    <option value="365">最近 1 年</option>
+                    <option value="1095" selected>最近 3 年</option>
                 </select>
             </label>
             <label class="pageM-field">
@@ -57,6 +58,6 @@
         </div>
     </main>
 
-    <script src="{{ url_for('static', filename='pageM.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='pageM.js') }}?v=2"></script>
 </body>
 </html>
