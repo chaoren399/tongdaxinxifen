@@ -699,6 +699,12 @@ mark.hl {
 .batch-result-list .stock-detail-card td mark.ssi-hl {
     font-weight: 700;
 }
+/* 固定高亮词「主营」：加粗 + 加深为黑色，比普通关键词更醒目 */
+.batch-result-list .stock-detail-card mark.ssi-hl-main {
+    font-weight: 800;
+    color: #000;
+    background: #fde68a;
+}
 .batch-result-list .stock-detail-card.name-hit {
     /* 名称命中：仅保留"高亮"样式（蓝边框 + 阴影），不再做全屏突破，
        避免和后续非 name-hit 卡片宽度差距过大 */
@@ -1266,26 +1272,17 @@ a.industry-link.concept-chip:hover {
 .stock-image-wrap {
     width: 180px;
     height: 180px;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
+    border: none;
     overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #f9fafb;
+    background: #fff;
 }
 .stock-image {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
-}
-.stock-image-placeholder {
-    color: #9ca3af;
-    font-size: 12px;
-    text-align: center;
-    white-space: pre-line;
-    padding: 0 8px;
-    line-height: 1.5;
 }
 /* 多图缩略图网格（卡片第三列） */
 .stock-image-grid {

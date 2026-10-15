@@ -8,6 +8,8 @@
     var historyRow = document.getElementById("searchHistoryRow");
     var historyChips = document.getElementById("searchHistoryChips");
     var lastKeywords = [];
+    // 固定高亮词「主营」：命中时加粗 + 加深（黑色）
+    var MAIN_BIZ_KEYWORD = "主营";
 
     function escText(el, text, keywords) {
         // 将 text 填入 el，keywords 命中处用 <mark> 高亮（大小写不敏感）
@@ -36,7 +38,9 @@
                 el.appendChild(document.createTextNode(text.slice(i, bestIdx)));
             }
             var mark = document.createElement("mark");
-            mark.className = "ssi-hl";
+            mark.className = bestKw === MAIN_BIZ_KEYWORD
+                ? "ssi-hl ssi-hl-main"
+                : "ssi-hl";
             mark.textContent = text.slice(bestIdx, bestIdx + bestKw.length);
             el.appendChild(mark);
             i = bestIdx + bestKw.length;
@@ -407,10 +411,6 @@
         } else {
             var imgWrap = document.createElement("div");
             imgWrap.className = "stock-image-wrap";
-            var ph = document.createElement("div");
-            ph.className = "stock-image-placeholder";
-            ph.textContent = "暂无图片\n点击右上「编辑」上传";
-            imgWrap.appendChild(ph);
             col3.appendChild(imgWrap);
         }
         cols.appendChild(col3);
@@ -800,8 +800,8 @@
     function render(data) {
         // 搜索关键词 + 固定高亮词「主营」：只要文本里出现「主营」就高亮
         lastKeywords = (data.keywords || []).slice();
-        if (lastKeywords.indexOf("主营") < 0) {
-            lastKeywords.push("主营");
+        if (lastKeywords.indexOf(MAIN_BIZ_KEYWORD) < 0) {
+            lastKeywords.push(MAIN_BIZ_KEYWORD);
         }
         list.innerHTML = "";
 
