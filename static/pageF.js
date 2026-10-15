@@ -852,6 +852,23 @@
         doSearch();
     }
 
+    // 无 ?q= 参数时：拉最近一次搜索的关键词并自动搜索一次
+    function bootstrapFromLastSearch() {
+        if (!input) return;
+        if (input.value && input.value.trim()) return; // 已有内容就不覆盖
+        fetch("/api/search_history/recent?limit=1", { method: "GET" })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var items = data.items || [];
+                if (!items.length) return;
+                var last = items[0];
+                if (!last || !last.keyword) return;
+                input.value = last.keyword;
+                doSearch();
+            })
+            .catch(function () { /* 静默失败，不影响页面 */ });
+    }
+
     // ====== 搜索历史：渲染、点击回填、清空 ======
     function renderSearchHistory(items) {
         if (!historyRow || !historyChips) return;
@@ -906,4 +923,8 @@
 
     // 初始加载一次历史
     loadSearchHistory();
+    // 没有 ?q= 时，回填最近一次搜索并自动搜索
+    if (!initQ || !initQ.trim()) {
+        bootstrapFromLastSearch();
+    }
 })();
