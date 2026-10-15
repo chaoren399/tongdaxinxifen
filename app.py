@@ -268,25 +268,8 @@ def serialize_secondary(name, secondary):
 
 @app.route("/")
 def index():
-    """首页：30 个一级行业卡片（只列名称/代码/统计）"""
-    primaries = [
-        serialize_primary(name, primary)
-        for name, primary in INDUSTRY_TREE.items()
-    ]
-    total_primary = len(primaries)
-    total_secondary = sum(p["secondaryCount"] for p in primaries)
-    total_tertiary = sum(p["tertiaryCount"] for p in primaries)
-    total_stocks = sum(p["stockCount"] for p in primaries)
-    return render_template(
-        "index.html",
-        primaries=primaries,
-        stats={
-            "primary": total_primary,
-            "secondary": total_secondary,
-            "tertiary": total_tertiary,
-            "stocks": total_stocks,
-        },
-    )
+    """首页：多股票批量搜索"""
+    return render_template("pageF.html")
 
 
 @app.route("/pageA")
@@ -550,12 +533,6 @@ def api_page_e_delete_stock():
     _invalidate_caches()
 
     return jsonify({"ok": True, "removed": removed, "name": name})
-
-
-@app.route("/pageF")
-def page_f():
-    """页面 F：多股票批量搜索"""
-    return render_template("pageF.html")
 
 
 @app.route("/pageG")

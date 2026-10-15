@@ -106,7 +106,7 @@
             g.rows.forEach(function (it) {
                 var kwHtml = highlight(it.keyword || "", filter);
                 var hitsHtml = '<span class="pageM-row-hits' + ((it.hit_count || 0) === 0 ? " zero" : "") + '">命中 ' + (it.hit_count || 0) + '</span>';
-                var btnHtml = '<a class="pageM-row-btn" href="/pageF?q=' + encodeURIComponent(it.keyword || "") + '">回填搜索</a>';
+                var btnHtml = '<a class="pageM-row-btn" href="/?q=' + encodeURIComponent(it.keyword || "") + '">回填搜索</a>';
                 html += '<div class="pageM-row">';
                 html += '<span class="pageM-row-time">' + escapeHtml(fmtTime(it.searched_at)) + '</span>';
                 html += '<span class="pageM-row-keyword" title="' + escapeHtml(it.keyword || "") + '">' + kwHtml + '</span>';
