@@ -798,7 +798,11 @@
     }
 
     function render(data) {
-        lastKeywords = data.keywords || [];
+        // 搜索关键词 + 固定高亮词「主营」：只要文本里出现「主营」就高亮
+        lastKeywords = (data.keywords || []).slice();
+        if (lastKeywords.indexOf("主营") < 0) {
+            lastKeywords.push("主营");
+        }
         list.innerHTML = "";
 
         if (!data.items.length) {

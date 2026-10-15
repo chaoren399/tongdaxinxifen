@@ -1,0 +1,28 @@
+
+## 接口说明
+
+**请求地址**：`10.10.10.3:5030//api/public/images`
+
+
+**返回示例**：
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 153,
+      "theme_code": "x101",
+      "theme_name": "原料药",
+      "question": "金达威",
+      "tags": "x101-原料药",
+      "answer": "ABCDEFGH",
+      "image_url": "http://10.10.10.7:5030/static/uploads/c61bbf90092d4ed7aa574b9f000f4682.png",
+      "updated_at": "2026-09-25 22:16:49"
+    }
+  ],
+  "total": 201,
+  "page": 1,
+  "per_page": 50,
+  "total_pages": 67
+}
+```
