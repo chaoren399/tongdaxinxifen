@@ -369,7 +369,8 @@
         optionsBox.className = "stock-detail-options";
         OPTION_FIELDS.forEach(function (f) {
             var v = (it[f.key] || "").trim();
-            cardFieldItem(optionsBox, f.label, v || "—", keywords);
+            if (!v) return; // 空值不显示该选项
+            cardFieldItem(optionsBox, f.label, v, keywords);
         });
         col2.appendChild(optionsBox);
         cols.appendChild(col2);
