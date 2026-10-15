@@ -386,12 +386,28 @@ def _build_full_groups():
 
 @app.route("/pageB")
 def page_b():
-    """页面 B：展示一级 + 二级 + 三级 + 股票（沿用页面 A 的左列粘性布局）"""
-    groups, stats = _build_full_groups_cached()
+    """页面 B：30 个一级行业卡片（与首页一致），点击后弹窗逐级加载。"""
+    primaries = [
+        serialize_primary(name, primary)
+        for name, primary in INDUSTRY_TREE.items()
+    ]
+    total_primary = len(primaries)
+    total_secondary = sum(p["secondaryCount"] for p in primaries)
+    total_tertiary = sum(p["tertiaryCount"] for p in primaries)
+    total_stocks = sum(p["stockCount"] for p in primaries)
     return _cached_render(
         "pageB.html",
         (),
-        lambda: render_template("pageB.html", groups=groups, stats=stats),
+        lambda: render_template(
+            "pageB.html",
+            primaries=primaries,
+            stats={
+                "primary": total_primary,
+                "secondary": total_secondary,
+                "tertiary": total_tertiary,
+                "stocks": total_stocks,
+            },
+        ),
     )
 
 
