@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>通达信行业分类 - 页面 P</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=35" />
+</head>
+<body>
+    <header class="topbar topbar-pageF">
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_d') }}">页面 D</a>
+            <a href="{{ url_for('page_f') }}">页面 F</a>
+            <a href="{{ url_for('page_g') }}">页面 G</a>
+            <a href="{{ url_for('page_h') }}">页面 H</a>
+            <a href="{{ url_for('page_j') }}">页面 J</a>
+            <a href="{{ url_for('page_k') }}">页面 K</a>
+            <a href="{{ url_for('page_l') }}">页面 L</a>
+            <a class="active" href="{{ url_for('page_p') }}">页面 P</a>
+        </nav>
+    </header>
+
+    <main class="pageP-wrap">
+        <div class="pageP-hero">
+            <h2>页面 P</h2>
+            <p>空白页 · 在此集中放置需要快速直达的入口</p>
+        </div>
+
+        <div class="pageP-cards">
+            <a class="pageP-card" href="{{ url_for('page_c') }}">
+                <div class="pageP-card-icon">C</div>
+                <div class="pageP-card-body">
+                    <p class="pageP-card-title">页面 C</p>
+                    <p class="pageP-card-desc">点击进入页面 C（已从顶部导航移除）</p>
+                </div>
+                <div class="pageP-card-arrow">›</div>
+            </a>
+            <a class="pageP-card" href="{{ url_for('page_e') }}">
+                <div class="pageP-card-icon">E</div>
+                <div class="pageP-card-body">
+                    <p class="pageP-card-title">页面 E</p>
+                    <p class="pageP-card-desc">点击进入页面 E（已从顶部导航移除）</p>
+                </div>
+                <div class="pageP-card-arrow">›</div>
+            </a>
+            <a class="pageP-card" href="{{ url_for('page_m') }}">
+                <div class="pageP-card-icon">M</div>
+                <div class="pageP-card-body">
+                    <p class="pageP-card-title">页面 M</p>
+                    <p class="pageP-card-desc">点击进入页面 M（已从顶部导航移除）</p>
+                </div>
+                <div class="pageP-card-arrow">›</div>
+            </a>
+        </div>
+    </main>
+</body>
+</html>

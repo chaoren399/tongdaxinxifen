@@ -2409,3 +2409,113 @@ a.concept-card:hover {
     font-size: 11px;
     color: #9ca3af;
 }
+
+/* ========== 页面 P 入口卡片 ========== */
+.pageP-wrap {
+    max-width: 1280px;
+    margin: 24px auto 60px;
+    padding: 0 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+}
+.pageP-hero {
+    width: 100%;
+    max-width: 720px;
+    text-align: center;
+    padding: 32px 28px;
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+    color: #fff;
+    border-radius: 16px;
+    box-shadow: 0 6px 24px rgba(30, 58, 138, 0.18);
+}
+.pageP-hero h2 {
+    margin: 0 0 6px;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 1px;
+}
+.pageP-hero p {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 13px;
+}
+.pageP-cards {
+    width: 100%;
+    max-width: 720px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+}
+.pageP-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 24px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    text-decoration: none;
+    color: #1f2937;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    transition: transform .15s, box-shadow .15s, border-color .15s;
+}
+.pageP-card:hover {
+    transform: translateY(-2px);
+    border-color: #2563eb;
+    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.12);
+}
+.pageP-card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #2563eb 0%, #60a5fa 100%);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.pageP-card-body { flex: 1; min-width: 0; }
+.pageP-card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #111827;
+    margin: 0 0 4px;
+}
+.pageP-card-desc {
+    font-size: 12px;
+    color: #6b7280;
+    margin: 0;
+}
+.pageP-card-arrow {
+    color: #9ca3af;
+    font-size: 22px;
+    line-height: 1;
+    transition: transform .15s, color .15s;
+}
+.pageP-card:hover .pageP-card-arrow {
+    color: #2563eb;
+    transform: translateX(3px);
+}
+.pageP-card.pageP-card-inline {
+    width: auto;
+    max-width: 320px;
+    padding: 10px 16px;
+    align-self: center;
+}
+.pageP-card.pageP-card-inline .pageP-card-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
+    border-radius: 8px;
+}
+.pageP-card.pageP-card-inline .pageP-card-title {
+    font-size: 13px;
+}
+.pageP-card.pageP-card-inline .pageP-card-desc {
+    font-size: 11px;
+}

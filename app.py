@@ -1146,6 +1146,12 @@ def page_m():
     return render_template("pageM.html")
 
 
+@app.route("/pageP")
+def page_p():
+    """页面 P：空白页（预留，等待后续需求填充）。"""
+    return render_template("pageP.html")
+
+
 def _stock_hit_keyword(st, tertiary_name, kw):
     """判断股票 st 在全字段上是否包含关键词 kw（均为小写比较）"""
     fields = [

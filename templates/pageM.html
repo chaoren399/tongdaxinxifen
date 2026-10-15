@@ -13,16 +13,14 @@
             <a href="{{ url_for('index') }}">首页</a>
             <a href="{{ url_for('page_a') }}">页面 A</a>
             <a href="{{ url_for('page_b') }}">页面 B</a>
-            <a href="{{ url_for('page_c') }}">页面 C</a>
             <a href="{{ url_for('page_d') }}">页面 D</a>
-            <a href="{{ url_for('page_e') }}">页面 E</a>
             <a href="{{ url_for('page_f') }}">页面 F</a>
             <a href="{{ url_for('page_g') }}">页面 G</a>
             <a href="{{ url_for('page_h') }}">页面 H</a>
             <a href="{{ url_for('page_j') }}">页面 J</a>
             <a href="{{ url_for('page_k') }}">页面 K</a>
             <a href="{{ url_for('page_l') }}">页面 L</a>
-            <a class="active" href="{{ url_for('page_m') }}">页面 M</a>
+            <a href="{{ url_for('page_p') }}">页面 P</a>
         </nav>
     </header>
 
@@ -34,6 +32,14 @@
                 <span class="pageM-stat-item">覆盖 <b id="pageMDays">-</b> 天</span>
                 <span class="pageM-stat-item">总命中 <b id="pageMHits">-</b> 只</span>
             </div>
+            <a class="pageP-card pageP-card-inline" href="{{ url_for('page_e') }}">
+                <div class="pageP-card-icon">E</div>
+                <div class="pageP-card-body">
+                    <p class="pageP-card-title">页面 E</p>
+                    <p class="pageP-card-desc">点击进入页面 E（已从顶部导航移除）</p>
+                </div>
+                <div class="pageP-card-arrow">›</div>
+            </a>
         </div>
 
         <div class="pageM-toolbar">
