@@ -1844,6 +1844,89 @@ def api_page_k_update_concept():
     })
 
 
+@app.route("/api/pageK/update_concepts_batch", methods=["POST"])
+def api_page_k_update_concepts_batch():
+    """
+    批量编辑概念（用于页面 K 一级概念弹窗一次性保存其所有下级分类）。
+    {"items": [{"id": 1, "name": "新名", "description": "描述", "parent_id": 2}],
+     "sync_stocks": true}
+    parent_id 省略表示保持原上级；null/"" 表示移到根。
+    返回 {"ok": true, "updated": n, "synced_stocks": n, "failed": [{"id", "error"}]}
+    """
+    from db import update_concept, sync_concept_in_stocks
+    data = request.get_json(silent=True) or {}
+    items = data.get("items")
+    sync = bool(data.get("sync_stocks"))
+
+    if not isinstance(items, list):
+        return jsonify({"ok": False, "error": "items 必须是数组"}), 400
+
+    updated = 0
+    synced = 0
+    failed = []
+
+    for item in items:
+        if not isinstance(item, dict):
+            failed.append({"id": None, "error": "条目格式无效"})
+            continue
+
+        concept_id = item.get("id")
+        name = (item.get("name") or "").strip()
+        description = item.get("description")
+        if description is not None:
+            description = description.strip()
+
+        if concept_id is None:
+            failed.append({"id": None, "error": "缺少概念 id"})
+            continue
+        if not name:
+            failed.append({"id": concept_id, "error": "概念名称不能为空"})
+            continue
+
+        parent_id = item.get("parent_id", "__keep__")
+        if parent_id is None or parent_id == "":
+            parent_id = None
+        elif parent_id != "__keep__":
+            try:
+                parent_id = int(parent_id)
+            except (TypeError, ValueError):
+                failed.append({"id": concept_id, "error": "上级分类 id 无效"})
+                continue
+
+        try:
+            old_name, new_name = update_concept(
+                concept_id,
+                name=name,
+                description=description,
+                parent_id=parent_id,
+            )
+        except (LookupError, ValueError) as e:
+            failed.append({"id": concept_id, "error": str(e)})
+            continue
+        except Exception as e:
+            failed.append({"id": concept_id, "error": f"数据库写入失败：{e}"})
+            continue
+
+        updated += 1
+        if sync and new_name != old_name:
+            try:
+                synced += sync_concept_in_stocks(old_name, new_name)
+            except Exception as e:
+                failed.append(
+                    {"id": concept_id, "error": f"已更新，但同步股票失败：{e}"}
+                )
+
+    if synced:
+        reload_industry_tree()
+
+    return jsonify({
+        "ok": True,
+        "updated": updated,
+        "synced_stocks": synced,
+        "failed": failed,
+    })
+
+
 @app.route("/api/pageK/delete_concept", methods=["POST"])
 def api_page_k_delete_concept():
     """
@@ -1904,6 +1987,41 @@ def api_page_k_concept_stocks():
     return jsonify({"ok": True, "name": name, "stocks": stocks})
 
 
+@app.route("/api/pageK/concept_stocks_map", methods=["POST"])
+def api_page_k_concept_stocks_map():
+    """
+    批量查询多个概念各自包含的股票名（供页面 K 编辑弹窗展示「概念→股票」逻辑图）。
+    请求: {"names": ["固态电池", "材料", "正极"]}
+    返回: {"ok": true, "map": {"固态电池": [...], "材料": [...]}}
+    """
+    from db import get_concept_stocks_map
+    data = request.get_json(silent=True) or {}
+    names = data.get("names")
+    if not isinstance(names, list):
+        return jsonify({"ok": False, "error": "names 必须是数组"}), 400
+    names = [str(n).strip() for n in names if str(n).strip()]
+    if not names:
+        return jsonify({"ok": True, "map": {}})
+    if len(names) > 500:
+        return jsonify({"ok": False, "error": "一次最多查询 500 个概念"}), 400
+    try:
+        mapping = get_concept_stocks_map(names)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"查询失败：{e}"}), 500
+    return jsonify({"ok": True, "map": mapping})
+
+
+@app.route("/api/pageK/concepts")
+def api_page_k_concepts():
+    """返回最新概念树（供页面 K 编辑弹窗新增/删除子级后局部刷新）"""
+    from db import list_concepts
+    try:
+        concepts = list_concepts()
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"查询失败：{e}"}), 500
+    return jsonify({"ok": True, "concepts": concepts})
+
+
 @app.route("/api/pageK/all_stocks")
 def api_page_k_all_stocks():
     """所有股票扁平列表（供添加股票时的 datalist 自动补全）"""
@@ -1919,12 +2037,19 @@ def api_page_k_all_stocks():
 def api_page_k_add_stocks_to_concept():
     """
     为一批已存在的股票添加某概念。
-    请求: {"name": "火电", "stocks": ["股票A", "股票B"]}
+    请求: {"name": "正极", "stocks": ["股票A", "股票B"]}
     - 概念不存在于概念表时自动创建
     - 已拥有该概念的股票自动跳过
-    返回 {"ok": true, "added": [...], "skipped": [...], "not_found": [...]}
+    - 重要：股票详情只记录「一级概念」。若传入的是子概念（如"正极"），
+      实际写入股票的是其所属的一级概念（如"固态电池"），子概念名不会写入股票详情。
+    返回 {"ok": true, "target": "固态电池", "added": [...], "skipped": [...], "not_found": [...]}
     """
-    from db import _split_concept_raw, add_concept, update_stock_concept
+    from db import (
+        _split_concept_raw,
+        add_concept,
+        update_stock_concept,
+        resolve_primary_concept,
+    )
     data = request.get_json(silent=True) or {}
     concept_name = (data.get("name") or "").strip()
     stock_names = data.get("stocks") or []
@@ -1946,10 +2071,13 @@ def api_page_k_add_stocks_to_concept():
     except Exception as e:
         return jsonify({"ok": False, "error": f"数据库写入失败：{e}"}), 500
 
+    # 股票详情只记录一级概念：子概念会解析为其所属的一级概念再写入
+    target_concept = resolve_primary_concept(concept_name) or concept_name
+
     added, skipped, not_found = [], [], []
     for sn in stock_names:
         try:
-            new_val = update_stock_concept(stock_name=sn, new_concept=concept_name)
+            new_val = update_stock_concept(stock_name=sn, new_concept=target_concept)
             added.append({"name": sn, "concept": new_val})
         except LookupError:
             not_found.append(sn)
@@ -1963,6 +2091,7 @@ def api_page_k_add_stocks_to_concept():
 
     return jsonify({
         "ok": True,
+        "target": target_concept,
         "added": added,
         "skipped": skipped,
         "not_found": not_found,

@@ -2407,6 +2407,325 @@ a.concept-card:hover {
     color: #9ca3af;
 }
 
+/* ===== 页面 K：下级分类管理（一级概念弹窗内编辑其下所有分类） ===== */
+/* 编辑弹窗内容较多，加宽并允许内部滚动 */
+#editModal .modal-box {
+    width: min(760px, calc(100vw - 32px));
+    max-height: 88vh;
+    overflow-y: auto;
+}
+.sub-empty {
+    font-size: 12px;
+    color: #9ca3af;
+}
+.sub-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.sub-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 52px minmax(100px, 1fr) 62px 88px 52px;
+    gap: 8px;
+    align-items: center;
+}
+/* 「+子级」按钮：任意未满五级的分类都可继续往下加 */
+.sub-addchild-btn {
+    padding: 6px 0;
+    border: 1px dashed #c4b5fd;
+    border-radius: 8px;
+    background: #faf5ff;
+    color: #7c3aed;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+}
+.sub-addchild-btn:hover:not(:disabled) {
+    background: #f3e8ff;
+}
+.sub-addchild-btn.is-open {
+    background: #7c3aed;
+    border-style: solid;
+    border-color: #7c3aed;
+    color: #fff;
+}
+.sub-addchild-zone {
+    margin: 2px 0 6px 0;
+}
+.sub-addchild-row {
+    display: flex;
+    gap: 6px;
+}
+.sub-addchild-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    border: 1px dashed #c4b5fd;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.sub-addchild-input:focus {
+    border-style: solid;
+    border-color: #7c3aed;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+}
+.sub-addchild-do {
+    flex: 0 0 auto;
+    padding: 6px 14px;
+    border: 1px solid #7c3aed;
+    border-radius: 8px;
+    background: #7c3aed;
+    color: #fff;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, opacity 0.15s;
+}
+.sub-addchild-do:hover:not(:disabled) {
+    background: #6d28d9;
+}
+.sub-addchild-do:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+.sub-addchild-cancel {
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+    color: #6b7280;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.sub-addchild-cancel:hover {
+    background: #f3f4f6;
+}
+/* 概念 → 股票：数量按钮 + 展开的股票 chips */
+.sub-stock-btn {
+    padding: 6px 0;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+}
+.sub-stock-btn:hover:not(:disabled) {
+    background: #dbeafe;
+}
+.sub-stock-btn.is-open {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+}
+.sub-stock-btn:disabled {
+    background: #f3f4f6;
+    border-color: #e5e7eb;
+    color: #9ca3af;
+    cursor: default;
+}
+.sub-stocks {
+    margin: 4px 0 10px 0;
+}
+.sub-stocks-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.sub-stocks-chips::before {
+    content: "└";
+    color: #cbd5e1;
+    font-size: 13px;
+    margin-right: 2px;
+}
+.sub-stocks-add {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+}
+.sub-stocks-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.sub-stocks-input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+.sub-stocks-add-btn {
+    flex: 0 0 auto;
+    padding: 6px 14px;
+    border: 1px solid #2563eb;
+    border-radius: 8px;
+    background: #2563eb;
+    color: #fff;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, opacity 0.15s;
+}
+.sub-stocks-add-btn:hover:not(:disabled) {
+    background: #1d4ed8;
+}
+.sub-stocks-add-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+/* 末级分类的股票按钮：可添加股票，用绿色区分 */
+.sub-stock-btn.is-leaf {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+    color: #15803d;
+}
+.sub-stock-btn.is-leaf:hover:not(:disabled) {
+    background: #dcfce7;
+}
+.sub-stock-btn.is-leaf.is-open {
+    background: #16a34a;
+    border-color: #16a34a;
+    color: #fff;
+}
+.sub-stock-chip {
+    display: inline-block;
+    padding: 3px 9px;
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    background: #fff;
+    color: #374151;
+    font-size: 12px;
+    line-height: 1.6;
+}
+.sub-stocks-loading,
+.sub-stocks-none {
+    font-size: 12px;
+    color: #9ca3af;
+}
+.sub-head-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+}
+/* 缩进层级连接线：从上一级缩进位置连到本行起始处 */
+.sub-row-nested::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: calc((var(--depth) - 1) * 22px + 6px);
+    width: 12px;
+    border-top: 1px dashed #cbd5e1;
+}
+/* 每多一层，底色略微加深，强化层级感 */
+.sub-row[data-depth="1"] {
+    background: #f8fafc;
+    border-radius: 6px;
+}
+.sub-row[data-depth="2"] {
+    background: #f1f5f9;
+    border-radius: 6px;
+}
+.sub-row[data-depth="3"] {
+    background: #e2e8f0;
+    border-radius: 6px;
+}
+.sub-row input.sub-name {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 10px;
+    font-size: 13px;
+}
+.sub-del {
+    padding: 6px 0;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    background: #fff;
+    color: #dc2626;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.sub-del:hover:not(:disabled) {
+    background: #dc2626;
+    color: #fff;
+}
+.sub-del:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.sub-add-zone {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed #e5e7eb;
+}
+.sub-add-row {
+    display: grid;
+    grid-template-columns: minmax(110px, 1.2fr) minmax(90px, 1fr) minmax(90px, 1.2fr) auto;
+    gap: 8px;
+}
+.sub-add-row select,
+.sub-add-row input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.sub-add-row select:focus,
+.sub-add-row input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+.sub-add-row .btn-primary {
+    padding: 8px 16px;
+    white-space: nowrap;
+}
+.sub-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed #e5e7eb;
+}
+.sub-actions .btn-primary {
+    padding: 8px 18px;
+}
+.sub-check {
+    margin: 0;
+    font-size: 12px;
+    color: #6b7280;
+}
+
+/* 四级 / 五级 分类等级徽章配色 */
+.lvl-badge.lvl-4 {
+    background: #fdf2f8;
+    color: #be185d;
+}
+.lvl-badge.lvl-5 {
+    background: #f5f3ff;
+    color: #6d28d9;
+}
+
 /* ========== 页面 P 入口卡片 ========== */
 .pageP-wrap {
     max-width: 1280px;

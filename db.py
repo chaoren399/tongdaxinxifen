@@ -494,6 +494,30 @@ def delete_stock_modification_log(stock_id, conn=None):
             conn.close()
 
 
+def get_concept_stocks_map(names=None, db_path=None):
+    """
+    批量返回 {概念名: [股票名, ...]}。
+    names 为 None 时返回全量；否则只返回这些概念（无股票的也返回空列表）。
+    """
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT name AS stock_name, concept FROM stocks")
+    wanted = set(names) if names else None
+    result = {}
+    if wanted is not None:
+        for n in wanted:
+            result[n] = []
+    for row in cur.fetchall():
+        for piece in _split_concept_raw(row["concept"]):
+            if wanted is not None and piece not in wanted:
+                continue
+            result.setdefault(piece, []).append(row["stock_name"])
+    for k in result:
+        result[k] = sorted(set(result[k]))
+    conn.close()
+    return result
+
+
 def _split_concept_raw(raw):
     """按 - , ， 、 空格 ; 等分隔符切分概念串。"""
     if not raw:
@@ -1098,6 +1122,41 @@ def _build_concept_tree_order(concepts, usage):
     for root in sorted(roots, key=lambda x: x["name"]):
         walk(root, root["name"])
     return ordered
+
+
+def resolve_primary_concept(name, db_path=None):
+    """
+    返回概念 name 所属的一级概念名。
+    - name 本身是一级概念时返回自身
+    - name 是子概念时返回其最顶层祖先（一级）的名称
+    - name 不存在于概念表时返回 None
+    用于：给子概念挂股票时，股票详情只记录对应的一级概念。
+    """
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT id, name, level, parent_id FROM concepts")
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    by_id = {r["id"]: r for r in rows}
+    node = None
+    for r in rows:
+        if r["name"] == name:
+            node = r
+            break
+    if node is None:
+        return None
+
+    seen = set()
+    while node is not None and node["id"] not in seen:
+        if (node["level"] or 1) == 1:
+            return node["name"]
+        seen.add(node["id"])
+        pid = node["parent_id"]
+        if pid is None:
+            return node["name"]
+        node = by_id.get(pid)
+    return None
 
 
 def list_concepts(db_path=None):
