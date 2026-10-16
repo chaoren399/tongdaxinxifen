@@ -25,18 +25,19 @@
     </header>
 
     <main class="container">
-        <!-- 统计卡片 -->
+        {% set primary_concepts = concepts | selectattr('level', 'eq', 1) | list %}
+        <!-- 统计卡片（口径：只统计一级概念） -->
         <div class="stat-row">
             <div class="stat-card">
-                <div class="stat-num" id="statTotal">{{ concepts|length }}</div>
-                <div class="stat-label">概念总数</div>
+                <div class="stat-num" id="statTotal">{{ primary_concepts|length }}</div>
+                <div class="stat-label">一级概念总数</div>
             </div>
             <div class="stat-card">
-                <div class="stat-num" id="statUsed">{{ concepts | selectattr('usage', 'gt', 0) | list | length }}</div>
+                <div class="stat-num" id="statUsed">{{ primary_concepts | selectattr('usage', 'gt', 0) | list | length }}</div>
                 <div class="stat-label">已使用概念</div>
             </div>
             <div class="stat-card">
-                <div class="stat-num" id="statUnused">{{ concepts | selectattr('usage', 'eq', 0) | list | length }}</div>
+                <div class="stat-num" id="statUnused">{{ primary_concepts | selectattr('usage', 'eq', 0) | list | length }}</div>
                 <div class="stat-label">未使用概念</div>
             </div>
         </div>
