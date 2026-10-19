@@ -260,9 +260,10 @@
                     const raw = d[k] || "";
                     if (!raw) return;
                     raw.split(/[-，,、\s;；]+/).forEach((p) => {
-                        const t = p.trim();
-                        if (t && primaryNames[t] && pieces.indexOf(t) === -1) {
-                            pieces.push(t);
+                        // 完整路径 "固态电池/材料/..." → 只把一级送进下拉
+                        const root = p.split("/")[0].trim();
+                        if (root && primaryNames[root] && pieces.indexOf(root) === -1) {
+                            pieces.push(root);
                         }
                     });
                 });

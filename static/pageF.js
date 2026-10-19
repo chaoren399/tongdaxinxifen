@@ -316,14 +316,15 @@
         var cols = document.createElement("div");
         cols.className = "stock-detail-columns";
 
-        // 计算概念文本（拆分合并去重），后续概念独立列会用到
+        // 计算概念文本（拆分合并去重），后续概念独立列会用到。
+        // 概念串中可能含完整路径 "一级/二级/..."，这里只取一级概念展示。
         var conceptTexts = [];
         ["concept1", "concept2", "concept3", "concept4", "concept5"].forEach(function (k) {
             var raw = it[k] || "";
             if (!raw) return;
             raw.split(/[-，,、\s;；]+/).forEach(function (p) {
-                var t = p.trim();
-                if (t && conceptTexts.indexOf(t) === -1) conceptTexts.push(t);
+                var root = p.split("/")[0].trim();
+                if (root && conceptTexts.indexOf(root) === -1) conceptTexts.push(root);
             });
         });
 
@@ -481,9 +482,10 @@
                 var raw = it[k] || "";
                 if (!raw) return;
                 raw.split(/[-，,、\s;；]+/).forEach(function (p) {
-                    var t = p.trim();
-                    if (t && primaryNames[t] && conceptPieces.indexOf(t) === -1) {
-                        conceptPieces.push(t);
+                    // 完整路径如 "固态电池/材料/..." → 只把一级送进下拉
+                    var root = p.split("/")[0].trim();
+                    if (root && primaryNames[root] && conceptPieces.indexOf(root) === -1) {
+                        conceptPieces.push(root);
                     }
                 });
             });

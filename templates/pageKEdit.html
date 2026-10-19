@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>通达信行业分类 - 页面 K · 编辑「{{ concept.name }}」</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=48" />
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <h1>通达信行业分类 <span class="page-tag">页面 K · 概念编辑</span></h1>
+        </div>
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_d') }}">页面 D</a>
+            <a href="{{ url_for('page_h') }}">页面 H</a>
+            <a href="{{ url_for('page_j') }}">页面 J</a>
+            <a class="active" href="{{ url_for('page_k') }}">页面 K</a>
+            <a href="{{ url_for('page_l') }}">页面 L</a>
+            <a href="{{ url_for('page_p') }}">页面 P</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <div class="ke-head">
+            <div class="ke-title">
+                <span class="lvl-badge lvl-{{ concept.level }}">{{ concept.level }}级</span>
+                <h2 id="keName">{{ concept.name }}</h2>
+                <span class="ke-path">{{ concept.path }}</span>
+            </div>
+            <div class="ke-head-actions">
+                <button class="btn-secondary" id="backBtn" type="button">← 返回页面 K</button>
+            </div>
+        </div>
+
+        <!-- ===== 基本信息 ===== -->
+        <div class="industry-group-card ke-card">
+            <h3 class="ke-card-title">基本信息</h3>
+            <form id="baseForm" class="concept-add-form" autocomplete="off">
+                <div class="field">
+                    <label for="editParent">上级分类</label>
+                    <select id="editParent"></select>
+                </div>
+                <div class="field">
+                    <label for="editName">概念名称 <span class="req">*</span></label>
+                    <input id="editName" type="text" required />
+                </div>
+                <div class="field">
+                    <label for="editDesc">描述（可选）</label>
+                    <input id="editDesc" type="text" />
+                </div>
+                <div class="field-submit">
+                    <button type="submit" class="btn-primary" id="editSave">保存基本信息</button>
+                </div>
+            </form>
+            <label class="modal-check ke-check">
+                <input id="editSync" type="checkbox" checked />
+                同步修改股票数据（把股票概念串中的旧名称替换为新名称）
+            </label>
+        </div>
+
+        <!-- ===== 该概念下的股票 ===== -->
+        <div class="industry-group-card ke-card">
+            <div class="cs-manager">
+                <div class="cs-head">
+                    <span class="cs-title">该概念下的股票（<span id="csCount">0</span>）</span>
+                </div>
+
+                <div class="cs-chips" id="csChips">
+                    <span class="cs-loading">加载中...</span>
+                </div>
+
+                <div class="cs-add-zone" id="csAddZone">
+                    <div class="cs-add-row">
+                        <input id="csStockInput" type="text"
+                               list="csStockList"
+                               placeholder="输入股票名称（可自动补全），可加逗号批量" />
+                        <button class="btn-primary" id="csAddBtn" type="button">添加</button>
+                    </div>
+                    <datalist id="csStockList"></datalist>
+                    <p class="cs-tip">多个股票用逗号分隔可批量添加；已拥有该概念的股票会自动跳过。</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 下级分类 ===== -->
+        <div class="industry-group-card ke-card" id="subCard">
+            <div class="cs-manager" id="subManager" hidden>
+                <div class="cs-head">
+                    <span class="cs-title">该概念下的下级分类（<span id="subCount">0</span>）</span>
+                    <span class="sub-head-actions">
+                        <button class="btn-link" id="subStockAll" type="button" hidden>展开全部股票 ▾</button>
+                    </span>
+                </div>
+                <div class="sub-empty" id="subEmpty" hidden>暂无下级分类，可在下方新增。</div>
+                <div class="sub-list" id="subList" hidden></div>
+                <div class="sub-add-zone" id="subAddZone" hidden>
+                    <div class="sub-add-row">
+                        <select id="subAddParent"></select>
+                        <input id="subAddName" type="text" placeholder="新分类名称" />
+                        <input id="subAddDesc" type="text" placeholder="描述（可选）" />
+                        <button class="btn-primary" id="subAddBtn" type="button">新增下级</button>
+                    </div>
+                    <p class="cs-tip">上级分类可选本概念或其任意下级（最多五级）。名称改动保存后会同步股票概念串。</p>
+                </div>
+                <div class="sub-actions" id="subActions" hidden>
+                    <button class="btn-primary" id="subSaveBtn" type="button">保存下级修改</button>
+                    <label class="modal-check sub-check">
+                        <input id="subSync" type="checkbox" checked />
+                        同步修改股票数据
+                    </label>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+    var CONCEPTS = {{ concepts | tojson }};
+    var EDIT_ID = {{ concept.id }};
+    var EDIT_NAME = {{ concept.name | tojson }};
+    var EDIT_DESC = {{ (concept.description or '') | tojson }};
+    (function () {
+        // ---- API 封装 ----
+        function api(url, body) {
+            return fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(function (r) {
+                return r.json().then(function (j) { return { status: r.status, body: j }; });
+            });
+        }
+
+        // GET 请求（用于拉取最新概念树做局部刷新）
+        function apiGet(url) {
+            return fetch(url, { method: 'GET' }).then(function (r) {
+                return r.json().then(function (j) { return { status: r.status, body: j }; });
+            });
+        }
+
+        function toast(msg, ok) {
+            var t = document.createElement('div');
+            t.className = 'pagek-toast ' + (ok ? 'is-ok' : 'is-err');
+            t.textContent = msg;
+            document.body.appendChild(t);
+            setTimeout(function () { t.classList.add('show'); }, 10);
+            setTimeout(function () {
+                t.classList.remove('show');
+                setTimeout(function () { t.remove(); }, 300);
+            }, 2600);
+        }
+
+        // ---- 返回页面 K ----
+        document.getElementById('backBtn').addEventListener('click', function () {
+            window.location.href = '/pageK';
+        });
+
+        // ============ 基本信息 ============
+        document.getElementById('editName').value = EDIT_NAME;
+        document.getElementById('editDesc').value = EDIT_DESC;
+        document.getElementById('editSync').checked = true;
+        fillEditParent(EDIT_ID);
+
+        // 「上级分类」下拉：排除自身及所有子孙（防环），且只允许 level < 5 的作为上级
+        function fillEditParent(selfId) {
+            var sel = document.getElementById('editParent');
+            var banned = new Set([selfId]);
+            var changed = true;
+            while (changed) {
+                changed = false;
+                CONCEPTS.forEach(function (c) {
+                    if (c.parent_id && banned.has(c.parent_id) && !banned.has(c.id)) {
+                        banned.add(c.id);
+                        changed = true;
+                    }
+                });
+            }
+            var cur = null;
+            CONCEPTS.forEach(function (c) { if (c.id === selfId) cur = c.parent_id; });
+
+            sel.innerHTML = '';
+            var rootOpt = document.createElement('option');
+            rootOpt.value = '';
+            rootOpt.textContent = '（无 · 作为一级概念）';
+            sel.appendChild(rootOpt);
+            CONCEPTS.forEach(function (c) {
+                if (c.level >= 3) return;
+                if (banned.has(c.id)) return;
+                var opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.path;
+                if (cur !== null && cur !== undefined && cur === c.id) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
+
+        document.getElementById('baseForm').addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            var name = document.getElementById('editName').value.trim();
+            var desc = document.getElementById('editDesc').value.trim();
+            var sync = document.getElementById('editSync').checked;
+            if (!name) { toast('概念名称不能为空', false); return; }
+
+            var parentSel = document.getElementById('editParent');
+            var body = {
+                id: EDIT_ID,
+                name: name,
+                description: desc,
+                sync_stocks: sync,
+                parent_id: parentSel.value === '' ? null : parseInt(parentSel.value, 10)
+            };
+            var btn = document.getElementById('editSave');
+            btn.disabled = true;
+            api('/api/pageK/update_concept', body)
+                .then(function (resp) {
+                    if (resp.body && resp.body.ok) {
+                        var msg = '已更新概念「' + name + '」';
+                        if (resp.body.synced_stocks > 0) {
+                            msg += '，同步更新 ' + resp.body.synced_stocks + ' 只股票';
+                        }
+                        toast(msg, true);
+                        setTimeout(function () { window.location.reload(); }, 900);
+                    } else {
+                        toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                    }
+                })
+                .catch(function (e) { toast('请求失败：' + e, false); })
+                .finally(function () { btn.disabled = false; });
+        });
+
+        // ============ 下级分类管理 ============
+        var subManager = document.getElementById('subManager');
+        var subCard = document.getElementById('subCard');
+        var subStockAll = document.getElementById('subStockAll');
+        var subList = document.getElementById('subList');
+        var subEmpty = document.getElementById('subEmpty');
+        var subCount = document.getElementById('subCount');
+        var subAddZone = document.getElementById('subAddZone');
+        var subAddParent = document.getElementById('subAddParent');
+        var subAddName = document.getElementById('subAddName');
+        var subAddDesc = document.getElementById('subAddDesc');
+        var subAddBtn = document.getElementById('subAddBtn');
+        var subActions = document.getElementById('subActions');
+        var subSaveBtn = document.getElementById('subSaveBtn');
+        var subSync = document.getElementById('subSync');
+        var subRootId = EDIT_ID;
+        var subStockAllOpen = false;
+
+        // 缩进层级步长与概念最大层级（与后端 MAX_CONCEPT_LEVEL 一致）
+        var SUB_INDENT_STEP = 22;
+        var MAX_CONCEPT_LEVEL = 5;
+        // 重建树后待恢复展开的股票框 id
+        var pendingOpenStockIds = null;
+
+        // 收集某概念的所有子孙（保持 CONCEPTS 原有的树形顺序）
+        function collectDescendants(conceptId) {
+            var byParent = {};
+            CONCEPTS.forEach(function (c) {
+                var p = (c.parent_id === null || c.parent_id === undefined)
+                    ? 'null' : String(c.parent_id);
+                (byParent[p] = byParent[p] || []).push(c);
+            });
+            var seen = {};
+            var stack = [String(conceptId)];
+            while (stack.length) {
+                var pid = stack.pop();
+                (byParent[pid] || []).forEach(function (c) {
+                    if (seen[c.id]) return;
+                    seen[c.id] = true;
+                    stack.push(String(c.id));
+                });
+            }
+            return CONCEPTS.filter(function (c) { return seen[c.id]; });
+        }
+
+        function findConcept(cid) {
+            var hit = null;
+            CONCEPTS.forEach(function (c) { if (c.id === cid) hit = c; });
+            return hit;
+        }
+
+        function renderSubList(subs, rootLevel) {
+            rootLevel = rootLevel || 1;
+            subCount.textContent = subs.length;
+            subList.innerHTML = '';
+            if (!subs.length) {
+                subEmpty.hidden = false;
+                subList.hidden = true;
+                return;
+            }
+            subEmpty.hidden = true;
+            subList.hidden = false;
+
+            subs.forEach(function (c) {
+                var depth = Math.max(0, (c.level || 1) - rootLevel - 1);
+                var row = document.createElement('div');
+                row.className = 'sub-row' + (depth > 0 ? ' sub-row-nested' : '');
+                row.style.paddingLeft = (depth * SUB_INDENT_STEP) + 'px';
+                row.style.setProperty('--depth', depth);
+                row.setAttribute('data-depth', depth);
+                row.setAttribute('data-id', c.id);
+                row.setAttribute('data-name', c.name);
+
+                var lvl = document.createElement('span');
+                lvl.className = 'lvl-badge lvl-' + c.level;
+                lvl.textContent = c.level + '级';
+
+                var nameInput = document.createElement('input');
+                nameInput.type = 'text';
+                nameInput.className = 'sub-name';
+                nameInput.value = c.name;
+
+                // 该分类当前包含的股票数量，点击展开股票 chips
+                var stockBtn = document.createElement('button');
+                stockBtn.type = 'button';
+                stockBtn.className = 'sub-stock-btn';
+                stockBtn.textContent = '股票 …';
+                stockBtn.title = '查看/隐藏「' + c.name + '」当前包含的股票';
+                stockBtn.setAttribute('data-for', c.id);
+
+                // 末级分类（其下再无子分类）才支持添加股票
+                var isLeaf = !subs.some(function (s) { return s.parent_id === c.id; });
+                if (isLeaf) {
+                    stockBtn.classList.add('is-leaf');
+                    stockBtn.title = '查看「' + c.name + '」的股票，并可添加新股票';
+                }
+
+                // 「+子级」：任意未满五级的分类都可继续往下加子级
+                var canAddChild = (c.level || 1) < MAX_CONCEPT_LEVEL;
+                var addChildBtn = document.createElement('button');
+                addChildBtn.type = 'button';
+                addChildBtn.className = 'sub-addchild-btn';
+                addChildBtn.textContent = '+子级';
+                addChildBtn.hidden = !canAddChild;
+                if (canAddChild) {
+                    addChildBtn.title = '在「' + c.name + '」下新增子分类';
+                }
+
+                // 内联「新增子级」输入行：位于该分类行下方，缩进更深一层
+                var childZone = document.createElement('div');
+                childZone.className = 'sub-addchild-zone';
+                childZone.id = 'addChildZone' + c.id;
+                childZone.hidden = true;
+                childZone.style.paddingLeft = ((depth + 1) * SUB_INDENT_STEP) + 'px';
+
+                if (canAddChild) {
+                    childZone.appendChild(buildChildAdder(c, childZone, addChildBtn));
+                    addChildBtn.addEventListener('click', function () {
+                        childZone.hidden = !childZone.hidden;
+                        addChildBtn.classList.toggle('is-open', !childZone.hidden);
+                        if (!childZone.hidden) {
+                            var inp = childZone.querySelector('.sub-addchild-input');
+                            if (inp) inp.focus();
+                        }
+                    });
+                }
+
+                // 股票展示区（逻辑图：概念 → 股票）
+                var stockBox = document.createElement('div');
+                stockBox.className = 'sub-stocks';
+                stockBox.id = 'subStocks' + c.id;
+                stockBox.hidden = true;
+                stockBox.style.paddingLeft = ((depth + 1) * SUB_INDENT_STEP) + 'px';
+
+                var chipsWrap = document.createElement('div');
+                chipsWrap.className = 'sub-stocks-chips';
+                chipsWrap.innerHTML = '<span class="sub-stocks-loading">加载中…</span>';
+                stockBox.appendChild(chipsWrap);
+
+                // 末级分类追加「添加股票」输入区
+                if (isLeaf) {
+                    stockBox.appendChild(buildStockAdder(c, subs));
+                }
+
+                stockBtn.addEventListener('click', function () {
+                    stockBox.hidden = !stockBox.hidden;
+                    stockBtn.classList.toggle('is-open', !stockBox.hidden);
+                    var lbl = stockBtn.getAttribute('data-label') || '股票 …';
+                    stockBtn.textContent = (stockBox.hidden ? '▸ ' : '▾ ') + lbl;
+                });
+
+                var delBtn = document.createElement('button');
+                delBtn.type = 'button';
+                delBtn.className = 'sub-del';
+                delBtn.textContent = '删除';
+                delBtn.title = '删除「' + c.name + '」及其所有下级';
+                delBtn.addEventListener('click', function () {
+                    if (!confirm('确定删除分类「' + c.name + '」及其所有下级？')) return;
+                    delBtn.disabled = true;
+                    api('/api/pageK/delete_concept', { id: c.id, sync_stocks: subSync.checked })
+                        .then(function (resp) {
+                            if (resp.body && resp.body.ok) {
+                                var names = resp.body.names || [c.name];
+                                toast('已删除「' + names.join('、') + '」', true);
+                                refreshSubTree();
+                            } else {
+                                toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                                delBtn.disabled = false;
+                            }
+                        })
+                        .catch(function (e) {
+                            toast('请求失败：' + e, false);
+                            delBtn.disabled = false;
+                        });
+                });
+
+                row.appendChild(lvl);
+                row.appendChild(nameInput);
+                row.appendChild(addChildBtn);
+                row.appendChild(stockBtn);
+                row.appendChild(delBtn);
+                subList.appendChild(row);
+                subList.appendChild(stockBox);
+                subList.appendChild(childZone);
+            });
+
+            loadSubStocks(subs);
+        }
+
+        // 内联「新增子级」输入区：给指定分类直接添加子分类
+        function buildChildAdder(parent, zone, toggleBtn) {
+            var wrap = document.createElement('div');
+            wrap.className = 'sub-addchild-row';
+
+            var input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'sub-addchild-input';
+            input.placeholder = '在「' + parent.name + '」下新增子分类';
+
+            var addBtn = document.createElement('button');
+            addBtn.type = 'button';
+            addBtn.className = 'sub-addchild-do';
+            addBtn.textContent = '添加';
+
+            var cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'sub-addchild-cancel';
+            cancelBtn.textContent = '取消';
+
+            function close() {
+                zone.hidden = true;
+                if (toggleBtn) toggleBtn.classList.remove('is-open');
+                input.value = '';
+            }
+
+            function doAdd() {
+                var name = (input.value || '').trim();
+                if (!name) { toast('请输入子分类名称', false); return; }
+                addBtn.disabled = true;
+                api('/api/pageK/add_concept', {
+                    name: name,
+                    description: '',
+                    parent_id: parent.id
+                })
+                .then(function (resp) {
+                    if (resp.body && resp.body.ok) {
+                        toast('已在「' + parent.name + '」下新增「' + name + '」', true);
+                        refreshSubTree();
+                    } else {
+                        toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                    }
+                })
+                .catch(function (e) { toast('请求失败：' + e, false); })
+                .finally(function () { addBtn.disabled = false; });
+            }
+
+            addBtn.addEventListener('click', doAdd);
+            cancelBtn.addEventListener('click', close);
+            input.addEventListener('keydown', function (ev) {
+                if (ev.key === 'Enter') { ev.preventDefault(); doAdd(); }
+                if (ev.key === 'Escape') { ev.preventDefault(); close(); }
+            });
+
+            wrap.appendChild(input);
+            wrap.appendChild(addBtn);
+            wrap.appendChild(cancelBtn);
+            return wrap;
+        }
+
+        // 局部刷新下级分类树：拉取最新概念后重建列表，保持展开状态，避免整页 reload
+        function refreshSubTree() {
+            // 记录当前展开的股票框，重建后恢复
+            pendingOpenStockIds = {};
+            subList.querySelectorAll('.sub-stock-btn.is-open').forEach(function (b) {
+                pendingOpenStockIds[b.getAttribute('data-for')] = true;
+            });
+            var rootId = subRootId;
+
+            apiGet('/api/pageK/concepts')
+                .then(function (resp) {
+                    if (!(resp.body && resp.body.ok)) {
+                        toast((resp.body && resp.body.error) || '刷新分类失败', false);
+                        pendingOpenStockIds = null;
+                        return;
+                    }
+                    CONCEPTS = resp.body.concepts || CONCEPTS;
+
+                    var subs = collectDescendants(rootId);
+                    var root = findConcept(rootId);
+                    var rootLevel = root ? (root.level || 1) : 1;
+
+                    subCount.textContent = subs.length;
+                    subEmpty.hidden = subs.length > 0;
+                    subManager.hidden = false;
+                    subCard.hidden = false;
+
+                    renderSubList(subs, rootLevel);   // 内部会触发 loadSubStocks
+                    fillSubAddParent(root, subs);
+
+                    var hasSubs = subs.length > 0;
+                    subAddZone.hidden = false;
+                    subActions.hidden = !hasSubs;
+                    subStockAll.hidden = !hasSubs;
+                })
+                .catch(function (e) {
+                    toast('刷新分类失败：' + e, false);
+                    pendingOpenStockIds = null;
+                });
+        }
+
+        // 股票框展开状态的恢复（loadSubStocks 完成后调用）
+        function applyPendingOpenStockIds() {
+            if (!pendingOpenStockIds) return;
+            var ids = pendingOpenStockIds;
+            pendingOpenStockIds = null;
+            Object.keys(ids).forEach(function (id) {
+                var btn = subList.querySelector('.sub-stock-btn[data-for="' + id + '"]');
+                var box = document.getElementById('subStocks' + id);
+                if (!btn || !box || btn.disabled) return;
+                box.hidden = false;
+                btn.classList.add('is-open');
+                btn.textContent = '▾ ' + (btn.getAttribute('data-label') || '');
+            });
+        }
+
+        // 末级分类：构造「添加股票」输入区（支持逗号批量）
+        function buildStockAdder(c, subs) {
+            var zone = document.createElement('div');
+            zone.className = 'sub-stocks-add';
+
+            var input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'sub-stocks-input';
+            input.setAttribute('list', 'csStockList');
+            input.placeholder = '添加股票名称（多个用逗号分隔）';
+
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'sub-stocks-add-btn';
+            btn.textContent = '添加';
+
+            function doAdd() {
+                var raw = (input.value || '').trim();
+                var names = raw
+                    .split(/[,，、;；\n]+/)
+                    .map(function (s) { return s.trim(); })
+                    .filter(function (s) { return !!s; });
+                if (!names.length) { toast('请输入股票名称', false); return; }
+
+                btn.disabled = true;
+                api('/api/pageK/add_stocks_to_concept', { name: c.name, stocks: names })
+                    .then(function (resp) {
+                        if (resp.body && resp.body.ok) {
+                            var added = resp.body.added || [];
+                            var skipped = resp.body.skipped || [];
+                            var notFound = resp.body.not_found || [];
+                            var target = resp.body.target || c.name;
+                            var msg = '已添加 ' + added.length + ' 只股票（概念记为「' + target + '」）';
+                            if (skipped.length) msg += '；已跳过（已拥有）：' + skipped.join('、');
+                            if (notFound.length) msg += '；未找到：' + notFound.join('、');
+                            toast(msg, added.length > 0);
+                            input.value = '';
+                            refreshSubTree();
+                        } else {
+                            toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                        }
+                    })
+                    .catch(function (e) { toast('请求失败：' + e, false); })
+                    .finally(function () { btn.disabled = false; });
+            }
+
+            btn.addEventListener('click', doAdd);
+            input.addEventListener('keydown', function (ev) {
+                if (ev.key === 'Enter') { ev.preventDefault(); doAdd(); }
+            });
+
+            zone.appendChild(input);
+            zone.appendChild(btn);
+            return zone;
+        }
+
+        // 批量拉取这些分类各自包含的股票，填充「概念 → 股票」逻辑图
+        var subStocksLoaded = 0;
+
+        function loadSubStocks(subs) {
+            var names = subs.map(function (c) { return c.name; });
+            if (!names.length) return;
+            var token = ++subStocksLoaded;
+
+            api('/api/pageK/concept_stocks_map', { names: names })
+                .then(function (resp) {
+                    if (token !== subStocksLoaded) return;   // 已有更新请求，丢弃旧结果
+                    var map = (resp.body && resp.body.map) || {};
+                    subs.forEach(function (c) {
+                        var list = map[c.name] || [];
+                        var btn = subList.querySelector('.sub-stock-btn[data-for="' + c.id + '"]');
+                        var box = document.getElementById('subStocks' + c.id);
+                        if (!btn || !box) return;
+
+                        // 末级分类即使 0 只股票也可展开（用于添加）
+                        var isLeafBtn = btn.classList.contains('is-leaf');
+                        btn.setAttribute('data-label', '股票 ' + list.length);
+                        btn.textContent = (box.hidden ? '▸ ' : '▾ ') + ('股票 ' + list.length);
+                        btn.disabled = (list.length === 0 && !isLeafBtn);
+
+                        var chips = box.querySelector('.sub-stocks-chips');
+                        if (!chips) return;
+                        chips.innerHTML = '';
+                        if (!list.length) {
+                            var none = document.createElement('span');
+                            none.className = 'sub-stocks-none';
+                            none.textContent = '暂无股票';
+                            chips.appendChild(none);
+                            return;
+                        }
+                        list.forEach(function (sn) {
+                            var chip = document.createElement('span');
+                            chip.className = 'sub-stock-chip';
+                            chip.textContent = sn;
+                            chips.appendChild(chip);
+                        });
+                    });
+                    applyPendingOpenStockIds();
+                })
+                .catch(function () {
+                    subList.querySelectorAll('.sub-stock-btn').forEach(function (b) {
+                        b.setAttribute('data-label', '股票 -');
+                        b.textContent = '股票 -';
+                    });
+                    applyPendingOpenStockIds();
+                });
+        }
+
+        // 统一切换全部股票展示
+        function setAllSubStocks(open) {
+            subList.querySelectorAll('.sub-stock-btn').forEach(function (btn) {
+                if (btn.disabled) return;
+                var box = document.getElementById(
+                    'subStocks' + btn.getAttribute('data-for')
+                );
+                if (!box) return;
+                box.hidden = !open;
+                btn.classList.toggle('is-open', open);
+                btn.textContent = (open ? '▾ ' : '▸ ') + (btn.getAttribute('data-label') || '');
+            });
+        }
+
+        // 新增下级时的「上级分类」下拉：本概念 + 其所有未满五级的下级
+        function fillSubAddParent(root, subs) {
+            subAddParent.innerHTML = '';
+            if (root && (root.level || 1) < 5) {
+                var opt = document.createElement('option');
+                opt.value = root.id;
+                opt.textContent = (root.name || '') + '（本级）';
+                subAddParent.appendChild(opt);
+            }
+            subs.forEach(function (c) {
+                if ((c.level || 1) >= 5) return;
+                var o = document.createElement('option');
+                o.value = c.id;
+                o.textContent = c.path;
+                subAddParent.appendChild(o);
+            });
+        }
+
+        subStockAll.addEventListener('click', function () {
+            subStockAllOpen = !subStockAllOpen;
+            setAllSubStocks(subStockAllOpen);
+            subStockAll.textContent = subStockAllOpen ? '收起全部股票 ▴' : '展开全部股票 ▾';
+        });
+
+        subAddBtn.addEventListener('click', function () {
+            var name = subAddName.value.trim();
+            if (!name) { toast('请输入分类名称', false); return; }
+            if (!subAddParent.value) { toast('没有可选的上级分类', false); return; }
+            subAddBtn.disabled = true;
+            api('/api/pageK/add_concept', {
+                name: name,
+                description: subAddDesc.value.trim(),
+                parent_id: parseInt(subAddParent.value, 10)
+            })
+            .then(function (resp) {
+                if (resp.body && resp.body.ok) {
+                    var msg = '已新增下级分类「' + name + '」';
+                    if (resp.body.parent_id === EDIT_ID) {
+                        msg += '，隶属于「' + EDIT_NAME + '」';
+                    }
+                    toast(msg, true);
+                    refreshSubTree();
+                } else {
+                    toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                }
+            })
+            .catch(function (e) { toast('请求失败：' + e, false); })
+            .finally(function () { subAddBtn.disabled = false; });
+        });
+        subAddName.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); subAddBtn.click(); }
+        });
+
+        subSaveBtn.addEventListener('click', function () {
+            var rows = subList.querySelectorAll('.sub-row');
+            if (!rows.length) { toast('没有下级分类需要保存', false); return; }
+            var items = [];
+            var hasEmpty = false;
+            rows.forEach(function (row) {
+                var nameEl = row.querySelector('.sub-name');
+                var nm = (nameEl.value || '').trim();
+                if (!nm) hasEmpty = true;
+                // 不传 description：后端遇到 None 会保留原有描述
+                items.push({
+                    id: parseInt(row.getAttribute('data-id'), 10),
+                    name: nm
+                });
+            });
+            if (hasEmpty) { toast('下级分类名称不能为空', false); return; }
+
+            subSaveBtn.disabled = true;
+            api('/api/pageK/update_concepts_batch', {
+                items: items,
+                sync_stocks: subSync.checked
+            })
+            .then(function (resp) {
+                if (resp.body && resp.body.ok) {
+                    var msg = '已保存 ' + resp.body.updated + ' 个下级分类';
+                    if (resp.body.synced_stocks > 0) {
+                        msg += '，同步更新 ' + resp.body.synced_stocks + ' 只股票';
+                    }
+                    var failed = resp.body.failed || [];
+                    if (failed.length) {
+                        msg += '；失败 ' + failed.length + ' 项：' +
+                            failed.map(function (f) { return f.error; }).join('；');
+                    }
+                    toast(msg, failed.length === 0);
+                    refreshSubTree();
+                } else {
+                    toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                }
+            })
+            .catch(function (e) { toast('请求失败：' + e, false); })
+            .finally(function () { subSaveBtn.disabled = false; });
+        });
+
+        // 初始化下级分类区块（本页常驻展开）
+        function initSub() {
+            var subs = collectDescendants(EDIT_ID);
+            var root = findConcept(EDIT_ID);
+            var rootLevel = root ? (root.level || 1) : 1;
+            // 只有还能挂下级（level<5）或已有下级时才显示该区块
+            var show = (rootLevel < MAX_CONCEPT_LEVEL || subs.length > 0);
+            subCard.hidden = !show;
+            subManager.hidden = !show;
+            if (!show) return;
+
+            renderSubList(subs, rootLevel);
+            fillSubAddParent(root, subs);
+            subAddZone.hidden = false;
+            subActions.hidden = subs.length === 0;
+            subStockAll.hidden = subs.length === 0;
+            loadAllStocks();   // 末级分类「添加股票」需要股票名自动补全数据
+        }
+
+        // ============ 概念下的股票管理 ============
+        var csChips = document.getElementById('csChips');
+        var csCount = document.getElementById('csCount');
+        var csStockInput = document.getElementById('csStockInput');
+        var csStockList = document.getElementById('csStockList');
+        var csAddBtn = document.getElementById('csAddBtn');
+        var csCurrentName = EDIT_NAME;
+        var allStocksCache = null; // 全股票缓存（datalist）
+
+        function loadConceptStocks(name) {
+            csCurrentName = name;
+            csChips.innerHTML = '<span class="cs-loading">加载中...</span>';
+            csCount.textContent = '0';
+            fetch('/api/pageK/concept_stocks?name=' + encodeURIComponent(name))
+                .then(function (r) { return r.json(); })
+                .then(function (j) {
+                    if (!j.ok) {
+                        csChips.innerHTML = '<span class="cs-err">' + (j.error || '加载失败') + '</span>';
+                        return;
+                    }
+                    renderChips(j.stocks || []);
+                })
+                .catch(function (e) {
+                    csChips.innerHTML = '<span class="cs-err">请求失败：' + e + '</span>';
+                });
+        }
+
+        function renderChips(stocks) {
+            csChips.innerHTML = '';
+            csCount.textContent = stocks.length;
+            if (!stocks.length) {
+                csChips.innerHTML = '<span class="cs-empty">暂无股票使用该概念，可在下方添加</span>';
+                return;
+            }
+            stocks.forEach(function (s) {
+                var chip = document.createElement('span');
+                chip.className = 'cs-chip';
+                chip.title = s.primary + ' / ' + s.secondary + ' / ' + s.tertiary
+                    + (s.code ? ('  (' + s.code + ')') : '');
+                var label = document.createElement('span');
+                label.textContent = s.name;
+                var x = document.createElement('button');
+                x.type = 'button';
+                x.className = 'cs-chip-x';
+                x.textContent = '×';
+                x.title = '从该概念移除此股票';
+                x.addEventListener('click', function () {
+                    if (!confirm('确定从概念「' + csCurrentName + '」移除股票「' + s.name + '」？')) return;
+                    x.disabled = true;
+                    api('/api/pageK/remove_stock_from_concept', { name: csCurrentName, stock: s.name })
+                        .then(function (resp) {
+                            if (resp.body && resp.body.ok) {
+                                toast('已从概念「' + csCurrentName + '」移除 ' + s.name, true);
+                                loadConceptStocks(csCurrentName);
+                            } else {
+                                toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                                x.disabled = false;
+                            }
+                        })
+                        .catch(function (e) { toast('请求失败：' + e, false); x.disabled = false; });
+                });
+                chip.appendChild(label);
+                chip.appendChild(x);
+                csChips.appendChild(chip);
+            });
+        }
+
+        function loadAllStocks() {
+            if (allStocksCache !== null) return;
+            fetch('/api/pageK/all_stocks')
+                .then(function (r) { return r.json(); })
+                .then(function (j) {
+                    if (!j.ok) return;
+                    allStocksCache = j.stocks || [];
+                    csStockList.innerHTML = '';
+                    allStocksCache.forEach(function (s) {
+                        var opt = document.createElement('option');
+                        opt.value = s.name;
+                        opt.label = s.code ? (s.name + '  (' + s.code + ')') : s.name;
+                        csStockList.appendChild(opt);
+                    });
+                })
+                .catch(function () { /* 静默失败 */ });
+        }
+
+        csAddBtn.addEventListener('click', function () {
+            var raw = csStockInput.value.trim();
+            if (!raw) { toast('请输入股票名称', false); return; }
+            var names = raw
+                .split(/[,，、;；\n]+/)
+                .map(function (s) { return s.trim(); })
+                .filter(Boolean);
+            if (!names.length) return;
+            csAddBtn.disabled = true;
+            api('/api/pageK/add_stocks_to_concept', { name: csCurrentName, stocks: names })
+                .then(function (resp) {
+                    if (resp.body && resp.body.ok) {
+                        var target = resp.body.target || csCurrentName;
+                        var msg = '已添加 ' + resp.body.added.length + ' 只股票（概念记为「' + target + '」）';
+                        if (resp.body.skipped.length) {
+                            msg += '，跳过已拥有：' + resp.body.skipped.join('、');
+                        }
+                        if (resp.body.not_found.length) {
+                            msg += '，未找到：' + resp.body.not_found.join('、');
+                        }
+                        toast(msg, resp.body.added.length > 0);
+                        csStockInput.value = '';
+                        loadConceptStocks(csCurrentName);
+                    } else {
+                        toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                    }
+                })
+                .catch(function (e) { toast('请求失败：' + e, false); })
+                .finally(function () { csAddBtn.disabled = false; });
+        });
+        csStockInput.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); csAddBtn.click(); }
+        });
+
+        // ---- 启动 ----
+        loadConceptStocks(EDIT_NAME);
+        initSub();
+    })();
+    </script>
+</body>
+</html>

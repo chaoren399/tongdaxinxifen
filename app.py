@@ -10,6 +10,7 @@
 import csv  # noqa: F401  （保留 csv 以便兼容旧代码）
 import gzip
 import os
+import re
 import threading
 import time
 import uuid
@@ -720,24 +721,17 @@ def page_j():
                         st.get("concept4", ""),
                         st.get("concept5", ""),
                     )
-                    has_any = False
+                    # 只统计一级概念：完整路径 "固态电池/材料/锰矿" 归到
+                    # 一级 "固态电池"；同一股票的同名概念只计一次
+                    roots = set()
                     for raw in fields:
-                        # 兼容 - , ， 、 空格 ; 等多种分隔符
-                        normalized = (
-                            (raw or "")
-                            .replace("-", ",")
-                            .replace("，", ",")
-                            .replace("、", ",")
-                            .replace(" ", ",")
-                            .replace(";", ",")
-                        )
-                        for piece in normalized.split(","):
-                            piece = piece.strip()
-                            if not piece:
-                                continue
-                            counts[piece] = counts.get(piece, 0) + 1
-                            has_any = True
-                    if has_any:
+                        for piece in re.split(r"[-，,、\s;；]+", raw or ""):
+                            root = piece.split("/")[0].strip()
+                            if root:
+                                roots.add(root)
+                    for root in roots:
+                        counts[root] = counts.get(root, 0) + 1
+                    if roots:
                         total_stocks_with_concept += 1
 
     # 按股票数倒序，同数量按名称升序
@@ -762,9 +756,10 @@ def page_l():
     左列为一级概念（含股票数统计，点击可跳页面 H），右列为嵌套的
     子概念层级 + 该概念下的股票（仅名称）。
     """
-    from db import _split_concept_raw, list_concepts
+    from db import _split_concept_segments, list_concepts
 
-    # 1) 按概念名聚合股票（仅名称）
+    # 1) 按概念名聚合股票（仅名称）。
+    #    概念串中可能含完整路径 "一级/二级/..."，需展开成各级概念。
     stocks_by_concept: Dict[str, list] = {}
     stock_names = set()
     for primary_name, primary in INDUSTRY_TREE.items():
@@ -775,7 +770,7 @@ def page_l():
                     seen = set()
                     for key in ("concept1", "concept2", "concept3",
                                 "concept4", "concept5"):
-                        for piece in _split_concept_raw(st.get(key)):
+                        for piece in _split_concept_segments(st.get(key)):
                             if piece not in seen:
                                 seen.add(piece)
                                 stocks_by_concept.setdefault(piece, []).append(
@@ -849,21 +844,15 @@ def _count_desc(node):
 
 def _concept_match(raw, concept_name):
     """
-    判断字段值 raw（可能用 - , ， 、 空格 ; 等分隔）中是否包含概念 concept_name。
+    判断字段值 raw（可能用 - , ， 、 空格 ; 等分隔，且每项可能是
+    "一级/二级/..." 的完整路径）中是否包含概念 concept_name。
     """
     if not raw or not concept_name:
         return False
-    normalized = (
-        raw.replace("-", ",")
-           .replace("，", ",")
-           .replace("、", ",")
-           .replace(" ", ",")
-           .replace(";", ",")
-    )
-    for piece in normalized.split(","):
-        if piece.strip() == concept_name:
-            return True
-    return False
+    # 复用 db 的切分逻辑：概念间按 - ， 、 空格 ; 切分，
+    # 路径内部按 / 展开成各级，任一级命中即算匹配
+    from db import _split_concept_segments
+    return concept_name in _split_concept_segments(raw)
 
 
 @app.route("/pageH")
@@ -875,6 +864,7 @@ def page_h():
     name = (request.args.get("name") or "").strip()
     concept = None
     stocks = []
+    tree = {}  # 一级 -> 二级 -> 三级 -> [股票]，用于层级表格展示
     if name:
         for primary_name, primary in INDUSTRY_TREE.items():
             for secondary_name, secondary in primary["secondaries"].items():
@@ -886,16 +876,19 @@ def page_h():
                             for k in ("concept1", "concept2", "concept3", "concept4", "concept5")
                         )
                         if matched:
-                            stocks.append(
-                                {
-                                    "name": st["name"],
-                                    "code": st["code"],
-                                    "primary": primary_name,
-                                    "secondary": secondary_name,
-                                    "tertiary": tertiary_name,
-                                    "concept1": st.get("concept1", ""),
-                                }
-                            )
+                            item = {
+                                "name": st["name"],
+                                "code": st["code"],
+                                "primary": primary_name,
+                                "secondary": secondary_name,
+                                "tertiary": tertiary_name,
+                                "concept1": st.get("concept1", ""),
+                            }
+                            stocks.append(item)
+                            tree.setdefault(primary_name, {}) \
+                                .setdefault(secondary_name, {}) \
+                                .setdefault(tertiary_name, []) \
+                                .append(item)
         # 概念统计：哪些概念在数据库中存在，方便用 existing
         # 这里仅取当前 name 作为唯一展示概念
         concept = {
@@ -906,35 +899,50 @@ def page_h():
     # 按股票名称升序，便于查找
     stocks.sort(key=lambda s: s["name"])
 
-    # 构造三级行业下拉选项（供「添加概念」面板使用）
-    groups_full, _ = _build_full_groups_cached()
-    tertiary_options = []
-    for g in groups_full:
-        for s in g["secondaries"]:
-            for t in s["tertiaries"]:
-                tertiary_options.append({
-                    "value": f'{g["name"]}||{s["name"]}||{t["name"]}',
-                    "label": f'{g["name"]} / {s["name"]} / {t["name"]}',
+    # 聚合成「一级 → 二级 → 三级 → 股票」层级结构，供层级表格（rowspan 合并）展示
+    groups = []
+    for primary_name, secondaries_map in tree.items():
+        g_tertiary = 0
+        g_stock = 0
+        secondaries = []
+        for secondary_name, tertiaries_map in secondaries_map.items():
+            s_stock = 0
+            tertiaries = []
+            for tertiary_name, st_list in tertiaries_map.items():
+                st_list = sorted(st_list, key=lambda s: s["name"])
+                tertiaries.append({
+                    "name": tertiary_name,
+                    "stockCount": len(st_list),
+                    "stocks": st_list,
                 })
+                s_stock += len(st_list)
+            secondaries.append({
+                "name": secondary_name,
+                "tertiaryCount": len(tertiaries),
+                "stockCount": s_stock,
+                "tertiaries": tertiaries,
+            })
+            g_tertiary += len(tertiaries)
+            g_stock += s_stock
+        groups.append({
+            "name": primary_name,
+            "secondaryCount": len(secondaries),
+            "tertiaryCount": g_tertiary,
+            "stockCount": g_stock,
+            "secondaries": secondaries,
+        })
 
-    # 按三级行业路径聚合股票名称（用于 datalist 自动补全）
-    stocks_by_tertiary = {}
-    for primary_name, primary in INDUSTRY_TREE.items():
-        for secondary_name, secondary in primary["secondaries"].items():
-            for tertiary_name, tertiary in secondary["tertiaries"].items():
-                key = f"{primary_name}||{secondary_name}||{tertiary_name}"
-                stocks_by_tertiary[key] = [
-                    {"name": st["name"], "code": st.get("code", "")}
-                    for st in tertiary["stocks"]
-                ]
+    if concept is not None:
+        concept["primaryCount"] = len(groups)
+        concept["secondaryCount"] = sum(g["secondaryCount"] for g in groups)
+        concept["tertiaryCount"] = sum(g["tertiaryCount"] for g in groups)
 
     return render_template(
         "pageH.html",
         concept=concept,
         stocks=stocks,
+        groups=groups,
         query_name=name,
-        tertiary_options=tertiary_options,
-        stocks_by_tertiary=stocks_by_tertiary,
     )
 
 
@@ -1758,6 +1766,26 @@ def page_k():
     return render_template("pageK.html", concepts=concepts)
 
 
+@app.route("/pageK/edit/<int:cid>")
+def page_k_edit(cid):
+    """页面 K 的概念编辑专用页。
+
+    原先点击「编辑」是在 pageK 里弹窗操作，现改为跳转到本独立页面，
+    页面自带「基本信息 / 隶属股票 / 下级概念」三块编辑区。
+    """
+    from db import list_concepts
+
+    concepts = list_concepts()
+    concept = None
+    for c in concepts:
+        if int(c["id"]) == int(cid):
+            concept = c
+            break
+    if concept is None:
+        abort(404)
+    return render_template("pageKEdit.html", concept=concept, concepts=concepts)
+
+
 @app.route("/api/pageK/add_concept", methods=["POST"])
 def api_page_k_add_concept():
     """新增概念 {"name": "...", "description": "...", "parent_id": 1 或 null}"""
@@ -2040,15 +2068,16 @@ def api_page_k_add_stocks_to_concept():
     请求: {"name": "正极", "stocks": ["股票A", "股票B"]}
     - 概念不存在于概念表时自动创建
     - 已拥有该概念的股票自动跳过
-    - 重要：股票详情只记录「一级概念」。若传入的是子概念（如"正极"），
-      实际写入股票的是其所属的一级概念（如"固态电池"），子概念名不会写入股票详情。
-    返回 {"ok": true, "target": "固态电池", "added": [...], "skipped": [...], "not_found": [...]}
+    - 写入格式：该概念的完整路径（一级/二级/.../name），
+      如 "正极" → "固态电池/材料/正极"。
+      一级概念会写成自身（"固态电池"）。
+    返回 {"ok": true, "target": "固态电池/材料/正极", "added": [...], "skipped": [...], "not_found": [...]}
     """
     from db import (
         _split_concept_raw,
         add_concept,
         update_stock_concept,
-        resolve_primary_concept,
+        build_concept_path,
     )
     data = request.get_json(silent=True) or {}
     concept_name = (data.get("name") or "").strip()
@@ -2071,8 +2100,8 @@ def api_page_k_add_stocks_to_concept():
     except Exception as e:
         return jsonify({"ok": False, "error": f"数据库写入失败：{e}"}), 500
 
-    # 股票详情只记录一级概念：子概念会解析为其所属的一级概念再写入
-    target_concept = resolve_primary_concept(concept_name) or concept_name
+    # 写入完整路径：一级概念=自身，子概念="一级/.../name"
+    target_concept = build_concept_path(concept_name) or concept_name
 
     added, skipped, not_found = [], [], []
     for sn in stock_names:

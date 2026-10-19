@@ -508,18 +508,31 @@ def get_concept_stocks_map(names=None, db_path=None):
         for n in wanted:
             result[n] = []
     for row in cur.fetchall():
-        for piece in _split_concept_raw(row["concept"]):
-            if wanted is not None and piece not in wanted:
+        # 用「展开后的各级概念名」匹配：挂在子级路径下的股票，
+        # 其路径上的每一级概念都能命中
+        segs = _split_concept_segments(row["concept"])
+        for seg in segs:
+            if wanted is not None and seg not in wanted:
                 continue
-            result.setdefault(piece, []).append(row["stock_name"])
+            result.setdefault(seg, []).append(row["stock_name"])
     for k in result:
         result[k] = sorted(set(result[k]))
     conn.close()
     return result
 
 
+# 概念完整路径的内部层级分隔符，如 "固态电池/材料/负极/硅氧负极"。
+# 注意：概念之间仍用 '-' 等分隔（见 _split_concept_raw），
+# '/' 只出现在「一条概念 = 多级路径」的内部，两者不冲突。
+CONCEPT_PATH_SEP = "/"
+
+
 def _split_concept_raw(raw):
-    """按 - , ， 、 空格 ; 等分隔符切分概念串。"""
+    """按 - , ， 、 空格 ; 等分隔符切分概念串。
+
+    每个片段可能是一个概念名，也可能是多级概念的完整路径
+    （如 "固态电池/材料/负极/硅氧负极"，路径内部用 '/' 连接）。
+    """
     if not raw:
         return []
     norm = (
@@ -530,6 +543,24 @@ def _split_concept_raw(raw):
            .replace(";", ",")
     )
     return [p.strip() for p in norm.split(",") if p.strip()]
+
+
+def _split_concept_segments(raw):
+    """把概念串展开成所有层级的概念名（含完整路径内部的各级）。
+
+    例："固态电池/材料/负极-机器人" → ["固态电池", "材料", "负极", "机器人"]
+    用于概念匹配 / 使用次数统计：挂在 5 级概念下的股票，
+    其 1~5 级各级概念都能命中。
+    """
+    segs = []
+    seen = set()
+    for item in _split_concept_raw(raw):
+        for seg in item.split(CONCEPT_PATH_SEP):
+            seg = seg.strip()
+            if seg and seg not in seen:
+                seen.add(seg)
+                segs.append(seg)
+    return segs
 
 
 def get_conn(db_path=None):
@@ -925,6 +956,43 @@ def delete_stock(stock_name, tertiary_id=None, db_path=None):
         conn.close()
 
 
+def _merge_concept_parts(concept_parts, old_raw):
+    """把提交的概念（可能只是一级名）与旧值合并，尽量保留已有的深层路径。
+
+    页面 E/F 的概念下拉只有一级概念，若用户提交「固态电池」而旧值是
+    「固态电池/材料/负极/硅氧负极」，直接覆盖会丢掉 4 级归属，
+    因此这里保留更细的那条路径。
+    """
+    # 旧值里按「一级概念名」索引最细的一条（含路径的优先于裸一级名）
+    old_by_root = {}
+    for item in _split_concept_raw(old_raw):
+        segs = [s.strip() for s in item.split(CONCEPT_PATH_SEP) if s.strip()]
+        if not segs:
+            continue
+        root = segs[0]
+        prev = old_by_root.get(root)
+        if prev is None or len(segs) > len(prev):
+            old_by_root[root] = segs
+
+    final = []
+    for p in concept_parts:
+        segs = [s.strip() for s in p.split(CONCEPT_PATH_SEP) if s.strip()]
+        if not segs:
+            continue
+        old = old_by_root.get(segs[0])
+        # 提交的是一级概念，但股票已挂了该一级下更细的路径 → 保留路径
+        if len(segs) == 1 and old and len(old) > 1:
+            final.append(CONCEPT_PATH_SEP.join(old))
+        else:
+            final.append(CONCEPT_PATH_SEP.join(segs))
+
+    deduped = []
+    for f in final:
+        if f not in deduped:
+            deduped.append(f)
+    return "-".join(deduped)
+
+
 def update_stock(tertiary_id, name, fields, db_path=None):
     """
     更新一只股票的可编辑字段。
@@ -970,8 +1038,12 @@ def update_stock(tertiary_id, name, fields, db_path=None):
                 if v:
                     concept_parts.append(v)
         if concept_parts:
+            cur.execute("SELECT concept FROM stocks WHERE id = ?", (row["id"],))
+            prow = cur.fetchone()
+            old_raw = (prow["concept"] if prow else "") or ""
+            merged = _merge_concept_parts(concept_parts, old_raw)
             sets.append("concept = ?")
-            params.append("-".join(concept_parts))
+            params.append(merged)
 
         if not sets:
             return 0, name
@@ -996,10 +1068,12 @@ def update_stock_concept(
     db_path=None,
 ):
     """
-    更新指定股票的概念字段（用 '-' 串接）。
+    更新指定股票的概念字段（多个概念用 '-' 串接）。
+    - new_concept 可以是概念名，也可以是完整路径（如 "固态电池/材料/负极"）
     - tertiary_id 可选：提供时用 (tertiary_id, stock_name) 查找，提高准确度
     - 若未提供，则按 stock_name 全表查找（同名第一只）
-    - 若概念已包含该值，会抛 ValueError
+    - 若概念已包含该值（或已包含其末级概念），会抛 ValueError
+    - 若旧值中已存在本次路径的更粗粒度前缀（如仅 "固态电池"），会被更细的路径替换
     - 写入成功返回新概念字符串
     """
     conn = get_conn(db_path)
@@ -1019,19 +1093,29 @@ def update_stock_concept(
         if row is None:
             raise LookupError(f"未找到股票：{stock_name}")
 
-        existing = row["concept"] or ""
-        normalized = (
-            existing.replace("-", ",")
-                   .replace("，", ",")
-                   .replace("、", ",")
-                   .replace(" ", ",")
-                   .replace(";", ",")
-        )
-        pieces = {p.strip() for p in normalized.split(",") if p.strip()}
-        if new_concept in pieces:
-            raise ValueError("该股票已有此概念")
+        new_segs = [
+            s.strip() for s in new_concept.split(CONCEPT_PATH_SEP) if s.strip()
+        ]
+        new_norm = CONCEPT_PATH_SEP.join(new_segs) if new_segs else new_concept
+        new_leaf = new_segs[-1] if new_segs else new_concept
 
-        new_full = f"{existing}-{new_concept}" if existing else new_concept
+        kept = []
+        for item in _split_concept_raw(row["concept"]):
+            segs = [s.strip() for s in item.split(CONCEPT_PATH_SEP) if s.strip()]
+            if not segs:
+                continue
+            item_norm = CONCEPT_PATH_SEP.join(segs)
+            if new_norm == item_norm:
+                raise ValueError("该股票已有此概念")
+            # 新概念是这条旧值的更细版本（旧值是其前缀）→ 用更细的覆盖粗的
+            if new_norm.startswith(item_norm + CONCEPT_PATH_SEP):
+                continue
+            # 末级概念已挂在股票上（可能挂在另一条路径里）→ 视为重复
+            if new_leaf in segs:
+                raise ValueError("该股票已有此概念")
+            kept.append(item_norm)
+
+        new_full = "-".join(kept + [new_norm]) if kept else new_norm
         cur.execute(
             "UPDATE stocks SET concept = ? WHERE id = ?",
             (new_full, row["id"]),
@@ -1124,6 +1208,39 @@ def _build_concept_tree_order(concepts, usage):
     return ordered
 
 
+def build_concept_path(name, db_path=None):
+    """
+    返回概念 name 的完整路径串（一级/二级/.../name），用于写入股票 concept 列。
+    - name 是一级概念时返回 name 本身
+    - name 是子概念时返回 "固态电池/材料/负极/硅氧负极" 这样的完整路径
+    - name 不在概念表时返回 None
+    """
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT id, name, parent_id FROM concepts")
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    by_id = {r["id"]: r for r in rows}
+    node = None
+    for r in rows:
+        if r["name"] == name:
+            node = r
+            break
+    if node is None:
+        return None
+
+    names = []
+    seen = set()
+    while node is not None and node["id"] not in seen:
+        seen.add(node["id"])
+        names.append(node["name"])
+        pid = node["parent_id"]
+        node = by_id.get(pid) if pid is not None else None
+    names.reverse()
+    return CONCEPT_PATH_SEP.join(names)
+
+
 def resolve_primary_concept(name, db_path=None):
     """
     返回概念 name 所属的一级概念名。
@@ -1173,13 +1290,14 @@ def list_concepts(db_path=None):
     concepts = [dict(r) for r in cur.fetchall()]
 
     # 统计每个概念在股票中的使用次数
+    # 股票挂在子级概念（完整路径）时，其路径上每一级都计一次
     usage = {}
     cur.execute(
         "SELECT concept FROM stocks "
         "WHERE concept IS NOT NULL AND concept != ''"
     )
     for row in cur.fetchall():
-        for piece in _split_concept_raw(row["concept"]):
+        for piece in _split_concept_segments(row["concept"]):
             usage[piece] = usage.get(piece, 0) + 1
     conn.close()
 
@@ -1201,14 +1319,14 @@ def list_primary_concepts(db_path=None):
         {"name": r["name"], "description": r["description"] or ""}
         for r in cur.fetchall()
     ]
-    # 统计每条概念在股票中的使用次数
+    # 统计每条概念在股票中的使用次数（子级路径会向上计入所属一级概念）
     usage = {}
     cur.execute(
         "SELECT concept FROM stocks "
         "WHERE concept IS NOT NULL AND concept != ''"
     )
     for row in cur.fetchall():
-        for piece in _split_concept_raw(row["concept"]):
+        for piece in _split_concept_segments(row["concept"]):
             usage[piece] = usage.get(piece, 0) + 1
     conn.close()
     for it in items:
@@ -1351,8 +1469,9 @@ def delete_concept(concept_id, db_path=None):
 def sync_concept_in_stocks(old_name, new_name=None, db_path=None):
     """
     同步股票表中某概念：
-    - new_name 提供时：把所有股票概念串中的 old_name 替换为 new_name（重命名）
-    - new_name 为 None 时：把 old_name 从所有股票概念串中移除（删除）
+    概念串中的一项可能是完整路径（如 "固态电池/材料/负极"），因此按「层级段」处理：
+    - new_name 提供时：把路径中等于 old_name 的那一级替换为 new_name（重命名）
+    - new_name 为 None 时：丢弃所有包含 old_name 的路径项（删除及级联）
     返回受影响的股票行数。
     """
     conn = get_conn(db_path)
@@ -1365,10 +1484,22 @@ def sync_concept_in_stocks(old_name, new_name=None, db_path=None):
         changed = 0
         for row in cur.fetchall():
             pieces = _split_concept_raw(row["concept"])
-            if new_name is not None:
-                new_pieces = [new_name if p == old_name else p for p in pieces]
-            else:
-                new_pieces = [p for p in pieces if p != old_name]
+            new_pieces = []
+            touched = False
+            for p in pieces:
+                segs = [
+                    s.strip() for s in p.split(CONCEPT_PATH_SEP) if s.strip()
+                ]
+                if old_name not in segs:
+                    new_pieces.append(p)
+                    continue
+                touched = True
+                if new_name is None:
+                    continue  # 删除：整条路径一起去掉
+                segs = [new_name if s == old_name else s for s in segs]
+                new_pieces.append(CONCEPT_PATH_SEP.join(segs))
+            if not touched:
+                continue
             new_val = "-".join(new_pieces)
             if new_val != (row["concept"] or ""):
                 cur.execute(
@@ -1396,7 +1527,7 @@ def import_concepts_from_stocks(db_path=None):
         )
         seen = set()
         for row in cur.fetchall():
-            for piece in _split_concept_raw(row["concept"]):
+            for piece in _split_concept_segments(row["concept"]):
                 seen.add(piece)
 
         cur.execute("SELECT name FROM concepts")
@@ -1436,7 +1567,8 @@ def get_concept_stocks(concept_name, db_path=None):
     )
     result = []
     for row in cur.fetchall():
-        if concept_name in _split_concept_raw(row["concept"]):
+        # 路径上任一级等于该概念即命中（挂在子级的股票也算属于父级概念）
+        if concept_name in _split_concept_segments(row["concept"]):
             result.append({
                 "name": row["name"],
                 "code": row["code"] or "",
@@ -1452,6 +1584,8 @@ def get_concept_stocks(concept_name, db_path=None):
 def remove_concept_from_stock(stock_name, concept_name, db_path=None):
     """
     从指定股票的概念串中移除某概念（其余概念保留，'-' 重组）。
+    概念串中的一项可能是完整路径（"一级/二级/..."），若任一级等于
+    concept_name，则丢弃该整条路径。
     返回 (new_concept, changed: bool)。股票不存在抛 LookupError。
     """
     conn = get_conn(db_path)
@@ -1465,11 +1599,17 @@ def remove_concept_from_stock(stock_name, concept_name, db_path=None):
         if row is None:
             raise LookupError(f"未找到股票：{stock_name}")
 
-        pieces = _split_concept_raw(row["concept"])
-        if concept_name not in pieces:
+        kept = []
+        removed = False
+        for item in _split_concept_raw(row["concept"]):
+            segs = [s.strip() for s in item.split(CONCEPT_PATH_SEP) if s.strip()]
+            if concept_name in segs:
+                removed = True
+                continue
+            kept.append(item)
+        if not removed:
             return row["concept"] or "", False
-        new_pieces = [p for p in pieces if p != concept_name]
-        new_val = "-".join(new_pieces)
+        new_val = "-".join(kept)
         cur.execute(
             "UPDATE stocks SET concept = ? WHERE id = ?",
             (new_val, row["id"]),

@@ -2622,6 +2622,27 @@ a.concept-card:hover {
     align-items: center;
     gap: 12px;
 }
+
+/* ===== 页面 K：概念编辑独立页（/pageK/edit/<id>）===== */
+/* 头部区：级别徽标 + 概念名 + 完整路径 + 返回按钮 */
+.ke-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+.ke-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ke-title h2 { margin: 0; font-size: 20px; }
+.ke-path { font-size: 12px; color: #9ca3af; }
+.ke-head-actions { display: flex; align-items: center; gap: 8px; }
+
+/* 卡片内的小标题 */
+.ke-card-title { margin: 0 0 12px; font-size: 15px; color: #111827; }
+
+/* 基本信息表单下方的「同步股票数据」勾选框 */
+.ke-check { margin-top: 10px; }
 /* 缩进层级连接线：从上一级缩进位置连到本行起始处 */
 .sub-row-nested::before {
     content: "";
