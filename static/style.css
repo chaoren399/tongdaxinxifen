@@ -1251,6 +1251,59 @@ a.industry-link.concept-chip:hover {
     margin: -2px 0 4px;
     word-break: break-word;
 }
+/* ===== 概念层级表格（页面 H / 页面 K 编辑页共用）===== */
+.concept-level-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 13px;
+}
+
+.concept-level-table th,
+.concept-level-table td {
+    border: 1px solid #e5e7eb;
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.concept-level-table thead th {
+    background: #f9fafb;
+    color: #374151;
+    font-weight: 600;
+    white-space: nowrap;
+    text-align: center;
+}
+
+/* 各级概念列配色：1→5 级由暖到冷，层级关系一目了然 */
+.concept-level-table .lvl-col-1 { background: #fffbeb; color: #92400e; font-weight: 600; }
+.concept-level-table .lvl-col-2 { background: #f0fdf4; color: #166534; font-weight: 600; }
+.concept-level-table .lvl-col-3 { background: #eff6ff; color: #1e40af; font-weight: 600; }
+.concept-level-table .lvl-col-4 { background: #fdf4ff; color: #86198f; font-weight: 600; }
+.concept-level-table .lvl-col-5 { background: #fef2f2; color: #991b1b; font-weight: 600; }
+.concept-level-table td.lvl-col { text-align: center; white-space: nowrap; }
+.concept-level-table td.lvl-empty { background: #fafafa; }
+
+/* 股票列 / 业务描述列 */
+.concept-level-table td.col-stock { background: #fff; }
+.concept-level-table td.col-business {
+    background: #fff;
+    font-size: 12px;
+    color: #374151;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.concept-level-table td.col-stock a {
+    color: #111827;
+    text-decoration: none;
+    font-weight: 500;
+}
+.concept-level-table td.col-stock a:hover {
+    color: #2563eb;
+    text-decoration: underline;
+}
+.concept-level-table tbody tr:hover td { background-color: #f8fafc; }
+.concept-level-table tbody tr:hover td.lvl-col { filter: brightness(0.98); }
+
 /* 第二列：选项 A~H 的卡片式字段展示（左侧蓝色竖线 + 蓝色标签 + 内容） */
 .stock-detail-concept-biz-list {
     display: flex;
@@ -2227,6 +2280,12 @@ a.concept-card:hover {
 }
 .ct-name {
     font-weight: 600;
+    white-space: nowrap;
+}
+.ct-code {
+    color: #6b7280;
+    font-family: "SF Mono", Consolas, Monaco, monospace;
+    font-size: 12px;
     white-space: nowrap;
 }
 .tree-indent {

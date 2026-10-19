@@ -87,6 +87,10 @@ ensure_stock_modification_log_table()
 from db import ensure_stock_concept_businesses_table  # noqa: E402
 ensure_stock_concept_businesses_table()
 
+# 增量迁移：确保 stock_concepts（股票×概念加入时间）表存在，首次建表会回填历史
+from db import ensure_stock_concepts_table  # noqa: E402
+ensure_stock_concepts_table()
+
 # 增量迁移：确保 search_history 搜索历史表存在
 from db import (  # noqa: E402
     ensure_search_history_table,
@@ -972,18 +976,23 @@ def page_h():
         _collect(root_node, [name])
 
     # 计算每列的 rowspan（相邻行同前缀则合并）
+    # active[d] = 第 d 列还有多少行被已渲染单元格的 rowspan 覆盖。
+    # 严格推进可避免股票挂在深浅不一的分支上时出现列错位。
     max_depth = max((len(r["levels"]) for r in flat_rows), default=1) or 1
     table_rows: List[Dict] = []
     total = len(flat_rows)
+    active = [0] * max_depth
     for i, r in enumerate(flat_rows):
         cells = []
         for d in range(max_depth):
+            if active[d] > 0:
+                active[d] -= 1
+                cells.append(None)  # 已被上方 rowspan 覆盖
+                continue
             prefix = r["levels"][: d + 1]
-            prev_same = (
-                i > 0 and flat_rows[i - 1]["levels"][: d + 1] == prefix
-            )
-            if prev_same:
-                cells.append(None)  # 已被上一行 rowspan 覆盖
+            if d >= len(prefix):
+                # 该股票的概念路径不足此层级：输出空单元格占位，保证列对齐
+                cells.append({"name": "", "span": 1})
                 continue
             span = 1
             for j in range(i + 1, total):
@@ -992,9 +1001,10 @@ def page_h():
                 else:
                     break
             cells.append({
-                "name": prefix[d] if d < len(prefix) else "",
+                "name": prefix[d],
                 "span": span,
             })
+            active[d] = span - 1
         table_rows.append({"cells": cells, "stock": r["stock"]})
 
     if concept is not None:
@@ -1887,8 +1897,10 @@ def api_page_k_add_concept():
 @app.route("/api/pageK/update_concept", methods=["POST"])
 def api_page_k_update_concept():
     """
-    编辑概念 {"id": 1, "name": "新名称", "description": "...", "parent_id": 2, "sync_stocks": true}
+    编辑概念 {"id": 1, "name": "新名称", "description": "...", "code": "GN001",
+              "parent_id": 2, "sync_stocks": true}
     parent_id 可省略表示保持原上级；传 null 表示移到根（一级）。
+    code 可省略表示不改编码；传空串表示清空编码。
     sync_stocks=true 时，把所有股票概念串中的旧名称替换为新名称。
     """
     from db import update_concept, sync_concept_in_stocks
@@ -1897,6 +1909,11 @@ def api_page_k_update_concept():
     name = (data.get("name") or "").strip()
     description = (data.get("description") or "").strip()
     sync = bool(data.get("sync_stocks"))
+
+    # code：缺省 → 保持；空串 → 清空；否则写入新编码
+    code = data.get("code", "__keep__")
+    if code != "__keep__":
+        code = (code or "").strip()
 
     # parent_id：缺省 → 保持；null/"" → 根；否则整数上级 id
     parent_id = data.get("parent_id", "__keep__")
@@ -1917,6 +1934,7 @@ def api_page_k_update_concept():
             name=name or None,
             description=description,
             parent_id=parent_id,
+            code=code,
         )
     except (LookupError, ValueError) as e:
         return jsonify({"ok": False, "error": str(e)}), 400
@@ -2068,6 +2086,31 @@ def api_page_k_import_from_stocks():
     except Exception as e:
         return jsonify({"ok": False, "error": f"导入失败：{e}"}), 500
     return jsonify({"ok": True, "added": added})
+
+
+@app.route("/api/pageK/edit_table")
+def api_page_k_edit_table():
+    """
+    页面 K 编辑页的概念层级大表（页面 H 风格）数据。
+    ?concept_id=1 → 返回该概念（含其所有子孙）的层级列 + 股票 + 业务描述扁平行
+    """
+    from db import build_concept_edit_table
+
+    raw_id = request.args.get("concept_id") or request.args.get("id") or ""
+    try:
+        cid = int(raw_id)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "concept_id 无效"}), 400
+
+    try:
+        data = build_concept_edit_table(cid)
+    except LookupError as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"查询失败：{e}"}), 500
+
+    data["ok"] = True
+    return jsonify(data)
 
 
 @app.route("/api/pageK/concept_stocks")

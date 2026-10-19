@@ -102,13 +102,14 @@ def ensure_concepts_table(db_path=None):
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             name        TEXT NOT NULL UNIQUE,
             description TEXT DEFAULT '',
+            code        TEXT DEFAULT '',
             level       INTEGER NOT NULL DEFAULT 1,
             parent_id   INTEGER,
             FOREIGN KEY(parent_id) REFERENCES concepts(id)
         );
         CREATE INDEX IF NOT EXISTS idx_concepts_name ON concepts(name);
     """)
-    # 增量迁移：旧版本 concepts 表可能没有 level / parent_id 列
+    # 增量迁移：旧版本 concepts 表可能没有 level / parent_id / code 列
     cur = conn.cursor()
     cur.execute("PRAGMA table_info(concepts)")
     cols = {row["name"] for row in cur.fetchall()}
@@ -116,8 +117,30 @@ def ensure_concepts_table(db_path=None):
         conn.execute("ALTER TABLE concepts ADD COLUMN level INTEGER NOT NULL DEFAULT 1")
     if "parent_id" not in cols:
         conn.execute("ALTER TABLE concepts ADD COLUMN parent_id INTEGER")
+    if "code" not in cols:
+        conn.execute("ALTER TABLE concepts ADD COLUMN code TEXT DEFAULT ''")
     conn.commit()
     conn.close()
+
+
+def set_concept_code(concept_id, code, db_path=None):
+    """
+    单独设置概念编码（一级概念的手动编码）。
+    code 为空串表示清空。id 不存在抛 LookupError。
+    """
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id FROM concepts WHERE id = ?", (concept_id,))
+        if cur.fetchone() is None:
+            raise LookupError(f"未找到概念 id={concept_id}")
+        cur.execute(
+            "UPDATE concepts SET code = ? WHERE id = ?",
+            ((code or "").strip(), concept_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def ensure_stocks_columns(db_path=None):
@@ -652,6 +675,13 @@ def init_db_from_csv(csv_path=None, db_path=None):
 
     conn.commit()
     conn.close()
+
+    # 股票表被重建，关联表按新数据重刷一遍（失败不影响建库结果）
+    try:
+        rebuild_stock_concepts(db_path)
+    except Exception:
+        pass
+
     return {
         "industries": len(ind_index),
         "stocks": stock_rows,
@@ -1030,6 +1060,7 @@ def update_stock(tertiary_id, name, fields, db_path=None):
                 sets.append(f"{field} = ?")
                 params.append((fields[field] or "").strip())
 
+        new_concept_text = None
         # concept1~5 合并为一个 concept 列
         concept_parts = []
         for k in ("concept1", "concept2", "concept3", "concept4", "concept5"):
@@ -1041,9 +1072,9 @@ def update_stock(tertiary_id, name, fields, db_path=None):
             cur.execute("SELECT concept FROM stocks WHERE id = ?", (row["id"],))
             prow = cur.fetchone()
             old_raw = (prow["concept"] if prow else "") or ""
-            merged = _merge_concept_parts(concept_parts, old_raw)
+            new_concept_text = _merge_concept_parts(concept_parts, old_raw)
             sets.append("concept = ?")
-            params.append(merged)
+            params.append(new_concept_text)
 
         if not sets:
             return 0, name
@@ -1053,6 +1084,8 @@ def update_stock(tertiary_id, name, fields, db_path=None):
             f"UPDATE stocks SET {', '.join(sets)} WHERE id = ?",
             params,
         )
+        if new_concept_text is not None:
+            _sync_stock_concept_rows(cur, row["id"], new_concept_text)
         # 编辑就视为修改（即使内容实际相同，也计一次）
         _record_modification_in_conn(cur, row["id"])
         conn.commit()
@@ -1120,6 +1153,8 @@ def update_stock_concept(
             "UPDATE stocks SET concept = ? WHERE id = ?",
             (new_full, row["id"]),
         )
+        # 同步「股票 × 概念」关联表（新概念按当前时间记录）
+        _sync_stock_concept_rows(cur, row["id"], new_full)
         _record_modification_in_conn(cur, row["id"])
         conn.commit()
         return new_full
@@ -1279,15 +1314,18 @@ def resolve_primary_concept(name, db_path=None):
 def list_concepts(db_path=None):
     """
     返回所有概念（按树形层级排序），每条含：
-    {id, name, description, level, parent_id, usage, path}
+    {id, name, description, code, level, parent_id, usage, path}
     path 例如 "固态电池 / 材料 / 正极"。
     """
+    ensure_concepts_table(db_path)   # 保证旧库也有 code 列
     conn = get_conn(db_path)
     cur = conn.cursor()
     cur.execute(
-        "SELECT id, name, description, level, parent_id FROM concepts"
+        "SELECT id, name, description, code, level, parent_id FROM concepts"
     )
     concepts = [dict(r) for r in cur.fetchall()]
+    for c in concepts:
+        c["code"] = c.get("code") or ""
 
     # 统计每个概念在股票中的使用次数
     # 股票挂在子级概念（完整路径）时，其路径上每一级都计一次
@@ -1373,13 +1411,15 @@ def update_concept(
     name=None,
     description=None,
     parent_id="__keep__",
+    code="__keep__",
     db_path=None,
 ):
     """
-    编辑概念（名称/描述/上级分类）。
+    编辑概念（名称/描述/概念编码/上级分类）。
     - parent_id 传 "__keep__" 表示保持原上级不变
     - parent_id 传 None/"" 表示移动到根（一级）
     - parent_id 传整数表示移动到该上级（自动重算 level）
+    - code 传 "__keep__" 表示不改编码；传空串表示清空；否则写入新编码
     返回 (old_name, new_name)。
     重名/越级/成环时抛 ValueError，id 不存在抛 LookupError。
     """
@@ -1387,7 +1427,7 @@ def update_concept(
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id, name, description, level, parent_id FROM concepts WHERE id = ?",
+            "SELECT id, name, description, code, level, parent_id FROM concepts WHERE id = ?",
             (concept_id,),
         )
         row = cur.fetchone()
@@ -1398,6 +1438,9 @@ def update_concept(
         new_name = (name or "").strip() or old_name
         new_desc = (
             description if description is not None else (row["description"] or "")
+        )
+        new_code = (
+            row["code"] or "" if code == "__keep__" else (code or "").strip()
         )
         new_level = row["level"] or 1
         new_parent = row["parent_id"]
@@ -1422,9 +1465,10 @@ def update_concept(
                 new_parent = pid
 
         cur.execute(
-            "UPDATE concepts SET name = ?, description = ?, level = ?, parent_id = ? "
+            "UPDATE concepts SET name = ?, description = ?, code = ?, "
+            "level = ?, parent_id = ? "
             "WHERE id = ?",
-            (new_name, new_desc, new_level, new_parent, concept_id),
+            (new_name, new_desc, new_code, new_level, new_parent, concept_id),
         )
         conn.commit()
         return old_name, new_name
@@ -1463,6 +1507,12 @@ def delete_concept(concept_id, db_path=None):
         _ensure_business_table(cur)
         cur.execute(
             f"DELETE FROM stock_concept_businesses WHERE concept_id IN ({placeholders})",
+            all_ids,
+        )
+        # 清理「股票 × 概念」关联行
+        _ensure_stock_concepts_table(cur)
+        cur.execute(
+            f"DELETE FROM stock_concepts WHERE concept_id IN ({placeholders})",
             all_ids,
         )
         cur.execute(f"DELETE FROM concepts WHERE id IN ({placeholders})", all_ids)
@@ -1512,7 +1562,17 @@ def sync_concept_in_stocks(old_name, new_name=None, db_path=None):
                     "UPDATE stocks SET concept = ? WHERE id = ?",
                     (new_val, row["id"]),
                 )
+                # 关联表跟着文本走：删概念会去掉关系，改名不影响 concept_id
+                _sync_stock_concept_rows(cur, row["id"], new_val)
                 changed += 1
+        if new_name is None:
+            # 概念被删除：清理所有指向它的关联行
+            _ensure_stock_concepts_table(cur)
+            cur.execute(
+                "DELETE FROM stock_concepts WHERE concept_id IN "
+                "(SELECT id FROM concepts WHERE name = ?)",
+                (old_name,),
+            )
         conn.commit()
         return changed
     finally:
@@ -1649,6 +1709,151 @@ def ensure_stock_concept_businesses_table():
     _ensure_business_table(cur)
     conn.commit()
     conn.close()
+
+
+# ===== 股票 × 概念 关联表：记录「加入时间」，用于按添加时间排序 =====
+# stocks.concept 只是一段文本（"固态电池/材料/正极-机器人"），没有时间信息，
+# 因此单独建一张关联表记录每只股票加入每个概念的时间。
+#
+# CREATE TABLE IF NOT EXISTS stock_concepts (
+#     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+#     stock_id   INTEGER NOT NULL,
+#     concept_id INTEGER NOT NULL,
+#     created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+#     UNIQUE(stock_id, concept_id)
+# )
+
+
+def _ensure_stock_concepts_table(cur):
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS stock_concepts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stock_id INTEGER NOT NULL,
+            concept_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            UNIQUE(stock_id, concept_id)
+        )
+        """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_stock_concepts_concept "
+        "ON stock_concepts(concept_id, created_at, id)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_stock_concepts_stock "
+        "ON stock_concepts(stock_id)"
+    )
+
+
+def ensure_stock_concepts_table(db_path=None):
+    """确保 stock_concepts 表存在（应用启动时调用）。
+
+    首次创建时用 stocks.concept 现有文本全量回填一次；回填按 stocks.id
+    升序写入，保证老数据的展示顺序与改造前一致。
+    """
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type='table' AND name='stock_concepts'"
+        )
+        exists = cur.fetchone() is not None
+        _ensure_stock_concepts_table(cur)
+        conn.commit()
+    finally:
+        conn.close()
+    if not exists:
+        backfill_stock_concepts(db_path)
+
+
+def _leaf_concept_ids(cur, concept_text):
+    """把概念文本（可含多条路径）解析成「末级概念 id」集合。
+
+    "固态电池/材料/正极" 归到末级「正极」；未登记在 concepts 表里的名字忽略。
+    """
+    ids = set()
+    for item in _split_concept_raw(concept_text):
+        segs = [s.strip() for s in item.split(CONCEPT_PATH_SEP) if s.strip()]
+        if not segs:
+            continue
+        cur.execute("SELECT id FROM concepts WHERE name = ?", (segs[-1],))
+        r = cur.fetchone()
+        if r:
+            ids.add(r["id"])
+    return ids
+
+
+def _sync_stock_concept_rows(cur, stock_id, concept_text):
+    """按 stocks.concept 文本，把某只股票的关联行对齐。
+
+    新关系插入（记当前时间），文本里已无的关系删除，已有关系保留原时间。
+    """
+    if not stock_id:
+        return
+    _ensure_stock_concepts_table(cur)
+    want = _leaf_concept_ids(cur, concept_text)
+    cur.execute(
+        "SELECT concept_id FROM stock_concepts WHERE stock_id = ?", (stock_id,)
+    )
+    have = {r["concept_id"] for r in cur.fetchall()}
+    for cid in sorted(have - want):
+        cur.execute(
+            "DELETE FROM stock_concepts WHERE stock_id = ? AND concept_id = ?",
+            (stock_id, cid),
+        )
+    now = _now_datetime_str()
+    for cid in sorted(want - have):
+        cur.execute(
+            "INSERT OR IGNORE INTO stock_concepts "
+            "(stock_id, concept_id, created_at) VALUES (?, ?, ?)",
+            (stock_id, cid, now),
+        )
+
+
+def backfill_stock_concepts(db_path=None):
+    """全量回填 stock_concepts（按 stocks.id 升序）。返回写入行数。"""
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    written = 0
+    try:
+        _ensure_stock_concepts_table(cur)
+        cur.execute("SELECT id, name FROM concepts")
+        name_to_id = {r["name"]: r["id"] for r in cur.fetchall()}
+        now = _now_datetime_str()
+        cur.execute("SELECT id, concept FROM stocks ORDER BY id")
+        for r in cur.fetchall():
+            for item in _split_concept_raw(r["concept"]):
+                segs = [s.strip() for s in item.split(CONCEPT_PATH_SEP) if s.strip()]
+                if not segs:
+                    continue
+                cid = name_to_id.get(segs[-1])
+                if cid is None:
+                    continue
+                cur.execute(
+                    "INSERT OR IGNORE INTO stock_concepts "
+                    "(stock_id, concept_id, created_at) VALUES (?, ?, ?)",
+                    (r["id"], cid, now),
+                )
+                written += cur.rowcount or 0
+        conn.commit()
+        return written
+    finally:
+        conn.close()
+
+
+def rebuild_stock_concepts(db_path=None):
+    """清空并按 stocks.concept 重建全部关联行（CSV 重建库后使用）。"""
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    try:
+        _ensure_stock_concepts_table(cur)
+        cur.execute("DELETE FROM stock_concepts")
+        conn.commit()
+    finally:
+        conn.close()
+    return backfill_stock_concepts(db_path)
 
 
 def set_stock_concept_business(stock_name, concept_name, business, db_path=None):
@@ -1845,6 +2050,8 @@ def remove_concept_from_stock(stock_name, concept_name, db_path=None):
             "UPDATE stocks SET concept = ? WHERE id = ?",
             (new_val, row["id"]),
         )
+        # 同步「股票 × 概念」关联表（被移除的概念关系一并删掉）
+        _sync_stock_concept_rows(cur, row["id"], new_val)
         # 同步清理这些概念下的业务描述（按概念名找 id）
         if removed_segs:
             _ensure_business_table(cur)
@@ -2020,3 +2227,267 @@ def get_all_stocks_flat(db_path=None):
     ]
     conn.close()
     return result
+
+
+def build_concept_edit_table(concept_id, db_path=None):
+    """
+    构造「页面 H 风格」的概念层级大表，用于页面 K 的一级概念编辑页。
+
+    以 concept_id 为根，展开其所有子孙概念，按层级列（1 级 / 2 级 / ... / N 级）+ 股票 + 业务描述
+    的形式扁平化，并对概念层级单元格计算 rowspan（与页面 H 的展示口径一致）。
+
+    返回 {
+        "root": {"id", "name", "path", "level"},
+        "max_depth": 层级列数量（>=1）,
+        "rows": [
+            {
+                "cells": [None | {"id", "name", "level", "span"}],   # 长度 = max_depth
+                "stock": {"name", "code", "primary", "secondary", "tertiary",
+                          "concept_id", "concept_name", "concept_path", "business"},
+            }
+        ],
+        "stock_count": 去重后的股票数,
+        "concept_count": 子树概念数（含根）,
+    }
+    概念不存在抛 LookupError。
+    """
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id, name, level, parent_id FROM concepts")
+        all_concepts = cur.fetchall()
+
+        by_id = {r["id"]: r for r in all_concepts}
+        root = by_id.get(concept_id)
+        if root is None:
+            raise LookupError(f"未找到概念：{concept_id}")
+
+        # 同级概念按「添加顺序」排列（id 升序），而不是名称
+        children: Dict[int, list] = {}
+        for r in all_concepts:
+            pid = r["parent_id"]
+            if pid is not None:
+                children.setdefault(pid, []).append(r["id"])
+        for lst in children.values():
+            lst.sort()
+
+        # 根概念的完整路径（一级概念/二级概念/...）
+        root_segs = []
+        node = root
+        seen = set()
+        while node is not None and node["id"] not in seen:
+            seen.add(node["id"])
+            root_segs.append(node["name"])
+            pid = node["parent_id"]
+            node = by_id.get(pid) if pid is not None else None
+        root_segs.reverse()
+        root_path = CONCEPT_PATH_SEP.join(root_segs)
+
+        # 子树：{id: {"id","name","level","children":[...ids],"path":...}}
+        subtree: Dict[int, dict] = {}
+        stack = [(root["id"], root_path)]
+        while stack:
+            cid_, path_ = stack.pop()
+            node = by_id[cid_]
+            subtree[cid_] = {
+                "id": cid_,
+                "name": node["name"],
+                "level": node["level"],
+                "path": path_,
+                "children": list(children.get(cid_, [])),
+            }
+            for ch in children.get(cid_, []):
+                stack.append((ch, path_ + CONCEPT_PATH_SEP + by_id[ch]["name"]))
+
+        # 每个概念的「自身 + 全部子孙」id，用于查找股票的关联时间
+        desc_map: Dict[int, list] = {}
+
+        def _collect_desc(cid_):
+            out = []
+            for ch in subtree.get(cid_, {}).get("children", []):
+                out.append(ch)
+                out.extend(_collect_desc(ch))
+            return out
+
+        for cid_ in list(subtree.keys()):
+            desc_map[cid_] = _collect_desc(cid_)
+
+        # 股票加入各概念的时间：{(stock_id, concept_id): (created_at, 行id)}
+        _ensure_stock_concepts_table(cur)
+        cur.execute(
+            "SELECT stock_id, concept_id, created_at, id FROM stock_concepts"
+        )
+        join_time = {}
+        for r in cur.fetchall():
+            k = (r["stock_id"], r["concept_id"])
+            v = (r["created_at"] or "", r["id"] or 0)
+            if k not in join_time or v < join_time[k]:
+                join_time[k] = v
+
+        # 业务描述：{(股票名, 概念名): 描述}
+        cur.execute(
+            """
+            SELECT s.name AS stock_name, c.name AS concept_name, b.business
+            FROM stock_concept_businesses b
+            JOIN stocks s ON s.id = b.stock_id
+            JOIN concepts c ON c.id = b.concept_id
+            """
+        )
+        biz_map = {}
+        for r in cur.fetchall():
+            biz_map[(r["stock_name"], r["concept_name"])] = r["business"]
+
+        # 股票 → 子树上的挂载点（叶概念）
+        # 按 stocks.id 升序取，保证同一概念内的股票按「添加顺序」排列
+        cur.execute(
+            """
+            SELECT s.id AS stock_id, s.name, s.code, s.concept,
+                   p.name AS primary_name, sc.name AS secondary_name, t.name AS tertiary_name
+            FROM stocks s
+            JOIN industries t ON s.tertiary_id = t.id
+            JOIN industries sc ON t.parent_id = sc.id
+            JOIN industries p ON sc.parent_id = p.id
+            ORDER BY s.id
+            """
+        )
+        # {concept_id: [stock dict]}
+        mounted: Dict[int, list] = {}
+        for r in cur.fetchall():
+            for item in _split_concept_raw(r["concept"]):
+                segs = [s.strip() for s in item.split(CONCEPT_PATH_SEP) if s.strip()]
+                if not segs or segs[0] != root["name"]:
+                    continue
+                # 沿子树逐层下钻（找不到对应子概念时挂在当前最深的已匹配节点）
+                cur_id = root["id"]
+                for seg in segs[1:]:
+                    nxt = None
+                    for ch in subtree.get(cur_id, {}).get("children", []):
+                        if subtree[ch]["name"] == seg:
+                            nxt = ch
+                            break
+                    if nxt is None:
+                        break
+                    cur_id = nxt
+                node = subtree[cur_id]
+                stock = {
+                    "id": r["stock_id"],
+                    "name": r["name"],
+                    "code": r["code"] or "",
+                    "primary": r["primary_name"],
+                    "secondary": r["secondary_name"],
+                    "tertiary": r["tertiary_name"],
+                    "concept_id": node["id"],
+                    "concept_name": node["name"],
+                    "concept_path": node["path"],
+                    "business": biz_map.get((r["name"], node["name"]), ""),
+                }
+                bucket = mounted.setdefault(cur_id, [])
+                if not any(x["name"] == stock["name"] for x in bucket):
+                    bucket.append(stock)
+
+        # 扁平化（DFS，概念名排序），与页面 H 口径一致。
+        # 编辑页口径：
+        #   1) 一个概念节点只占一行，该概念下的多只股票在同一行的「股票」列里并列展示；
+        #   2) 暂时没有股票的末端概念也占一行（stocks=[]），否则它不会出现在表里，
+        #      也就无法继续给它加下级 / 加股票。
+        flat_rows = []
+
+        def _node_info(cid_, chain_names):
+            return {
+                "id": cid_,
+                "name": subtree[cid_]["name"],
+                "path": CONCEPT_PATH_SEP.join(chain_names),
+                "level": subtree[cid_]["level"],
+            }
+
+        def _dfs(cid_, chain_names, chain_ids):
+            node = subtree[cid_]
+
+            def _order_key(st):
+                # 优先用「加入该概念的时间」排序（早的靠前）；
+                # 自身没记录时看子孙概念的记录；都没有则兜底按 stocks.id
+                best = None
+                for cid2 in [cid_] + desc_map.get(cid_, []):
+                    v = join_time.get((st["id"], cid2))
+                    if v is not None and (best is None or v < best):
+                        best = v
+                if best is None:
+                    return (1, "", st["id"] or 0)
+                return (0, best[0], best[1])
+
+            stocks = sorted(mounted.get(cid_, []), key=_order_key)
+            if stocks or not node["children"]:
+                flat_rows.append((
+                    chain_ids[:],
+                    chain_names[:],
+                    stocks,
+                    _node_info(cid_, chain_names),
+                ))
+            for ch in node["children"]:
+                _dfs(ch, chain_names[:] + [subtree[ch]["name"]], chain_ids[:] + [ch])
+
+        _dfs(root["id"], [root["name"]], [root["id"]])
+
+        max_depth = max([len(names) for _, names, _, _ in flat_rows] or [1])
+
+        # 计算 rowspan：相邻行前缀链（前 d+1 级）相同则合并。
+        # 语义：
+        #   None            → 该列已被上方已渲染单元格的 rowspan 覆盖，不输出 <td>
+        #   {"empty": True} → 该行概念路径不足此层级，输出空 <td> 占位（保证列对齐）
+        #   其它            → 输出概念单元格，rowspan = span
+        # 用 active[d]（第 d 列剩余被覆盖的行数）严格推进，避免股票挂在不同深度时列错位。
+        table_rows = []
+        active = [0] * max_depth
+        for idx, (ids, names, stocks, cpt) in enumerate(flat_rows):
+            cells = []
+            for d in range(max_depth):
+                if active[d] > 0:
+                    active[d] -= 1
+                    cells.append(None)
+                    continue
+                if d >= len(names):
+                    cells.append({
+                        "id": None,
+                        "name": "",
+                        "level": root["level"] + d,
+                        "path": CONCEPT_PATH_SEP.join(names),
+                        "span": 1,
+                        "empty": True,
+                    })
+                    continue
+                prefix = names[: d + 1]
+                span = 1
+                j = idx + 1
+                while j < len(flat_rows) and flat_rows[j][1][: d + 1] == prefix:
+                    span += 1
+                    j += 1
+                cells.append({
+                    "id": ids[d],
+                    "name": names[d],
+                    "level": root["level"] + d,
+                    "path": CONCEPT_PATH_SEP.join(names[:d + 1]),
+                    "span": span,
+                    "empty": False,
+                })
+                active[d] = span - 1
+            table_rows.append({"cells": cells, "stocks": stocks, "concept": cpt})
+
+        stock_names = set()
+        for _, _, stocks, _ in flat_rows:
+            for st in stocks:
+                stock_names.add(st["name"])
+
+        return {
+            "root": {
+                "id": root["id"],
+                "name": root["name"],
+                "path": root_path,
+                "level": root["level"],
+            },
+            "max_depth": max_depth,
+            "rows": table_rows,
+            "stock_count": len(stock_names),
+            "concept_count": len(subtree),
+        }
+    finally:
+        conn.close()

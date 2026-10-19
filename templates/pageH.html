@@ -121,7 +121,7 @@
                     <tr>
                         {% for cell in row.cells %}
                             {% if cell %}
-                            <td class="lvl-col lvl-col-{{ loop.index }}"
+                            <td class="lvl-col lvl-col-{{ loop.index }}{% if not cell.name %} lvl-empty{% endif %}"
                                 rowspan="{{ cell.span }}">{{ cell.name }}</td>
                             {% else %}
                             {# 已被上方 rowspan 覆盖，或该股票路径不足此层级 #}

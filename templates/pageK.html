@@ -80,6 +80,7 @@
                     <tr>
                         <th style="width:52px">ID</th>
                         <th>概念名称</th>
+                        <th style="width:96px">概念编码</th>
                         <th style="width:72px">使用数</th>
                         <th>描述</th>
                         <th style="width:130px">操作</th>
@@ -94,6 +95,7 @@
                         <td class="ct-name" title="{{ c.path }}">
                             {{ c.name }}
                         </td>
+                        <td class="ct-code">{{ c.code or '—' }}</td>
                         <td class="ct-usage">
                             <span class="usage-badge {{ 'is-used' if c.usage > 0 else '' }}">{{ c.usage }}</span>
                         </td>
@@ -104,7 +106,7 @@
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="5" class="empty">— 概念表为空，可点击「从股票导入概念」或手动新增 —</td></tr>
+                    <tr><td colspan="6" class="empty">— 概念表为空，可点击「从股票导入概念」或手动新增 —</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
