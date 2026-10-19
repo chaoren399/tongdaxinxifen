@@ -140,6 +140,44 @@
             border-color: #3b82f6;
             box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
         }
+        /* ===== 输入联想（输入「北京」提示库内含北京的股票） ===== */
+        .ket-input-wrap { position: relative; }
+        .ket-suggest {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 100%;
+            margin-top: 4px;
+            max-height: 220px;
+            overflow-y: auto;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16);
+            padding: 4px 0;
+            z-index: 20;
+        }
+        .ket-suggest[hidden] { display: none; }
+        .ket-suggest-item {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            padding: 6px 12px;
+            font-size: 13px;
+            color: #374151;
+            cursor: pointer;
+        }
+        .ket-suggest-item.is-active { background: #eff6ff; }
+        .ket-suggest-item b { color: #2563eb; font-weight: 700; }
+        .ket-suggest-code {
+            font-size: 11px;
+            color: #9ca3af;
+            font-family: "SF Mono", Consolas, Monaco, monospace;
+        }
+        .ket-suggest-tag { margin-left: auto; font-size: 11px; color: #9ca3af; }
+        .ket-suggest-item.is-owned { color: #9ca3af; }
+        .ket-suggest-empty { padding: 8px 12px; font-size: 12px; color: #9ca3af; }
+
         .ket-modal-hint {
             margin: 8px 0 0;
             font-size: 12px;
@@ -234,9 +272,12 @@
         <div class="modal-box ket-modal">
             <h3>批量添加股票</h3>
             <p class="ket-modal-path" id="ketModalPath"></p>
-            <textarea id="ketModalInput" rows="6" placeholder="杉杉股份&#10;璞泰来&#10;贝特瑞"></textarea>
+            <div class="ket-input-wrap">
+                <textarea id="ketModalInput" rows="6" placeholder="杉杉股份&#10;璞泰来&#10;贝特瑞"></textarea>
+                <div class="ket-suggest" id="ketSuggest" hidden></div>
+            </div>
             <p class="ket-modal-hint">
-                每行一个股票名称，也可用逗号 / 顿号 / 分号分隔；Ctrl + Enter 提交
+                每行一个股票名称，也可用逗号 / 顿号 / 分号分隔；输入时会自动联想，↑↓ 选择、Enter 补全；Ctrl + Enter 提交
             </p>
             <div class="modal-actions">
                 <button class="btn-secondary" id="ketModalCancel" type="button">取消</button>
@@ -554,7 +595,7 @@
                 plus.type = 'button';
                 plus.title = '批量添加到「' + (pc2.path || pc2.name || '') + '」';
                 plus.addEventListener('click', function () {
-                    openStockAddModal(pc2);
+                    openStockAddModal(pc2, row.stocks || []);
                 });
                 tdS.appendChild(plus);
                 tr.appendChild(tdS);
@@ -707,20 +748,153 @@
         var ketModalInput = document.getElementById('ketModalInput');
         var ketModalOk = document.getElementById('ketModalOk');
         var ketModalCancel = document.getElementById('ketModalCancel');
+        var ketSuggest = document.getElementById('ketSuggest');
         var ketModalConcept = null;
 
-        function openStockAddModal(concept) {
+        // ===== 输入联想 =====
+        var suggestItems = [];      // 当前候选 [{name, code, owned}]
+        var suggestIndex = -1;      // 高亮项下标
+        var ownedNames = null;      // 当前概念已有的股票名（用于标注「已拥有」）
+
+        function currentTerm() {
+            // 取光标前最后一个分隔符之后的片段，作为联想关键词
+            var pos = ketModalInput.selectionStart || 0;
+            var before = ketModalInput.value.slice(0, pos);
+            var m = before.match(/[^,，、;；\n\r\t]*$/);
+            var term = m ? m[0] : '';
+            return { term: term, start: pos - term.length, end: pos };
+        }
+
+        function matchStocks(term, limit) {
+            // 名称匹配优先于代码匹配，开头匹配优先于包含匹配；结果按库内顺序（添加顺序）
+            var kw = (term || '').trim();
+            if (!kw || !allStocksCache) return [];
+            var lower = kw.toLowerCase();
+            var starts = [];
+            var contains = [];
+            for (var i = 0; i < allStocksCache.length; i++) {
+                var s = allStocksCache[i];
+                var name = s.name || '';
+                var code = (s.code || '').toString();
+                var ni = name.indexOf(kw);
+                var ci = code.toLowerCase().indexOf(lower);
+                if (ni === 0) starts.push(s);
+                else if (ci === 0 && code) starts.push(s);
+                else if (ni > 0) contains.push(s);
+                else if (ci > 0) contains.push(s);
+                if (starts.length >= limit) break;
+            }
+            return starts.concat(contains).slice(0, limit);
+        }
+
+        function hideSuggest() {
+            ketSuggest.hidden = true;
+            suggestItems = [];
+            suggestIndex = -1;
+        }
+
+        function renderSuggest(term) {
+            ketSuggest.innerHTML = '';
+            var list = matchStocks(term, 8);
+            suggestItems = list.map(function (s) {
+                return {
+                    name: s.name || '',
+                    code: s.code || '',
+                    owned: !!ownedNames && ownedNames.indexOf(s.name) >= 0
+                };
+            });
+            suggestIndex = suggestItems.length ? 0 : -1;
+
+            if (!suggestItems.length) {
+                var empty = el('div', 'ket-suggest-empty', '没有匹配的股票');
+                ketSuggest.appendChild(empty);
+                ketSuggest.hidden = false;
+                return;
+            }
+
+            suggestItems.forEach(function (item, idx) {
+                var row = el('div', 'ket-suggest-item');
+                if (idx === suggestIndex) row.classList.add('is-active');
+                if (item.owned) row.classList.add('is-owned');
+
+                // 高亮命中片段（用 DOM 拼接，避免 innerHTML 注入）
+                var nm = el('span', 'ket-suggest-name');
+                var pos = item.name.indexOf(term);
+                if (pos >= 0 && term) {
+                    nm.appendChild(document.createTextNode(item.name.slice(0, pos)));
+                    var b = document.createElement('b');
+                    b.textContent = item.name.slice(pos, pos + term.length);
+                    nm.appendChild(b);
+                    nm.appendChild(document.createTextNode(item.name.slice(pos + term.length)));
+                } else {
+                    nm.textContent = item.name;
+                }
+                row.appendChild(nm);
+
+                if (item.code) row.appendChild(el('span', 'ket-suggest-code', item.code));
+                if (item.owned) row.appendChild(el('span', 'ket-suggest-tag', '已拥有'));
+
+                row.addEventListener('mousedown', function (ev) {
+                    ev.preventDefault();                 // 防止 textarea 先失焦
+                    applySuggest(idx);
+                });
+                row.addEventListener('mouseenter', function () { setSuggestIndex(idx); });
+                ketSuggest.appendChild(row);
+            });
+            ketSuggest.hidden = false;
+        }
+
+        function setSuggestIndex(idx) {
+            suggestIndex = idx;
+            var rows = ketSuggest.querySelectorAll('.ket-suggest-item');
+            for (var i = 0; i < rows.length; i++) {
+                rows[i].classList.toggle('is-active', i === idx);
+            }
+            var act = ketSuggest.querySelector('.ket-suggest-item.is-active');
+            if (act && act.scrollIntoView) act.scrollIntoView({ block: 'nearest' });
+        }
+
+        function updateSuggest() {
+            var t = currentTerm();
+            if (!t.term.trim()) { hideSuggest(); return; }
+            renderSuggest(t.term.trim());
+        }
+
+        function applySuggest(idx) {
+            var item = suggestItems[idx];
+            if (!item) return;
+            var val = ketModalInput.value;
+            var t = currentTerm();
+            var kw = t.term.trim();
+            var start = t.start + t.term.indexOf(kw);   // 跳过关键词前的空格
+            var after = val.slice(start + kw.length);
+            // 补全后自动换行，方便继续输入下一只（后面已有内容则不加）
+            var sep = after === '' ? '\n' : '';
+            var newVal = val.slice(0, start) + item.name + sep + after;
+            ketModalInput.value = newVal;
+            var caret = start + item.name.length + sep.length;
+            ketModalInput.focus();
+            ketModalInput.setSelectionRange(caret, caret);
+            hideSuggest();
+        }
+
+        function openStockAddModal(concept, owned) {
             ketModalConcept = concept;
             ketModalPath.textContent = '将添加到概念：「' + (concept.path || concept.name) + '」';
             ketModalInput.value = '';
             ketModalOk.disabled = false;
+            ownedNames = (owned || []).map(function (s) { return s.name; });
+            hideSuggest();
             ketModal.hidden = false;
             ketModalInput.focus();
+            loadAllStocks();            // 确保候选股票已加载
         }
 
         function closeStockAddModal() {
             ketModal.hidden = true;
             ketModalConcept = null;
+            ownedNames = null;
+            hideSuggest();
         }
 
         function submitStockAddModal() {
@@ -760,7 +934,32 @@
         ketModal.addEventListener('click', function (ev) {
             if (ev.target === ketModal) closeStockAddModal();   // 点遮罩关闭
         });
+        ketModalInput.addEventListener('input', updateSuggest);
+        ketModalInput.addEventListener('click', updateSuggest);
+        ketModalInput.addEventListener('blur', function () {
+            // 延迟隐藏，避免 mousedown 选中时被抢先关掉
+            setTimeout(hideSuggest, 120);
+        });
         ketModalInput.addEventListener('keydown', function (ev) {
+            var open = !ketSuggest.hidden && suggestItems.length > 0;
+
+            if (open && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp')) {
+                ev.preventDefault();
+                var step = ev.key === 'ArrowDown' ? 1 : -1;
+                var next = (suggestIndex + step + suggestItems.length) % suggestItems.length;
+                setSuggestIndex(next);
+                return;
+            }
+            if (open && (ev.key === 'Enter' || ev.key === 'Tab')) {
+                ev.preventDefault();
+                applySuggest(suggestIndex);
+                return;
+            }
+            if (!ketSuggest.hidden && ev.key === 'Escape') {
+                ev.preventDefault();     // 先关联想，再按一次才关弹窗
+                hideSuggest();
+                return;
+            }
             if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
                 ev.preventDefault();
                 submitStockAddModal();
@@ -787,6 +986,7 @@
                         opt.label = s.code ? (s.name + '  (' + s.code + ')') : s.name;
                         csStockList.appendChild(opt);
                     });
+                    if (!ketModal.hidden) updateSuggest();   // 加载完再补一次联想
                 })
                 .catch(function () { /* 静默失败 */ });
         }
