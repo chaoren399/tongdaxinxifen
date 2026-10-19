@@ -4,75 +4,73 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>通达信行业分类 - 页面 H · 概念股票列表</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=52" />
     <style>
-        /* 页面 H 专属：概念股票按「一级 → 二级 → 三级 → 股票」层级表格展开（通达信风格） */
+        /* ===== 页面 H：概念层级表格 ===== */
         .industry-head-stats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
         .industry-head-stats .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; }
-        .industry-head-stats .badge-primary { background: #fef3c7; color: #92400e; }
-        .industry-head-stats .badge-secondary { background: #dbeafe; color: #1e40af; }
-        .industry-head-stats .badge-tertiary { background: #d1fae5; color: #065f46; }
+        .industry-head-stats .badge-level { background: #ede9fe; color: #5b21b6; }
+        .industry-head-stats .badge-branch { background: #dbeafe; color: #1e40af; }
         .industry-head-stats .badge-stock { background: #fce7f3; color: #9d174d; }
 
-        .concept-hier-card { padding: 0; overflow: hidden; }
-        .concept-hier {
-            width: 100%;
+        .industry-group-card { padding: 0; overflow: hidden; }
+        .concept-level-table {
             border-collapse: collapse;
-            font-size: 12px;
-            line-height: 1.4;
+            width: 100%;
+            font-size: 13px;
         }
-        .concept-hier th,
-        .concept-hier td {
+        .concept-level-table th,
+        .concept-level-table td {
             border: 1px solid #e5e7eb;
-            padding: 2px 8px;
+            padding: 8px 12px;
             text-align: left;
-            vertical-align: top;
+            vertical-align: middle;
         }
-        .concept-hier thead th {
-            background: #f3f4f6;
+        .concept-level-table thead th {
+            background: #f9fafb;
             color: #374151;
             font-weight: 600;
-            padding: 5px 8px;
-            position: sticky;
-            top: 0;
-            z-index: 1;
-        }
-        .ch-primary {
-            width: 34px;
-            background: #fffbeb;
+            white-space: nowrap;
             text-align: center;
-            vertical-align: middle;
-            border-left: none;
         }
-        .ch-primary .ch-primary-name {
-            writing-mode: vertical-rl;
-            letter-spacing: 5px;
-            font-weight: 700;
-            font-size: 13px;
-            color: #92400e;
-            margin: 0 auto;
+
+        /* 各级概念列配色：1→5 级由暖到冷，层级关系一目了然 */
+        .concept-level-table .lvl-col-1 { background: #fffbeb; color: #92400e; font-weight: 600; }
+        .concept-level-table .lvl-col-2 { background: #f0fdf4; color: #166534; font-weight: 600; }
+        .concept-level-table .lvl-col-3 { background: #eff6ff; color: #1e40af; font-weight: 600; }
+        .concept-level-table .lvl-col-4 { background: #fdf4ff; color: #86198f; font-weight: 600; }
+        .concept-level-table .lvl-col-5 { background: #fef2f2; color: #991b1b; font-weight: 600; }
+        .concept-level-table td.lvl-col { text-align: center; white-space: nowrap; }
+        .concept-level-table td.lvl-empty { background: #fafafa; }
+
+        /* 股票列 */
+        .concept-level-table td.col-stock { background: #fff; }
+        /* 业务描述列：正常换行，小一号字 */
+        .concept-level-table td.col-business {
+            background: #fff;
+            font-size: 12px;
+            color: #374151;
+            white-space: pre-wrap;
+            word-break: break-word;
         }
-        .ch-secondary {
-            background: #eff6ff;
-            color: #1d4ed8;
-            font-weight: 600;
-            white-space: nowrap;
-            vertical-align: middle;
-        }
-        .ch-tertiary {
-            background: #ecfdf5;
-            color: #047857;
-            white-space: nowrap;
-            vertical-align: middle;
-        }
-        .ch-stock { border-right: none; }
-        .ch-stock a {
+        .concept-level-table td.col-stock a {
             color: #111827;
             text-decoration: none;
-            margin-right: 4px;
+            font-weight: 500;
         }
-        .ch-stock a:hover { color: #2563eb; text-decoration: underline; }
-        .ch-code { color: #9ca3af; font-size: 11px; }
+        .concept-level-table td.col-stock a:hover {
+            color: #2563eb;
+            text-decoration: underline;
+        }
+        .ch-code { color: #9ca3af; font-size: 11px; margin-left: 6px; }
+        .ch-industry {
+            display: inline-block;
+            margin-left: 8px;
+            font-size: 11px;
+            color: #9ca3af;
+        }
+        .concept-level-table tbody tr:hover td { background-color: #f8fafc; }
+        .concept-level-table tbody tr:hover td.lvl-col { filter: brightness(0.98); }
     </style>
 </head>
 <body>
@@ -101,59 +99,50 @@
                 <span class="industry-head-count">共 {{ concept.count }} 只股票</span>
             </div>
             <div class="industry-head-stats">
-                <span class="badge badge-primary">一级行业 <b>{{ concept.primaryCount }}</b></span>
-                <span class="badge badge-secondary">二级行业 <b>{{ concept.secondaryCount }}</b></span>
-                <span class="badge badge-tertiary">三级行业 <b>{{ concept.tertiaryCount }}</b></span>
+                <span class="badge badge-level">概念层级 <b>{{ concept.levelCount }}</b></span>
+                <span class="badge badge-branch">末级分支 <b>{{ concept.leafCount }}</b></span>
                 <span class="badge badge-stock">股票 <b>{{ concept.count }}</b></span>
             </div>
         </div>
 
-        <div class="industry-group-card concept-hier-card">
-            {% if groups %}
-            <table class="concept-hier">
+        <div class="industry-group-card">
+            <table class="concept-level-table">
                 <thead>
                     <tr>
-                        <th>一级</th>
-                        <th>二级</th>
-                        <th>三级</th>
+                        {% for d in range(max_depth) %}
+                        <th>{{ d + 1 }} 级概念</th>
+                        {% endfor %}
                         <th>股票</th>
+                        <th style="width: 34%;">业务描述</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for g in groups %}
-                    {% set g_first = loop.first %}
-                    {% for s in g.secondaries %}
-                    {% set s_first = loop.first %}
-                    {% for t in s.tertiaries %}
-                    {% set t_first = loop.first %}
-                    {% for st in t.stocks %}
-                    {% set st_first = loop.first %}
+                    {% for row in table_rows %}
                     <tr>
-                        {% if g_first and s_first and t_first and st_first %}
-                        <td class="ch-primary" rowspan="{{ g.stockCount }}">
-                            <span class="ch-primary-name">{{ g.name }}</span>
+                        {% for cell in row.cells %}
+                            {% if cell %}
+                            <td class="lvl-col lvl-col-{{ loop.index }}"
+                                rowspan="{{ cell.span }}">{{ cell.name }}</td>
+                            {% else %}
+                            {# 已被上方 rowspan 覆盖，或该股票路径不足此层级 #}
+                            {% endif %}
+                        {% endfor %}
+                        <td class="col-stock">
+                            <a href="{{ url_for('index', q=row.stock.name) }}"
+                               title="在页面 F 搜索 {{ row.stock.name }}">{{ row.stock.name }}</a>
+                            {% if row.stock.code %}<span class="ch-code">{{ row.stock.code }}</span>{% endif %}
+                            {% if row.stock.tertiary %}
+                            <span class="ch-industry"
+                                  title="{{ row.stock.primary }}/{{ row.stock.secondary }}/{{ row.stock.tertiary }}">{{ row.stock.tertiary }}</span>
+                            {% endif %}
                         </td>
-                        {% endif %}
-                        {% if s_first and t_first and st_first %}
-                        <td class="ch-secondary" rowspan="{{ s.stockCount }}">{{ s.name }}</td>
-                        {% endif %}
-                        {% if t_first and st_first %}
-                        <td class="ch-tertiary" rowspan="{{ t.stockCount }}">{{ t.name }}</td>
-                        {% endif %}
-                        <td class="ch-stock">
-                            <a href="{{ url_for('index', q=st.name) }}" title="在页面 F 搜索 {{ st.name }}">{{ st.name }}</a>
-                            {% if st.code %}<span class="ch-code">{{ st.code }}</span>{% endif %}
+                        <td class="col-business">
+                            {% if row.stock.business %}{{ row.stock.business }}{% else %}<span class="ch-code">—</span>{% endif %}
                         </td>
                     </tr>
                     {% endfor %}
-                    {% endfor %}
-                    {% endfor %}
-                    {% endfor %}
                 </tbody>
             </table>
-            {% else %}
-            <div class="empty">— 暂无股票 —</div>
-            {% endif %}
         </div>
         {% else %}
         <div class="stock-detail-card stock-detail-empty">

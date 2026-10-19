@@ -338,6 +338,7 @@
         var conceptList = document.createElement("div");
         conceptList.className = "stock-detail-concept-col-list";
         if (conceptTexts.length) {
+            var bizEntries = it.businesses || [];
             conceptTexts.forEach(function (txt) {
                 // 概念保持原有的"点击跳转 pageH"超链接行为
                 var a = document.createElement("a");
@@ -346,6 +347,17 @@
                 a.title = "查看包含「" + txt + "」概念的所有股票";
                 escText(a, txt, keywords);
                 conceptList.appendChild(a);
+                // 该一级概念下的业务描述（可能挂在更深的子级概念上）
+                bizEntries.forEach(function (biz) {
+                    if (!biz || !biz.business) return;
+                    var root = (biz.path || biz.concept || "").split("/")[0].trim();
+                    if (root !== txt) return;
+                    var line = document.createElement("div");
+                    line.className = "stock-detail-concept-biz";
+                    line.title = "概念：" + (biz.path || biz.concept);
+                    line.textContent = biz.concept + "：" + biz.business;
+                    conceptList.appendChild(line);
+                });
             });
         } else {
             var conceptEmpty = document.createElement("span");

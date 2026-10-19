@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>通达信行业分类 - 页面 K · 编辑「{{ concept.name }}」</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=48" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=52" />
 </head>
 <body>
     <header class="topbar">
@@ -809,9 +809,10 @@
             }
             stocks.forEach(function (s) {
                 var chip = document.createElement('span');
-                chip.className = 'cs-chip';
+                chip.className = 'cs-chip' + (s.business ? ' cs-chip-has-biz' : '');
                 chip.title = s.primary + ' / ' + s.secondary + ' / ' + s.tertiary
-                    + (s.code ? ('  (' + s.code + ')') : '');
+                    + (s.code ? ('  (' + s.code + ')') : '')
+                    + (s.business ? ('\n业务描述：' + s.business) : '');
                 var label = document.createElement('span');
                 label.textContent = s.name;
                 var x = document.createElement('button');
@@ -834,10 +835,70 @@
                         })
                         .catch(function (e) { toast('请求失败：' + e, false); x.disabled = false; });
                 });
+                // ✎ 编辑业务描述：内联编辑器
+                var pencil = document.createElement('button');
+                pencil.type = 'button';
+                pencil.className = 'cs-chip-biz';
+                pencil.textContent = s.business ? '✎' : '＋';
+                pencil.title = s.business
+                    ? '编辑业务描述：' + s.business
+                    : '添加业务描述';
+                pencil.addEventListener('click', function () {
+                    startBizEdit(chip, s);
+                });
                 chip.appendChild(label);
+                chip.appendChild(pencil);
                 chip.appendChild(x);
                 csChips.appendChild(chip);
             });
+        }
+
+        // 业务描述内联编辑器（替换整颗 chip）
+        function startBizEdit(chip, s) {
+            chip.innerHTML = '';
+            chip.classList.add('cs-chip-editing');
+            var input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'cs-biz-input';
+            input.value = s.business || '';
+            input.placeholder = '业务描述，如：在建锰矿石选矿厂';
+            input.maxLength = 500;
+            var ok = document.createElement('button');
+            ok.type = 'button';
+            ok.className = 'cs-biz-ok';
+            ok.textContent = '存';
+            var cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.className = 'cs-biz-cancel';
+            cancel.textContent = '取';
+            function close() { loadConceptStocks(csCurrentName); }
+            function save() {
+                ok.disabled = true;
+                api('/api/pageK/stock_business',
+                    { concept: csCurrentName, stock: s.name, business: input.value })
+                    .then(function (resp) {
+                        if (resp.body && resp.body.ok) {
+                            toast(input.value.trim()
+                                ? ('已保存「' + s.name + '」的业务描述')
+                                : ('已清除「' + s.name + '」的业务描述'), true);
+                            close();
+                        } else {
+                            toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                            ok.disabled = false;
+                        }
+                    })
+                    .catch(function (e) { toast('请求失败：' + e, false); ok.disabled = false; });
+            }
+            ok.addEventListener('click', save);
+            cancel.addEventListener('click', close);
+            input.addEventListener('keydown', function (ev) {
+                if (ev.key === 'Enter') { ev.preventDefault(); save(); }
+                if (ev.key === 'Escape') { close(); }
+            });
+            chip.appendChild(input);
+            chip.appendChild(ok);
+            chip.appendChild(cancel);
+            input.focus();
         }
 
         function loadAllStocks() {

@@ -1459,6 +1459,12 @@ def delete_concept(concept_id, db_path=None):
                 names.append(r["name"])
 
         placeholders = ",".join("?" * len(all_ids))
+        # 先清理这些概念下的业务描述关联
+        _ensure_business_table(cur)
+        cur.execute(
+            f"DELETE FROM stock_concept_businesses WHERE concept_id IN ({placeholders})",
+            all_ids,
+        )
         cur.execute(f"DELETE FROM concepts WHERE id IN ({placeholders})", all_ids)
         conn.commit()
         return names
@@ -1566,9 +1572,32 @@ def get_concept_stocks(concept_name, db_path=None):
         """
     )
     result = []
-    for row in cur.fetchall():
+    stock_rows = cur.fetchall()  # 先取完股票结果，避免后续查询覆盖游标
+    # 业务描述按「匹配路径的末级概念」关联，一次性取出备用
+    _ensure_business_table(cur)
+    biz_rows = cur.execute(
+        """
+        SELECT s.name AS stock_name, c.name AS concept_name, b.business
+        FROM stock_concept_businesses b
+        JOIN concepts c ON c.id = b.concept_id
+        JOIN stocks s ON s.id = b.stock_id
+        """
+    ).fetchall()
+    biz_map: Dict[tuple, str] = {}
+    for br in biz_rows:
+        biz_map[(br["stock_name"], br["concept_name"])] = br["business"]
+    for row in stock_rows:
         # 路径上任一级等于该概念即命中（挂在子级的股票也算属于父级概念）
         if concept_name in _split_concept_segments(row["concept"]):
+            # 命中那条路径的末级概念 = 业务描述的挂载点
+            leaf = ""
+            for item in _split_concept_raw(row["concept"]):
+                segs = [
+                    s.strip() for s in item.split(CONCEPT_PATH_SEP) if s.strip()
+                ]
+                if concept_name in segs:
+                    leaf = segs[-1]
+                    break
             result.append({
                 "name": row["name"],
                 "code": row["code"] or "",
@@ -1576,9 +1605,209 @@ def get_concept_stocks(concept_name, db_path=None):
                 "primary": row["primary_name"],
                 "secondary": row["secondary_name"],
                 "tertiary": row["tertiary_name"],
+                "business": biz_map.get((row["name"], leaf), ""),
             })
     conn.close()
     return result
+
+
+# ============== 股票 × 概念 业务描述 ==============
+# 设计：独立关联表，一条记录 = 「某只股票在某个概念下的一条业务描述」。
+# 同一概念下不同股票各写各的（如「锰矿」下湘潭电化、红星发展描述不同），
+# 同一股票在不同概念下也可以有不同的描述。
+# 用 id 关联（而非概念名文本），概念改名后描述自动跟随，不受路径格式影响。
+#
+# CREATE TABLE IF NOT EXISTS stock_concept_businesses (
+#     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+#     stock_id   INTEGER NOT NULL,   -- -> stocks.id
+#     concept_id INTEGER NOT NULL,   -- -> concepts.id
+#     business   TEXT NOT NULL DEFAULT '',
+#     updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+#     UNIQUE(stock_id, concept_id)
+# )
+
+
+def _ensure_business_table(cur):
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS stock_concept_businesses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stock_id INTEGER NOT NULL,
+            concept_id INTEGER NOT NULL,
+            business TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            UNIQUE(stock_id, concept_id)
+        )
+        """
+    )
+
+
+def ensure_stock_concept_businesses_table():
+    """确保 stock_concept_businesses 表存在（应用启动时调用）。"""
+    conn = get_conn()
+    cur = conn.cursor()
+    _ensure_business_table(cur)
+    conn.commit()
+    conn.close()
+
+
+def set_stock_concept_business(stock_name, concept_name, business, db_path=None):
+    """
+    设置「股票 × 概念」的业务描述（upsert）。
+    - business 为空串时删除该条记录
+    - 股票或概念不存在抛 LookupError
+    返回最终生效的 business 文本。
+    """
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    try:
+        _ensure_business_table(cur)
+        cur.execute("SELECT id FROM stocks WHERE name = ?", (stock_name,))
+        srow = cur.fetchone()
+        if srow is None:
+            raise LookupError(f"未找到股票：{stock_name}")
+        cur.execute("SELECT id FROM concepts WHERE name = ?", (concept_name,))
+        crow = cur.fetchone()
+        if crow is None:
+            raise LookupError(f"未找到概念：{concept_name}")
+        text = (business or "").strip()
+        if text:
+            cur.execute(
+                """
+                INSERT INTO stock_concept_businesses (stock_id, concept_id, business)
+                VALUES (?, ?, ?)
+                ON CONFLICT(stock_id, concept_id)
+                DO UPDATE SET business = excluded.business,
+                              updated_at = datetime('now','localtime')
+                """,
+                (srow["id"], crow["id"], text),
+            )
+        else:
+            cur.execute(
+                "DELETE FROM stock_concept_businesses "
+                "WHERE stock_id = ? AND concept_id = ?",
+                (srow["id"], crow["id"]),
+            )
+        conn.commit()
+        return text
+    finally:
+        conn.close()
+
+
+def get_businesses_by_concept_names(concept_names, db_path=None):
+    """
+    批量查询多个概念下各股票的业务描述。
+    返回 {概念名: {股票名: 业务描述}}（只含有描述的条目）。
+    """
+    names = [str(n).strip() for n in (concept_names or []) if str(n).strip()]
+    if not names:
+        return {}
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    try:
+        _ensure_business_table(cur)
+        placeholders = ",".join("?" * len(names))
+        cur.execute(
+            """
+            SELECT c.name AS concept_name, s.name AS stock_name, b.business
+            FROM stock_concept_businesses b
+            JOIN concepts c ON c.id = b.concept_id
+            JOIN stocks s ON s.id = b.stock_id
+            WHERE c.name IN (%s)
+            """
+            % placeholders,
+            names,
+        )
+        result: Dict[str, Dict[str, str]] = {}
+        for row in cur.fetchall():
+            result.setdefault(row["concept_name"], {})[row["stock_name"]] = (
+                row["business"]
+            )
+        return result
+    finally:
+        conn.close()
+
+
+def get_stock_businesses(stock_name, db_path=None):
+    """
+    查询某只股票在所有概念下的业务描述。
+    返回 {概念名: 业务描述}。
+    """
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    try:
+        _ensure_business_table(cur)
+        cur.execute("SELECT id FROM stocks WHERE name = ?", (stock_name,))
+        srow = cur.fetchone()
+        if srow is None:
+            return {}
+        cur.execute(
+            """
+            SELECT c.name AS concept_name, b.business
+            FROM stock_concept_businesses b
+            JOIN concepts c ON c.id = b.concept_id
+            WHERE b.stock_id = ?
+            ORDER BY c.level, c.name
+            """,
+            (srow["id"],),
+        )
+        return {row["concept_name"]: row["business"] for row in cur.fetchall()}
+    finally:
+        conn.close()
+
+
+def get_businesses_for_stock_ids(stock_ids, db_path=None):
+    """
+    批量查询多只股票的业务描述（页面 F 搜索批量用）。
+    返回 {stock_id: [{"concept": 概念名, "path": 完整路径, "business": 描述}]}。
+    path 形如 "固态电池/材料/负极/硅基负极/硅氧负极"，供前端按一级概念归属展示。
+    """
+    ids = [int(i) for i in (stock_ids or []) if i is not None]
+    if not ids:
+        return {}
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    try:
+        _ensure_business_table(cur)
+        # 概念 id -> 完整路径
+        path_by_id: Dict[int, str] = {}
+        crows = cur.execute(
+            "SELECT id, name, parent_id FROM concepts"
+        ).fetchall()
+        by_id = {r["id"]: r for r in crows}
+        for r in crows:
+            names = []
+            node = r
+            seen = set()
+            while node is not None and node["id"] not in seen:
+                seen.add(node["id"])
+                names.append(node["name"])
+                pid = node["parent_id"]
+                node = by_id.get(pid) if pid is not None else None
+            path_by_id[r["id"]] = CONCEPT_PATH_SEP.join(reversed(names))
+
+        placeholders = ",".join("?" * len(ids))
+        cur.execute(
+            """
+            SELECT b.stock_id, b.concept_id, c.name AS concept_name, b.business
+            FROM stock_concept_businesses b
+            JOIN concepts c ON c.id = b.concept_id
+            WHERE b.stock_id IN (%s)
+            ORDER BY c.level, c.name
+            """
+            % placeholders,
+            ids,
+        )
+        result: Dict[int, list] = {}
+        for row in cur.fetchall():
+            result.setdefault(row["stock_id"], []).append({
+                "concept": row["concept_name"],
+                "path": path_by_id.get(row["concept_id"], row["concept_name"]),
+                "business": row["business"],
+            })
+        return result
+    finally:
+        conn.close()
 
 
 def remove_concept_from_stock(stock_name, concept_name, db_path=None):
@@ -1601,10 +1830,12 @@ def remove_concept_from_stock(stock_name, concept_name, db_path=None):
 
         kept = []
         removed = False
+        removed_segs = set()
         for item in _split_concept_raw(row["concept"]):
             segs = [s.strip() for s in item.split(CONCEPT_PATH_SEP) if s.strip()]
             if concept_name in segs:
                 removed = True
+                removed_segs.update(segs)
                 continue
             kept.append(item)
         if not removed:
@@ -1614,6 +1845,19 @@ def remove_concept_from_stock(stock_name, concept_name, db_path=None):
             "UPDATE stocks SET concept = ? WHERE id = ?",
             (new_val, row["id"]),
         )
+        # 同步清理这些概念下的业务描述（按概念名找 id）
+        if removed_segs:
+            _ensure_business_table(cur)
+            placeholders = ",".join("?" * len(removed_segs))
+            cur.execute(
+                f"""
+                DELETE FROM stock_concept_businesses
+                WHERE stock_id = ? AND concept_id IN (
+                    SELECT id FROM concepts WHERE name IN ({placeholders})
+                )
+                """,
+                [row["id"], *removed_segs],
+            )
         # 概念被移除也算修改（保持可见的"修改历史"语义）
         _record_modification_in_conn(cur, row["id"])
         conn.commit()

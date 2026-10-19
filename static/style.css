@@ -1241,6 +1241,16 @@ a.industry-link.concept-chip:hover {
     text-decoration: underline;
     transform: translateX(1px);
 }
+/* 概念 chip 下方的业务描述（挂在子级概念上的那条） */
+.stock-detail-concept-biz {
+    font-size: 11px;
+    color: #6b7280;
+    line-height: 1.5;
+    padding: 2px 4px 4px 8px;
+    border-left: 2px solid #bfdbfe;
+    margin: -2px 0 4px;
+    word-break: break-word;
+}
 /* 第二列：选项 A~H 的卡片式字段展示（左侧蓝色竖线 + 蓝色标签 + 内容） */
 .stock-detail-options {
     display: flex;
@@ -2622,6 +2632,39 @@ a.concept-card:hover {
     align-items: center;
     gap: 12px;
 }
+
+/* ===== 页面 K：概念编辑独立页 —— 股票 chip 的业务描述编辑 ===== */
+.cs-chip-has-biz { border-color: #2563eb; background: #eff6ff; }
+.cs-chip-biz {
+    border: none;
+    background: transparent;
+    color: #6b7280;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0 1px;
+    line-height: 1;
+}
+.cs-chip-biz:hover { color: #2563eb; }
+.cs-chip-editing { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; }
+.cs-biz-input {
+    width: 240px;
+    font-size: 12px;
+    padding: 3px 6px;
+    border: 1px solid #93c5fd;
+    border-radius: 4px;
+    outline: none;
+}
+.cs-biz-input:focus { border-color: #2563eb; }
+.cs-biz-ok, .cs-biz-cancel {
+    border: none;
+    border-radius: 4px;
+    padding: 3px 7px;
+    font-size: 11px;
+    cursor: pointer;
+}
+.cs-biz-ok { background: #2563eb; color: #fff; }
+.cs-biz-ok:disabled { background: #9ca3af; }
+.cs-biz-cancel { background: #e5e7eb; color: #374151; }
 
 /* ===== 页面 K：概念编辑独立页（/pageK/edit/<id>）===== */
 /* 头部区：级别徽标 + 概念名 + 完整路径 + 返回按钮 */

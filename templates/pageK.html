@@ -60,17 +60,8 @@
             </div>
             <form id="addForm" class="concept-add-form" autocomplete="off">
                 <div class="field">
-                    <label for="addParent">上级分类</label>
-                    <select id="addParent">
-                        <option value="">（无 · 作为一级概念）</option>
-                        {% for c in concepts if c.level < 5 %}
-                        <option value="{{ c.id }}">{{ c.path }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="field">
                     <label for="addName">概念名称 <span class="req">*</span></label>
-                    <input id="addName" type="text" placeholder="如：火电 / 材料 / 正极" required />
+                    <input id="addName" type="text" placeholder="如：火电 / 机器人" required />
                 </div>
                 <div class="field">
                     <label for="addDesc">描述（可选）</label>
@@ -82,7 +73,7 @@
             </form>
         </div>
 
-        <!-- 概念表 -->
+        <!-- 概念表（只展示一级概念；子级概念请到编辑页中维护） -->
         <div class="industry-group-card">
             <table class="concept-table" id="conceptTable">
                 <thead>
@@ -95,14 +86,12 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for c in concepts %}
+                    {% for c in concepts if c.level == 1 %}
                     <tr data-id="{{ c.id }}" data-name="{{ c.name }}"
                         data-level="{{ c.level }}" data-parent="{{ c.parent_id or '' }}"
                         data-path="{{ c.path }}">
                         <td class="ct-id">{{ c.id }}</td>
                         <td class="ct-name" title="{{ c.path }}">
-                            <span class="tree-indent" style="padding-left: {{ (c.level - 1) * 20 }}px"></span>
-                            <span class="lvl-badge lvl-{{ c.level }}">{{ c.level }}级</span>
                             {{ c.name }}
                         </td>
                         <td class="ct-usage">
@@ -211,9 +200,8 @@
             var name = document.getElementById('addName').value.trim();
             var desc = document.getElementById('addDesc').value.trim();
             if (!name) return;
-            var parentSel = document.getElementById('addParent');
-            var body = { name: name, description: desc };
-            body.parent_id = parentSel.value === '' ? null : parseInt(parentSel.value, 10);
+            // 页面 K 只新增一级概念；子级到编辑页中维护
+            var body = { name: name, description: desc, parent_id: null };
             var btn = addForm.querySelector('button[type="submit"]');
             btn.disabled = true;
             api('/api/pageK/add_concept', body)

@@ -20,8 +20,10 @@ from typing import Any, Dict
 from flask import Flask, jsonify, render_template, abort, request, send_from_directory
 
 from db import (
+    CONCEPT_PATH_SEP,
     DB_FILE,
     CSV_FILE as DATA_FILE,
+    _split_concept_raw,
     find_stock_by_name,
     get_conn,
     init_db_from_csv,
@@ -77,8 +79,13 @@ drop_obsolete_stock_columns()
 from db import (  # noqa: E402
     ensure_stock_modification_log_table,
     get_stock_modification_dates,
+    get_businesses_for_stock_ids,
 )
 ensure_stock_modification_log_table()
+
+# 增量迁移：确保 stock_concept_businesses 业务描述表存在
+from db import ensure_stock_concept_businesses_table  # noqa: E402
+ensure_stock_concept_businesses_table()
 
 # 增量迁移：确保 search_history 搜索历史表存在
 from db import (  # noqa: E402
@@ -876,6 +883,22 @@ def page_h():
                             for k in ("concept1", "concept2", "concept3", "concept4", "concept5")
                         )
                         if matched:
+                            # 命中的那条概念的「完整路径」，用于在页面展示股票
+                            # 具体挂在哪一级（如 固态电池/材料/负极/硅基负极/硅氧负极）
+                            matched_path = ""
+                            for k in ("concept1", "concept2", "concept3",
+                                      "concept4", "concept5"):
+                                for piece in _split_concept_raw(st.get(k)):
+                                    segs = [
+                                        s.strip()
+                                        for s in piece.split(CONCEPT_PATH_SEP)
+                                        if s.strip()
+                                    ]
+                                    if name in segs:
+                                        matched_path = CONCEPT_PATH_SEP.join(segs)
+                                        break
+                                if matched_path:
+                                    break
                             item = {
                                 "name": st["name"],
                                 "code": st["code"],
@@ -883,12 +906,23 @@ def page_h():
                                 "secondary": secondary_name,
                                 "tertiary": tertiary_name,
                                 "concept1": st.get("concept1", ""),
+                                "conceptPath": matched_path,
                             }
                             stocks.append(item)
                             tree.setdefault(primary_name, {}) \
                                 .setdefault(secondary_name, {}) \
                                 .setdefault(tertiary_name, []) \
                                 .append(item)
+        # 批量取业务描述：按每只股票命中路径的「末级概念」关联
+        from db import get_businesses_by_concept_names
+        leaf_names = sorted({
+            (it.get("conceptPath") or "").split(CONCEPT_PATH_SEP)[-1].strip()
+            for it in stocks if it.get("conceptPath")
+        })
+        biz_map = get_businesses_by_concept_names(leaf_names)
+        for it in stocks:
+            leaf = (it.get("conceptPath") or "").split(CONCEPT_PATH_SEP)[-1].strip()
+            it["business"] = biz_map.get(leaf, {}).get(it["name"], "")
         # 概念统计：哪些概念在数据库中存在，方便用 existing
         # 这里仅取当前 name 作为唯一展示概念
         concept = {
@@ -899,49 +933,82 @@ def page_h():
     # 按股票名称升序，便于查找
     stocks.sort(key=lambda s: s["name"])
 
-    # 聚合成「一级 → 二级 → 三级 → 股票」层级结构，供层级表格（rowspan 合并）展示
-    groups = []
-    for primary_name, secondaries_map in tree.items():
-        g_tertiary = 0
-        g_stock = 0
-        secondaries = []
-        for secondary_name, tertiaries_map in secondaries_map.items():
-            s_stock = 0
-            tertiaries = []
-            for tertiary_name, st_list in tertiaries_map.items():
-                st_list = sorted(st_list, key=lambda s: s["name"])
-                tertiaries.append({
-                    "name": tertiary_name,
-                    "stockCount": len(st_list),
-                    "stocks": st_list,
-                })
-                s_stock += len(st_list)
-            secondaries.append({
-                "name": secondary_name,
-                "tertiaryCount": len(tertiaries),
-                "stockCount": s_stock,
-                "tertiaries": tertiaries,
-            })
-            g_tertiary += len(tertiaries)
-            g_stock += s_stock
-        groups.append({
-            "name": primary_name,
-            "secondaryCount": len(secondaries),
-            "tertiaryCount": g_tertiary,
-            "stockCount": g_stock,
-            "secondaries": secondaries,
+    # 构建「概念层级表格」：以查询概念为一级，按每只股票的完整概念路径
+    # 逐级展开（固态电池/材料/负极/硅基负极/硅氧负极 → 1~5 级列）
+    root_node = {"name": name, "stocks": [], "children": {}}
+    for it in stocks:
+        segs = [
+            s.strip()
+            for s in (it.get("conceptPath") or "").split(CONCEPT_PATH_SEP)
+            if s.strip()
+        ]
+        node = root_node
+        # 从查询概念之后的每一级依次挂到树上
+        chain = segs[segs.index(name) + 1:] if name in segs else []
+        for seg in chain:
+            node = node["children"].setdefault(
+                seg, {"name": seg, "stocks": [], "children": {}}
+            )
+        node["stocks"].append({
+            "name": it["name"],
+            "code": it["code"],
+            "primary": it.get("primary", ""),
+            "secondary": it.get("secondary", ""),
+            "tertiary": it.get("tertiary", ""),
+            # 业务描述挂在「该股票路径的末级概念」上
+            "business": it.get("business", ""),
         })
 
+    # 深度优先展开为「一行一只股票」，每行带其概念层级链
+    flat_rows: List[Dict] = []
+
+    def _collect(node, chain):
+        for st in sorted(node["stocks"], key=lambda s: s["name"]):
+            flat_rows.append({"levels": chain, "stock": st})
+        for key in sorted(node["children"]):
+            _collect(node["children"][key], chain + [node["children"][key]["name"]])
+
+    if name:
+        _collect(root_node, [name])
+
+    # 计算每列的 rowspan（相邻行同前缀则合并）
+    max_depth = max((len(r["levels"]) for r in flat_rows), default=1) or 1
+    table_rows: List[Dict] = []
+    total = len(flat_rows)
+    for i, r in enumerate(flat_rows):
+        cells = []
+        for d in range(max_depth):
+            prefix = r["levels"][: d + 1]
+            prev_same = (
+                i > 0 and flat_rows[i - 1]["levels"][: d + 1] == prefix
+            )
+            if prev_same:
+                cells.append(None)  # 已被上一行 rowspan 覆盖
+                continue
+            span = 1
+            for j in range(i + 1, total):
+                if flat_rows[j]["levels"][: d + 1] == prefix:
+                    span += 1
+                else:
+                    break
+            cells.append({
+                "name": prefix[d] if d < len(prefix) else "",
+                "span": span,
+            })
+        table_rows.append({"cells": cells, "stock": r["stock"]})
+
     if concept is not None:
-        concept["primaryCount"] = len(groups)
-        concept["secondaryCount"] = sum(g["secondaryCount"] for g in groups)
-        concept["tertiaryCount"] = sum(g["tertiaryCount"] for g in groups)
+        concept["levelCount"] = max_depth
+        concept["leafCount"] = sum(
+            1 for r in flat_rows if len(r["levels"]) == max_depth
+        ) or len({tuple(r["levels"]) for r in flat_rows})
 
     return render_template(
         "pageH.html",
         concept=concept,
         stocks=stocks,
-        groups=groups,
+        table_rows=table_rows,
+        max_depth=max_depth,
         query_name=name,
     )
 
@@ -1051,9 +1118,11 @@ def api_stocks_search_batch():
     items.sort(key=lambda r: 0 if r["nameHit"] else 1)
     # 一次性批量查询所有股票的修改日期（YYYY-MM-DD 字符串数组）
     mod_map = get_stock_modification_dates(stock_ids) if stock_ids else {}
+    biz_map = get_businesses_for_stock_ids(stock_ids) if stock_ids else {}
     for item in items:
         sid = item.get("id")
         item["modification_dates"] = list(mod_map.get(sid, []))
+        item["businesses"] = list(biz_map.get(sid, []))
     # 记录本次搜索历史（去重，hit_count 记本次命中的股票数）
     try:
         record_search_history_batch(keywords, hit_count=len(items))
@@ -2013,6 +2082,30 @@ def api_page_k_concept_stocks():
     except Exception as e:
         return jsonify({"ok": False, "error": f"查询失败：{e}"}), 500
     return jsonify({"ok": True, "name": name, "stocks": stocks})
+
+
+@app.route("/api/pageK/stock_business", methods=["POST"])
+def api_page_k_stock_business():
+    """
+    设置/清除「股票 × 概念」的业务描述。
+    请求: {"concept": "硅氧负极", "stock": "璞泰来", "business": "人造石墨负极龙头"}
+    - business 为空串时清除该条描述
+    返回: {"ok": true, "business": "<最终文本>"}
+    """
+    from db import set_stock_concept_business
+    data = request.get_json(silent=True) or {}
+    concept = (data.get("concept") or "").strip()
+    stock = (data.get("stock") or "").strip()
+    business = (data.get("business") or "").strip()
+    if not concept or not stock:
+        return jsonify({"ok": False, "error": "缺少概念或股票名称"}), 400
+    try:
+        saved = set_stock_concept_business(stock, concept, business)
+    except LookupError as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"保存失败：{e}"}), 500
+    return jsonify({"ok": True, "business": saved})
 
 
 @app.route("/api/pageK/concept_stocks_map", methods=["POST"])
