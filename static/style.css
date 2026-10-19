@@ -1252,6 +1252,121 @@ a.industry-link.concept-chip:hover {
     word-break: break-word;
 }
 /* 第二列：选项 A~H 的卡片式字段展示（左侧蓝色竖线 + 蓝色标签 + 内容） */
+.stock-detail-concept-biz-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed #e5e7eb;
+}
+
+.stock-detail-concept-biz-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.stock-detail-concept-biz-list .stock-detail-concept-biz {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    color: #4b5563;
+    padding: 4px 8px;
+    margin: 0;
+}
+
+.stock-detail-biz-edit {
+    flex: none;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    color: #6b7280;
+    font-size: 12px;
+    line-height: 1;
+    padding: 3px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.stock-detail-biz-edit:hover {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #2563eb;
+}
+
+.stock-detail-concept-biz-row.is-editing {
+    flex-wrap: wrap;
+}
+
+.stock-detail-biz-tip {
+    flex: none;
+    max-width: 100%;
+    font-size: 12px;
+    color: #9ca3af;
+}
+
+.stock-detail-biz-input {
+    flex: 1;
+    min-width: 120px;
+    font-size: 12px;
+    padding: 4px 8px;
+    border: 1px solid #93c5fd;
+    border-radius: 4px;
+    outline: none;
+}
+
+.stock-detail-biz-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.stock-detail-biz-select {
+    flex: 1;
+    min-width: 120px;
+    font-size: 12px;
+    padding: 3px 6px;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    background: #ffffff;
+    color: #374151;
+}
+
+.stock-detail-biz-btn {
+    flex: none;
+    font-size: 12px;
+    line-height: 1;
+    padding: 5px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: #ffffff;
+    color: #4b5563;
+    cursor: pointer;
+}
+
+.stock-detail-biz-btn:hover {
+    background: #f3f4f6;
+}
+
+.stock-detail-biz-btn.is-save {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+}
+
+.stock-detail-biz-btn.is-save:hover {
+    background: #1d4ed8;
+}
+
+.stock-detail-biz-btn.is-add {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+    color: #15803d;
+}
+
+.stock-detail-biz-btn.is-add:hover {
+    background: #dcfce7;
+}
+
 .stock-detail-options {
     display: flex;
     flex-direction: column;

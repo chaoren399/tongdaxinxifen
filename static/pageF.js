@@ -338,7 +338,6 @@
         var conceptList = document.createElement("div");
         conceptList.className = "stock-detail-concept-col-list";
         if (conceptTexts.length) {
-            var bizEntries = it.businesses || [];
             conceptTexts.forEach(function (txt) {
                 // 概念保持原有的"点击跳转 pageH"超链接行为
                 var a = document.createElement("a");
@@ -347,17 +346,6 @@
                 a.title = "查看包含「" + txt + "」概念的所有股票";
                 escText(a, txt, keywords);
                 conceptList.appendChild(a);
-                // 该一级概念下的业务描述（可能挂在更深的子级概念上）
-                bizEntries.forEach(function (biz) {
-                    if (!biz || !biz.business) return;
-                    var root = (biz.path || biz.concept || "").split("/")[0].trim();
-                    if (root !== txt) return;
-                    var line = document.createElement("div");
-                    line.className = "stock-detail-concept-biz";
-                    line.title = "概念：" + (biz.path || biz.concept);
-                    line.textContent = biz.concept + "：" + biz.business;
-                    conceptList.appendChild(line);
-                });
             });
         } else {
             var conceptEmpty = document.createElement("span");
@@ -390,6 +378,177 @@
             cardFieldItem(optionsBox, f.label, v, keywords);
         });
         col2.appendChild(optionsBox);
+
+        // ===== 概念业务描述：放在中列最下边（选项 A~H 之后），支持内联编辑/新增 =====
+        // 候选概念：来自股票的 concept1~5（可能是一级/二级/... 的完整路径），
+        // 取每段路径的最后一级作为概念名（对应 DB 中的 concepts.name）。
+        var bizCandidates = [];
+        ["concept1", "concept2", "concept3", "concept4", "concept5"].forEach(function (k) {
+            var raw = it[k] || "";
+            if (!raw) return;
+            raw.split(/[-，,、\s;；]+/).forEach(function (p) {
+                var segs = p.split("/")
+                    .map(function (s) { return s.trim(); })
+                    .filter(function (s) { return !!s; });
+                if (!segs.length) return;
+                var leaf = segs[segs.length - 1];
+                var dup = bizCandidates.some(function (c) { return c.name === leaf; });
+                if (!dup) bizCandidates.push({ name: leaf, path: segs.join("/") });
+            });
+        });
+
+        var bizBox = document.createElement("div");
+        bizBox.className = "stock-detail-concept-biz-list";
+
+        function bizList() {
+            return (it.businesses || []).filter(function (b) { return b && b.business; });
+        }
+
+        /** 保存「股票 × 概念」业务描述；business 为空串即清除 */
+        function saveBiz(biz, text, done) {
+            fetch("/api/pageK/stock_business", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ concept: biz.concept, stock: it.name, business: text }),
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data || !data.ok) {
+                        alert("保存失败：" + ((data && data.error) || "未知错误"));
+                        return;
+                    }
+                    var saved = (data.business || "").trim();
+                    var arr = (it.businesses || []).slice();
+                    var hit = null;
+                    arr.forEach(function (b) { if (b && b.concept === biz.concept) hit = b; });
+                    if (!saved) {
+                        arr = arr.filter(function (b) { return !(b && b.concept === biz.concept); });
+                    } else if (hit) {
+                        hit.business = saved;
+                    } else {
+                        arr.push({ concept: biz.concept, path: biz.path || biz.concept, business: saved });
+                    }
+                    it.businesses = arr;
+                    if (done) done();
+                    renderBizBox();
+                })
+                .catch(function (err) {
+                    alert("保存失败：" + ((err && err.message) || "网络错误，请重试"));
+                    if (done) done();
+                });
+        }
+
+        /** 把某一行替换为内联编辑器 */
+        function buildBizEditor(row, biz) {
+            row.innerHTML = "";
+            row.className = "stock-detail-concept-biz-row is-editing";
+
+            var tip = document.createElement("span");
+            tip.className = "stock-detail-biz-tip";
+            tip.textContent = (biz.path || biz.concept || "");
+
+            var input = document.createElement("input");
+            input.type = "text";
+            input.className = "stock-detail-biz-input";
+            input.value = biz.business || "";
+            input.maxLength = 200;
+            input.placeholder = "业务描述（留空保存即清除）";
+
+            var btnSave = document.createElement("button");
+            btnSave.type = "button";
+            btnSave.className = "stock-detail-biz-btn is-save";
+            btnSave.textContent = "保存";
+
+            var btnCancel = document.createElement("button");
+            btnCancel.type = "button";
+            btnCancel.className = "stock-detail-biz-btn";
+            btnCancel.textContent = "取消";
+
+            btnSave.addEventListener("click", function () {
+                btnSave.disabled = true;
+                saveBiz(biz, input.value.trim(), function () { btnSave.disabled = false; });
+            });
+            btnCancel.addEventListener("click", renderBizBox);
+            input.addEventListener("keydown", function (e) {
+                if (e.isComposing || e.keyCode === 229) return;
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    btnSave.click();
+                } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    renderBizBox();
+                }
+            });
+
+            row.appendChild(tip);
+            row.appendChild(input);
+            row.appendChild(btnSave);
+            row.appendChild(btnCancel);
+            input.focus();
+        }
+
+        function renderBizBox() {
+            bizBox.innerHTML = "";
+            bizList().forEach(function (biz) {
+                var row = document.createElement("div");
+                row.className = "stock-detail-concept-biz-row";
+                var path = biz.path || biz.concept || "";
+                var line = document.createElement("span");
+                line.className = "stock-detail-concept-biz";
+                line.title = path;
+                line.textContent = path + "：" + biz.business;
+                var editBtn = document.createElement("button");
+                editBtn.type = "button";
+                editBtn.className = "stock-detail-biz-edit";
+                editBtn.textContent = "✎";
+                editBtn.title = "编辑「" + path + "」的业务描述";
+                editBtn.addEventListener("click", function () { buildBizEditor(row, biz); });
+                row.appendChild(line);
+                row.appendChild(editBtn);
+                bizBox.appendChild(row);
+            });
+
+            // 还没有描述的概念：可新增
+            var used = {};
+            bizList().forEach(function (b) { used[b.concept] = true; });
+            var addable = bizCandidates.filter(function (c) { return !used[c.name]; });
+            if (addable.length) {
+                var addRow = document.createElement("div");
+                addRow.className = "stock-detail-concept-biz-row is-add";
+                var sel = document.createElement("select");
+                sel.className = "stock-detail-biz-select";
+                addable.forEach(function (c) {
+                    var op = document.createElement("option");
+                    op.value = c.name;
+                    op.textContent = c.path;
+                    sel.appendChild(op);
+                });
+                var addBtn = document.createElement("button");
+                addBtn.type = "button";
+                addBtn.className = "stock-detail-biz-btn is-add";
+                addBtn.textContent = "＋ 添加描述";
+                addBtn.addEventListener("click", function () {
+                    var chosen = null;
+                    addable.forEach(function (c) { if (c.name === sel.value) chosen = c; });
+                    if (!chosen) return;
+                    buildBizEditor(addRow, {
+                        concept: chosen.name,
+                        path: chosen.path,
+                        business: "",
+                    });
+                });
+                addRow.appendChild(sel);
+                addRow.appendChild(addBtn);
+                bizBox.appendChild(addRow);
+            }
+            bizBox.hidden = !bizBox.childNodes.length;
+        }
+
+        if (bizCandidates.length || bizList().length) {
+            renderBizBox();
+            col2.appendChild(bizBox);
+        }
+
         cols.appendChild(col2);
 
         // 第三列：图片（只读预览，支持多张；编辑入口在「编辑」弹窗里）
