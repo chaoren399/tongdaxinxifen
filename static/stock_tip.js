@@ -24,6 +24,7 @@
         ensureTip();
         var name = target.getAttribute("data-stock") || target.textContent.trim();
         if (!name) return;
+        var industry = target.getAttribute("data-industry") || "";
 
         clearTimeout(hideTimer);
         el.innerHTML = "";
@@ -34,22 +35,22 @@
 
         var cached = cache[name];
         if (cached && cached.data) {
-            renderBody(cached.data);
+            renderBody(cached.data, cached.industry);
         } else if (cached && cached.loading) {
             appendText("加载中…");
         } else {
             appendText("加载中…");
-            cache[name] = { loading: true, data: null };
+            cache[name] = { loading: true, data: null, industry: industry };
             fetch("/api/stock_tip?name=" + encodeURIComponent(name))
                 .then(function (r) { return r.json(); })
                 .then(function (j) {
-                    cache[name] = { loading: false, data: j };
+                    cache[name] = { loading: false, data: j, industry: j.industry || industry };
                     if (curTarget && curTarget.getAttribute("data-stock") === name) {
-                        renderBody(j);
+                        renderBody(j, j.industry || industry);
                     }
                 })
                 .catch(function () {
-                    cache[name] = { loading: false, data: { ok: true, found: false } };
+                    cache[name] = { loading: false, data: { ok: true, found: false }, industry: industry };
                 });
         }
 
@@ -61,7 +62,7 @@
         el.appendChild(document.createTextNode(text));
     }
 
-    function renderBody(j) {
+    function renderBody(j, industry) {
         el.innerHTML = "";
         var nameSpan = document.createElement("span");
         nameSpan.className = "stk-tip-name";
@@ -73,9 +74,25 @@
             empty.className = "stk-tip-empty";
             empty.textContent = "（无选项B）";
             el.appendChild(empty);
-            return;
+        } else {
+            el.appendChild(document.createTextNode(j.preview || ""));
         }
-        el.appendChild(document.createTextNode(j.preview || ""));
+
+        // 选项D 前 10 个字符（不显示"选项D："标签，仅展示内容）
+        if (j.found && j.option_d) {
+            var dWrap = document.createElement("div");
+            dWrap.className = "stk-tip-option-d";
+            dWrap.textContent = j.preview_d || "";
+            el.appendChild(dWrap);
+        }
+
+        // 行业路径（优先来自接口，其次页面 data-industry，合并进选项B提示）
+        if (industry) {
+            var ind = document.createElement("div");
+            ind.className = "stk-tip-industry";
+            ind.textContent = "行业：" + industry;
+            el.appendChild(ind);
+        }
     }
 
     function position(x, y) {

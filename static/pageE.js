@@ -155,6 +155,7 @@
 
             const tdName = document.createElement("td");
             tdName.textContent = st.name;
+            tdName.setAttribute("data-stock", st.name);
 
             const tdCode = document.createElement("td");
             tdCode.textContent = st.code || "-";

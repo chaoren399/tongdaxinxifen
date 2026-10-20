@@ -723,10 +723,17 @@ mark.hl {
     border-bottom-style: solid;
     border-bottom-color: #1d4ed8;
 }
-.batch-hit-badge.card-hit {
+.card-badges {
     position: absolute;
     top: -9px;
     right: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px;
+    z-index: 1;
+}
+.batch-hit-badge.card-hit {
     display: inline-block;
     font-size: 11px;
     color: #92400e;
@@ -734,9 +741,17 @@ mark.hl {
     border: 1px solid #fde68a;
     border-radius: 10px;
     padding: 1px 8px;
-    margin-left: 6px;
     white-space: nowrap;
-    z-index: 1;
+}
+.batch-hit-badge.card-fuzzy {
+    display: inline-block;
+    font-size: 11px;
+    color: #9d174d;
+    background: #fce7f3;
+    border: 1px solid #fbcfe8;
+    border-radius: 10px;
+    padding: 1px 8px;
+    white-space: nowrap;
 }
 .batch-edit-btn {
     position: absolute;
@@ -3124,6 +3139,9 @@ a.concept-card:hover {
 .stk-tip .stk-tip-name { color: #93c5fd; font-weight: 600; margin-right: 6px; }
 .stk-tip .stk-tip-label { color: #9ca3af; }
 .stk-tip .stk-tip-empty { color: #fbbf24; }
+.stk-tip .stk-tip-industry { color: #cbd5e1; font-size: 11px; margin-top: 3px; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 3px; }
+.stk-tip .stk-tip-option-d { color: #e2e8f0; font-size: 12px; margin-top: 3px; }
+.stk-tip .stk-tip-d-label { color: #93c5fd; font-weight: 600; margin-right: 2px; }
 /* 带 data-stock 的股票名：虚线下划线提示可悬浮 */
 [data-stock] { cursor: help; }
 

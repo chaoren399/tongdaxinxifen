@@ -8,6 +8,7 @@
 数据存储：SQLite（data/tongdaxin.db），由 db.py 提供访问层
 """
 import csv  # noqa: F401  （保留 csv 以便兼容旧代码）
+import difflib
 import gzip
 import os
 import re
@@ -960,6 +961,40 @@ def page_h():
             active[d] = span - 1
         table_rows.append({"cells": cells, "stock": r["stock"]})
 
+    # 样式 B（类似编辑概念页）：将同一概念路径下的多只股票合并到同一行，
+    # 以「芯片」形式内联展示，而非每行一只股票。
+    merged_b = []  # 每项: {"levels": [...], "stocks": [stock, ...]}
+    for r in flat_rows:
+        lv = r["levels"]
+        if merged_b and merged_b[-1]["levels"] == lv:
+            merged_b[-1]["stocks"].append(r["stock"])
+        else:
+            merged_b.append({"levels": lv, "stocks": [r["stock"]]})
+    # 对合并后的行重新计算层级列的 rowspan（与样式 A 相同算法）
+    b_total = len(merged_b)
+    b_active = [0] * max_depth
+    table_b_rows: List[Dict] = []
+    for i, r in enumerate(merged_b):
+        cells = []
+        for d in range(max_depth):
+            if b_active[d] > 0:
+                b_active[d] -= 1
+                cells.append(None)  # 已被上方 rowspan 覆盖
+                continue
+            prefix = r["levels"][: d + 1]
+            if d >= len(prefix):
+                cells.append({"name": "", "span": 1})
+                continue
+            span = 1
+            for j in range(i + 1, b_total):
+                if merged_b[j]["levels"][: d + 1] == prefix:
+                    span += 1
+                else:
+                    break
+            cells.append({"name": prefix[d], "span": span})
+            b_active[d] = span - 1
+        table_b_rows.append({"cells": cells, "stocks": r["stocks"]})
+
     if concept is not None:
         concept["levelCount"] = max_depth
         concept["leafCount"] = sum(
@@ -971,6 +1006,7 @@ def page_h():
         concept=concept,
         stocks=stocks,
         table_rows=table_rows,
+        table_b_rows=table_b_rows,
         max_depth=max_depth,
         query_name=name,
     )
@@ -978,28 +1014,44 @@ def page_h():
 
 @app.route("/api/stock_tip")
 def api_stock_tip():
-    """返回某只股票的「选项B」前 10 个字符，供全局悬浮提示使用。
+    """返回某只股票的「选项B」「选项D」前 10 个字符，供全局悬浮提示使用。
 
     参数：name（股票名称，必填）
-    返回：{ name, found, option_b, preview }
-      preview = option_b 的前 10 个字符（超出则追加省略号）
+    返回：{ name, found, option_b, preview, preview_d }
+      preview  = option_b 的前 10 个字符（超出则追加省略号）
+      preview_d = option_d 的前 10 个字符（超出则追加省略号）
     """
     name = (request.args.get("name") or "").strip()
     if not name:
         return jsonify({"ok": False, "error": "缺少 name"}), 400
-    from db import get_stock_option_b
-    option_b = get_stock_option_b(name)
-    found = option_b is not None
-    preview = (option_b or "")[:10]
+    from db import get_stock_option_b, get_stock_industry_path
+    res = get_stock_option_b(name)
+    found = res is not None
+    option_b = (res or {}).get("option_b", "") or ""
+    option_d = (res or {}).get("option_d", "") or ""
+    preview = option_b[:10]
     if option_b and len(option_b) > 10:
         preview += "…"
+    preview_d = option_d[:10]
+    if option_d and len(option_d) > 10:
+        preview_d += "…"
+    # 行业路径：一级/二级/三级，供全局悬浮提示统一展示
+    ind = get_stock_industry_path(name)
+    industry = ""
+    if ind:
+        industry = "/".join(
+            p for p in (ind["primary"], ind["secondary"], ind["tertiary"]) if p
+        )
     return jsonify(
         {
             "ok": True,
             "name": name,
             "found": found,
-            "option_b": option_b or "",
+            "option_b": option_b,
+            "option_d": option_d,
             "preview": preview,
+            "preview_d": preview_d,
+            "industry": industry,
         }
     )
 
@@ -1083,6 +1135,10 @@ def api_stocks_search_batch():
     if not keywords:
         return jsonify({"keywords": [], "items": [], "total": 0})
 
+    # 模糊匹配参数：关键词长度 >= 该值才允许模糊；相似度需 >= 阈值
+    FUZZY_MIN_LEN = 2
+    FUZZY_THRESHOLD = 0.6
+
     items = []
     stock_ids = []
     for primary_name, primary in INDUSTRY_TREE.items():
@@ -1091,8 +1147,22 @@ def api_stocks_search_batch():
                 for st in tertiary["stocks"]:
                     matched = [kw for kw in keywords
                                if _stock_hit_keyword(st, tertiary_name, kw)]
+                    fuzzy_score = None
                     if not matched:
-                        continue
+                        # 精确未命中：尝试模糊匹配，取相似度最高的关键词
+                        best = None  # (kw, score)
+                        for kw in keywords:
+                            if len(kw) < FUZZY_MIN_LEN:
+                                continue
+                            sim = _field_similarity(kw, st, tertiary_name)
+                            if sim >= FUZZY_THRESHOLD and (
+                                best is None or sim > best[1]
+                            ):
+                                best = (kw, sim)
+                        if best is None:
+                            continue
+                        matched = [best[0]]
+                        fuzzy_score = best[1]
                     item = {
                         "name": st["name"],
                         "code": st["code"],
@@ -1106,6 +1176,8 @@ def api_stocks_search_batch():
                         "tertiary": tertiary_name,
                         "nameHit": any(kw in st["name"].lower() for kw in matched),
                         "matched": matched,
+                        "fuzzy": fuzzy_score is not None,
+                        "score": fuzzy_score if fuzzy_score is not None else 1.0,
                     }
                     for field in STOCK_OPTION_FIELDS:
                         item[field] = st.get(field, "")
@@ -1120,8 +1192,12 @@ def api_stocks_search_batch():
                         stock_ids.append(st["id"])
                         item["id"] = st["id"]
                     items.append(item)
-    # 名称命中优先
-    items.sort(key=lambda r: 0 if r["nameHit"] else 1)
+    # 排序：名称精确命中优先；其次精确匹配优先于模糊；同为模糊时相似度高者优先
+    items.sort(key=lambda r: (
+        0 if r["nameHit"] else 1,
+        0 if not r.get("fuzzy") else 1,
+        -r.get("score", 1.0),
+    ))
     # 一次性批量查询所有股票的修改日期（YYYY-MM-DD 字符串数组）
     mod_map = get_stock_modification_dates(stock_ids) if stock_ids else {}
     biz_map = get_businesses_for_stock_ids(stock_ids) if stock_ids else {}
@@ -1237,6 +1313,29 @@ def _stock_hit_keyword(st, tertiary_name, kw):
     for field in STOCK_OPTION_FIELDS:
         fields.append(st.get(field, ""))
     return any(kw in (f or "").lower() for f in fields)
+
+
+def _field_similarity(kw, st, tertiary_name):
+    """返回关键词 kw 与股票主要字段（名称/代码/概念/三级行业）的最大相似度(0~1)。
+
+    用于模糊搜索：当用户输入的关键词存在错别字（如 4 个字错 1 个）时，
+    精确子串匹配失效，改用 difflib 相似度召回最接近的股票。
+    """
+    fields = [
+        st["name"], st["code"],
+        st["concept1"], st["concept2"], tertiary_name,
+    ]
+    best = 0.0
+    for f in fields:
+        f = (f or "").lower()
+        if not f:
+            continue
+        if kw in f:
+            return 1.0
+        r = difflib.SequenceMatcher(None, kw, f).ratio()
+        if r > best:
+            best = r
+    return best
 
 @app.route("/api/primaries")
 def api_primaries():

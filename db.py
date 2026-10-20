@@ -1355,15 +1355,61 @@ def get_stock_counts(db_path=None):
 
 
 def get_stock_option_b(name, db_path=None):
-    """按股票名称查询「选项B」(option_b) 字段；不存在返回 None。"""
+    """按股票名称查询「选项B」(option_b) 与「选项D」(option_d) 字段。
+
+    返回 dict {"option_b": ..., "option_d": ...}；
+    股票不存在时返回 None。
+    """
     conn = get_conn(db_path)
     cur = conn.cursor()
     try:
-        cur.execute("SELECT option_b FROM stocks WHERE name = ?", (name,))
+        cur.execute(
+            "SELECT option_b, option_d FROM stocks WHERE name = ?", (name,)
+        )
         row = cur.fetchone()
         if not row:
             return None
-        return row["option_b"] or ""
+        return {
+            "option_b": row["option_b"] or "",
+            "option_d": row["option_d"] or "",
+        }
+    finally:
+        conn.close()
+
+
+def get_stock_industry_path(name, db_path=None):
+    """按股票名称查询其所属行业路径（一级/二级/三级行业名）。
+
+    返回 dict {"primary": .., "secondary": .., "tertiary": ..}（名称，可能为空串）；
+    股票不存在时返回 None。
+
+    同名股票可能存在多个三级行业下，这里只取第一条匹配。
+    """
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT p.name AS primary_name,
+                   s.name AS secondary_name,
+                   t.name AS tertiary_name
+            FROM stocks st
+            JOIN industries t ON st.tertiary_id = t.id
+            JOIN industries s ON t.parent_id = s.id
+            JOIN industries p ON s.parent_id = p.id
+            WHERE st.name = ?
+            LIMIT 1
+            """,
+            (name,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {
+            "primary": row["primary_name"] or "",
+            "secondary": row["secondary_name"] or "",
+            "tertiary": row["tertiary_name"] or "",
+        }
     finally:
         conn.close()
 

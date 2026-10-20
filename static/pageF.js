@@ -248,13 +248,22 @@
         var card = document.createElement("div");
         card.className = "stock-detail-card" + (it.nameHit ? " name-hit" : "");
 
-        // 命中关键词徽章（右上角）
+        // 命中关键词 / 模糊匹配徽章（右上角，横向排列避免重叠）
+        var badges = document.createElement("div");
+        badges.className = "card-badges";
         (it.matched || []).forEach(function (kw) {
             var b = document.createElement("span");
             b.className = "batch-hit-badge card-hit";
             b.textContent = kw;
-            card.appendChild(b);
+            badges.appendChild(b);
         });
+        if (it.fuzzy) {
+            var fb = document.createElement("span");
+            fb.className = "batch-hit-badge card-fuzzy";
+            fb.textContent = "模糊";
+            badges.appendChild(fb);
+        }
+        card.appendChild(badges);
 
         // 编辑按钮（卡片右上角）
         var editBtn = document.createElement("button");
