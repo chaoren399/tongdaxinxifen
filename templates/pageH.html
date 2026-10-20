@@ -18,11 +18,12 @@
             border-collapse: collapse;
             width: 100%;
             font-size: 13px;
+            line-height: 1.35;
         }
         .concept-level-table th,
         .concept-level-table td {
             border: 1px solid #e5e7eb;
-            padding: 8px 12px;
+            padding: 4px 12px;
             text-align: left;
             vertical-align: middle;
         }
@@ -32,6 +33,7 @@
             font-weight: 600;
             white-space: nowrap;
             text-align: center;
+            padding: 6px 12px;
         }
 
         /* 各级概念列配色：1→5 级由暖到冷，层级关系一目了然 */
@@ -128,7 +130,7 @@
                         {% endfor %}
                         <td class="col-stock">
                             <a href="{{ url_for('index', q=row.stock.name) }}"
-                               title="在页面 F 搜索 {{ row.stock.name }}">{{ row.stock.name }}</a>
+                               data-stock="{{ row.stock.name }}">{{ row.stock.name }}</a>
                             {% if row.stock.code %}<span class="ch-code">{{ row.stock.code }}</span>{% endif %}
                             {% if row.stock.tertiary %}
                             <span class="ch-industry"
@@ -156,5 +158,6 @@
         {% endif %}
     </main>
 
+    <script src="{{ url_for('static', filename='stock_tip.js') }}?v=1"></script>
 </body>
 </html>

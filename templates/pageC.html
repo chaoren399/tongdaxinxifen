@@ -336,7 +336,7 @@
                                             <ul class="stock-list">
                                                 {% for st in t.stocks %}
                                                 <li class="stock-row" data-name="{{ st.name }}" data-code="{{ st.code }}">
-                                                    <span class="stock-name">{{ st.name }}</span>
+                                                    <span class="stock-name" data-stock="{{ st.name }}">{{ st.name }}</span>
                                                     <span class="stock-code" hidden>{{ st.code or '-' }}</span>
                                                 </li>
                                                 {% endfor %}
@@ -367,5 +367,6 @@
     <script src="{{ url_for('static', filename='pageB.js') }}"></script>
     <script>window.TERTIARY_OPTIONS = {{ tertiary_options|tojson }};</script>
     <script src="{{ url_for('static', filename='pageC.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='stock_tip.js') }}?v=1"></script>
 </body>
 </html>

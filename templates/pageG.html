@@ -47,7 +47,7 @@
             {% if g.stocks %}
             <div class="industry-stock-cloud">
                 {% for st in g.stocks %}
-                <a class="industry-link" href="{{ url_for('index', q=st.name) }}" title="在页面 F 搜索 {{ st.name }}">
+                <a class="industry-link" href="{{ url_for('index', q=st.name) }}" data-stock="{{ st.name }}">
                     <span class="is-name">{{ st.name }}</span>
                 </a>
                 {% endfor %}
@@ -69,5 +69,6 @@
         </div>
         {% endif %}
     </main>
+    <script src="{{ url_for('static', filename='stock_tip.js') }}?v=1"></script>
 </body>
 </html>

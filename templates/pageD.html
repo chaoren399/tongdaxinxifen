@@ -98,11 +98,11 @@
                                                 {% for st in t.stocks %}
                                                 <li class="stock-row" data-name="{{ st.name }}" data-code="{{ st.code }}">
                                                     {% if st.code %}
-                                                    <a class="stock-link" href="{{ url_for('index', q=st.name) }}" title="在页面 F 搜索 {{ st.name }}">
+                                                    <a class="stock-link" href="{{ url_for('index', q=st.name) }}" data-stock="{{ st.name }}">
                                                         <span class="stock-name">{{ st.name }}</span>
                                                     </a>
                                                     {% else %}
-                                                    <span class="stock-name">{{ st.name }}</span>
+                                                    <span class="stock-name" data-stock="{{ st.name }}">{{ st.name }}</span>
                                                     {% endif %}
                                                     <span class="stock-code" hidden>{{ st.code or '-' }}</span>
                                                 </li>
@@ -132,5 +132,6 @@
     </main>
 
     <script src="{{ url_for('static', filename='pageB.js') }}"></script>
+    <script src="{{ url_for('static', filename='stock_tip.js') }}?v=1"></script>
 </body>
 </html>

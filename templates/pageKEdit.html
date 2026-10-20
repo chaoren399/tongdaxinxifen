@@ -561,7 +561,7 @@
                         var item = el('span', 'ket-stock-item');
                         var a = el('a', '', st.name);
                         a.href = '/?q=' + encodeURIComponent(st.name);
-                        a.title = '在页面 F 搜索 ' + st.name;
+                        a.setAttribute('data-stock', st.name);
                         item.appendChild(a);
 
                         // 移除按钮：默认隐藏，鼠标悬停该股票时才出现
@@ -995,5 +995,6 @@
         loadAllStocks();
     })();
     </script>
+    <script src="{{ url_for('static', filename='stock_tip.js') }}?v=1"></script>
 </body>
 </html>

@@ -76,7 +76,7 @@
                 <ul class="stock-list">
                     {% for name in node.stocks %}
                     <li class="stock-row" data-name="{{ name }}">
-                        <span class="stock-name">{{ name }}</span>
+                        <span class="stock-name" data-stock="{{ name }}">{{ name }}</span>
                     </li>
                     {% endfor %}
                 </ul>
@@ -233,5 +233,6 @@
         applySearch();
     })();
     </script>
+    <script src="{{ url_for('static', filename='stock_tip.js') }}?v=1"></script>
 </body>
 </html>

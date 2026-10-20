@@ -255,7 +255,7 @@
             const li = document.createElement("li");
             li.className = "stock-item";
             li.innerHTML = `
-                <span class="stock-name">${escapeHtml(s.name)}</span>
+                <span class="stock-name" data-stock="${escapeHtml(s.name)}">${escapeHtml(s.name)}</span>
                 <span class="stock-code" hidden>${escapeHtml(s.code || "-")}</span>
             `;
             ul.appendChild(li);

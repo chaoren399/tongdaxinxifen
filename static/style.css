@@ -3103,6 +3103,30 @@ a.concept-card:hover {
     font-size: 11px;
 }
 
+/* ===== 全局：股票名称悬浮提示（选项B 前 10 字符） ===== */
+.stk-tip {
+    position: fixed;
+    z-index: 9999;
+    max-width: 280px;
+    padding: 6px 10px;
+    background: #111827;
+    color: #f9fafb;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.28);
+    font-size: 12px;
+    line-height: 1.5;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.stk-tip.is-visible { opacity: 1; transform: translateY(0); }
+.stk-tip .stk-tip-name { color: #93c5fd; font-weight: 600; margin-right: 6px; }
+.stk-tip .stk-tip-label { color: #9ca3af; }
+.stk-tip .stk-tip-empty { color: #fbbf24; }
+/* 带 data-stock 的股票名：虚线下划线提示可悬浮 */
+[data-stock] { cursor: help; }
+
 /* ===== 页面 K：左右分栏重构 =====
    左侧：概念统计 / 查询概念 / 新增概念
    右侧：全部一级概念列表（分页） */

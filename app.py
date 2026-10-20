@@ -976,6 +976,34 @@ def page_h():
     )
 
 
+@app.route("/api/stock_tip")
+def api_stock_tip():
+    """返回某只股票的「选项B」前 10 个字符，供全局悬浮提示使用。
+
+    参数：name（股票名称，必填）
+    返回：{ name, found, option_b, preview }
+      preview = option_b 的前 10 个字符（超出则追加省略号）
+    """
+    name = (request.args.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "缺少 name"}), 400
+    from db import get_stock_option_b
+    option_b = get_stock_option_b(name)
+    found = option_b is not None
+    preview = (option_b or "")[:10]
+    if option_b and len(option_b) > 10:
+        preview += "…"
+    return jsonify(
+        {
+            "ok": True,
+            "name": name,
+            "found": found,
+            "option_b": option_b or "",
+            "preview": preview,
+        }
+    )
+
+
 @app.route("/pageC")
 def page_c():
     """页面 C：与页面 B 完全相同（展示一级+二级+三级+股票）"""

@@ -1354,6 +1354,20 @@ def get_stock_counts(db_path=None):
         conn.close()
 
 
+def get_stock_option_b(name, db_path=None):
+    """按股票名称查询「选项B」(option_b) 字段；不存在返回 None。"""
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT option_b FROM stocks WHERE name = ?", (name,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return row["option_b"] or ""
+    finally:
+        conn.close()
+
+
 def build_concept_path(name, db_path=None):
     """
     返回概念 name 的完整路径串（一级/二级/.../name），用于写入股票 concept 列。

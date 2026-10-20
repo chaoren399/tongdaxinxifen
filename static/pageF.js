@@ -271,6 +271,7 @@
         header.className = "stock-detail-header";
         var nameSpan = document.createElement("span");
         nameSpan.className = "stock-detail-name";
+        nameSpan.setAttribute("data-stock", it.name);
         escText(nameSpan, it.name, keywords);
         header.appendChild(nameSpan);
 
