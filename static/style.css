@@ -94,6 +94,27 @@ body {
 .badge-tertiary  { background: rgba(52, 211, 153, 0.3); }
 .badge-stock     { background: rgba(244, 114, 182, 0.3); }
 
+/* 页面 B：主体内容顶部的统计药丸横幅（复刻顶栏徽章样式） */
+.pb-stats-banner {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: center;
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.pb-stats-banner .badge {
+    padding: 10px 20px;
+    font-size: 14px;
+}
+.pb-stats-banner .badge b {
+    font-size: 17px;
+    margin-left: 2px;
+}
+
 /* ========== 主体 ========== */
 .container {
     max-width: 1280px;

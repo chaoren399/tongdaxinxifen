@@ -137,16 +137,7 @@
     </style>
 </head>
 <body>
-    <header class="topbar">
-        <div class="topbar-inner">
-            <h1>通达信行业分类 <span class="page-tag">页面 C · 一级 + 二级 + 三级 + 股票 + 新增</span></h1>
-            <div class="stats">
-                <span class="badge badge-primary">一级行业 <b>{{ stats.primary }}</b></span>
-                <span class="badge badge-secondary">二级行业 <b>{{ stats.secondary }}</b></span>
-                <span class="badge badge-tertiary">三级行业 <b>{{ stats.tertiary }}</b></span>
-                <span class="badge badge-stock">股票 <b>{{ stats.stocks }}</b></span>
-            </div>
-        </div>
+    <header class="topbar topbar-pageF">
         <nav class="topnav">
             <a href="{{ url_for('index') }}">首页</a>
             <a href="{{ url_for('page_a') }}">页面 A</a>

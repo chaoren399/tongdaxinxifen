@@ -4,19 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>通达信行业分类 - 页面 B</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=38" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=39" />
 </head>
 <body>
-    <header class="topbar">
-        <div class="topbar-inner">
-            <h1>通达信行业分类 <span class="page-tag">页面 B · 一级行业</span></h1>
-            <div class="stats">
-                <span class="badge badge-primary">一级行业 <b>{{ stats.primary }}</b></span>
-                <span class="badge badge-secondary">二级行业 <b>{{ stats.secondary }}</b></span>
-                <span class="badge badge-tertiary">三级行业 <b>{{ stats.tertiary }}</b></span>
-                <span class="badge badge-stock">股票 <b>{{ stats.stocks }}</b></span>
-            </div>
-        </div>
+    <header class="topbar topbar-pageF">
         <nav class="topnav">
             <a href="{{ url_for('index') }}">首页</a>
             <a href="{{ url_for('page_a') }}">页面 A</a>
@@ -29,6 +20,12 @@
     </header>
 
     <main class="container">
+        <div class="pb-stats-banner">
+            <span class="badge badge-primary">一级行业 <b>{{ stats.primary }}</b></span>
+            <span class="badge badge-secondary">二级行业 <b>{{ stats.secondary }}</b></span>
+            <span class="badge badge-tertiary">三级行业 <b>{{ stats.tertiary }}</b></span>
+            <span class="badge badge-stock">股票 <b>{{ stats.stocks }}</b></span>
+        </div>
         <div class="toolbar">
             <input id="searchInput" type="search" placeholder="搜索行业或股票名称 / 代码..." />
         </div>
