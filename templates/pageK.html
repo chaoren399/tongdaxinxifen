@@ -4,9 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>通达信行业分类 - 页面 K · 概念表编辑</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=47" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=49" />
 </head>
-<body>
+<body class="page-k">
     <header class="topbar">
         <div class="topbar-inner">
             <h1>通达信行业分类 <span class="page-tag">页面 K · 概念表编辑</span></h1>
@@ -26,90 +26,118 @@
 
     <main class="container">
         {% set primary_concepts = concepts | selectattr('level', 'eq', 1) | list %}
-        <!-- 统计卡片（口径：只统计一级概念） -->
-        <div class="stat-row">
-            <div class="stat-card">
-                <div class="stat-num" id="statTotal">{{ primary_concepts|length }}</div>
-                <div class="stat-label">一级概念总数</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-num" id="statUsed">{{ primary_concepts | selectattr('usage', 'gt', 0) | list | length }}</div>
-                <div class="stat-label">已使用概念</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-num" id="statUnused">{{ primary_concepts | selectattr('usage', 'eq', 0) | list | length }}</div>
-                <div class="stat-label">未使用概念</div>
-            </div>
-        </div>
 
-        <!-- 工具栏 -->
-        <div class="toolbar">
-            <input id="conceptSearch" type="search" placeholder="搜索概念名称或描述..." />
-            <button id="importBtn" class="btn-secondary" type="button"
-                    title="把股票表中出现的所有概念导入概念表（去重）">
-                从股票导入概念
-            </button>
-            <span class="result-count" id="resultCount"></span>
-        </div>
+        <div class="pk2-layout">
+            <!-- ===== 左侧：概念统计 / 查询概念 / 新增概念 ===== -->
+            <aside class="pk2-side">
+                <!-- 概念统计 -->
+                <section class="pk2-card">
+                    <h2 class="pk2-card-title">概念统计</h2>
+                    <div class="stat-row">
+                        <div class="stat-card">
+                            <div class="stat-num" id="statTotal">{{ primary_concepts|length }}</div>
+                            <div class="stat-label">一级概念总数</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-num" id="statUsed">{{ primary_concepts | selectattr('usage', 'gt', 0) | list | length }}</div>
+                            <div class="stat-label">已使用概念</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-num" id="statUnused">{{ primary_concepts | selectattr('usage', 'eq', 0) | list | length }}</div>
+                            <div class="stat-label">未使用概念</div>
+                        </div>
+                    </div>
+                </section>
 
-        <!-- 新增概念表单 -->
-        <div class="industry-group-card add-concept-panel">
-            <div class="add-concept-head">
-                <h3>新增概念</h3>
-                <p class="add-concept-tip">概念支持最多五级分类（一级 → 二级 → 三级 → 四级 → 五级），可逐级细分。</p>
-            </div>
-            <form id="addForm" class="concept-add-form" autocomplete="off">
-                <div class="field">
-                    <label for="addName">概念名称 <span class="req">*</span></label>
-                    <input id="addName" type="text" placeholder="如：火电 / 机器人" required />
-                </div>
-                <div class="field">
-                    <label for="addDesc">描述（可选）</label>
-                    <input id="addDesc" type="text" placeholder="如：火力发电相关企业" />
-                </div>
-                <div class="field-submit">
-                    <button type="submit" class="btn-primary">新增概念</button>
-                </div>
-            </form>
-        </div>
+                <!-- 查询概念 -->
+                <section class="pk2-card">
+                    <h2 class="pk2-card-title">查询概念</h2>
+                    <input id="conceptSearch" type="search" placeholder="搜索概念名称 / 编码 / 描述..." />
+                    <p class="pk2-tip">按名称、编码或描述实时过滤右侧列表。</p>
+                </section>
 
-        <!-- 概念表（只展示一级概念；子级概念请到编辑页中维护） -->
-        <div class="industry-group-card">
-            <table class="concept-table" id="conceptTable">
-                <thead>
-                    <tr>
-                        <th style="width:52px">ID</th>
-                        <th>概念名称</th>
-                        <th style="width:96px">概念编码</th>
-                        <th style="width:72px">使用数</th>
-                        <th>描述</th>
-                        <th style="width:130px">操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for c in concepts if c.level == 1 %}
-                    <tr data-id="{{ c.id }}" data-name="{{ c.name }}"
-                        data-level="{{ c.level }}" data-parent="{{ c.parent_id or '' }}"
-                        data-path="{{ c.path }}">
-                        <td class="ct-id">{{ c.id }}</td>
-                        <td class="ct-name" title="{{ c.path }}">
-                            {{ c.name }}
-                        </td>
-                        <td class="ct-code">{{ c.code or '—' }}</td>
-                        <td class="ct-usage">
-                            <span class="usage-badge {{ 'is-used' if c.usage > 0 else '' }}">{{ c.usage }}</span>
-                        </td>
-                        <td class="ct-desc">{{ c.description or '—' }}</td>
-                        <td class="ct-actions">
-                            <button class="btn-edit" type="button">编辑</button>
-                            <button class="btn-del" type="button">删除</button>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="6" class="empty">— 概念表为空，可点击「从股票导入概念」或手动新增 —</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                <!-- 新增概念 -->
+                <section class="pk2-card add-concept-panel">
+                    <div class="add-concept-head">
+                        <h3>新增概念</h3>
+                        <p class="add-concept-tip">概念支持最多五级分类（一级 → 二级 → 三级 → 四级 → 五级）。此处新增一级概念，子级请到概念编辑页维护。</p>
+                    </div>
+                    <form id="addForm" class="concept-add-form" autocomplete="off">
+                        <div class="field">
+                            <label for="addName">概念名称 <span class="req">*</span></label>
+                            <input id="addName" type="text" placeholder="如：火电 / 机器人" required />
+                        </div>
+                        <div class="field">
+                            <label for="addDesc">描述（可选）</label>
+                            <input id="addDesc" type="text" placeholder="如：火力发电相关企业" />
+                        </div>
+                        <div class="field-submit">
+                            <button type="submit" class="btn-primary">新增概念</button>
+                        </div>
+                    </form>
+                </section>
+            </aside>
+
+            <!-- ===== 右侧：全部一级概念（分页） ===== -->
+            <section class="pk2-main">
+                <div class="pk2-card">
+                    <div class="pk2-main-head">
+                        <h2 class="pk2-card-title" style="margin:0">全部一级概念</h2>
+                        <span class="result-count" id="resultCount"></span>
+                    </div>
+
+                    <table class="concept-table" id="conceptTable">
+                        <thead>
+                            <tr>
+                                <th style="width:52px">ID</th>
+                                <th>概念名称</th>
+                                <th style="width:96px">概念编码</th>
+                                <th style="width:72px">使用数</th>
+                                <th>描述</th>
+                                <th style="width:130px">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in concepts if c.level == 1 %}
+                            <tr data-id="{{ c.id }}" data-name="{{ c.name }}"
+                                data-level="{{ c.level }}" data-parent="{{ c.parent_id or '' }}"
+                                data-path="{{ c.path }}">
+                                <td class="ct-id">{{ c.id }}</td>
+                                <td class="ct-name" title="{{ c.path }}">
+                                    {{ c.name }}
+                                </td>
+                                <td class="ct-code">{{ c.code or '—' }}</td>
+                                <td class="ct-usage">
+                                    <span class="usage-badge {{ 'is-used' if c.usage > 0 else '' }}">{{ c.usage }}</span>
+                                </td>
+                                <td class="ct-desc">{{ c.description or '—' }}</td>
+                                <td class="ct-actions">
+                                    <button class="btn-edit" type="button">编辑</button>
+                                    <button class="btn-del" type="button">删除</button>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr class="pk2-empty-row"><td colspan="6" class="empty">— 概念表为空，可在左侧新增一级概念 —</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+
+                    <!-- 分页 -->
+                    <div class="pk2-pager" id="pager" hidden>
+                        <div class="pk2-pager-body" id="pagerBody"></div>
+                        <span class="pk2-pager-info" id="pagerInfo"></span>
+                        <div class="pk2-page-size">
+                            <label for="pageSize">每页</label>
+                            <select id="pageSize">
+                                <option value="10">10</option>
+                                <option value="20" selected>20</option>
+                                <option value="50">50</option>
+                            </select>
+                            <span>条</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </div>
 
         <!-- 概念编辑已改为跳转独立编辑页：/pageK/edit/<id> -->
@@ -138,31 +166,135 @@
         var searchInput = document.getElementById('conceptSearch');
         var table = document.getElementById('conceptTable');
         var counter = document.getElementById('resultCount');
-        var importBtn = document.getElementById('importBtn');
+
+        var pager = document.getElementById('pager');
+        var pagerBody = document.getElementById('pagerBody');
+        var pagerInfo = document.getElementById('pagerInfo');
+        var pageSizeSel = document.getElementById('pageSize');
 
         var delModal = document.getElementById('delModal');
         var deletingId = null;
         var deletingName = '';
 
-        // ---- 搜索过滤 ----
+        // ---- 列表 + 分页 ----
+        var allRows = Array.prototype.slice.call(
+            table.querySelectorAll('tbody tr[data-id]')
+        );
+        var emptyRow = table.querySelector('tbody tr.pk2-empty-row');
+        var filtered = [];
+        var page = 1;
+
+        function pageSize() {
+            return parseInt(pageSizeSel.value, 10) || 10;
+        }
+
         function applyFilter() {
             var kw = (searchInput.value || '').trim().toLowerCase();
-            var rows = table.querySelectorAll('tbody tr[data-id]');
-            var visible = 0;
-            rows.forEach(function (tr) {
+            filtered = allRows.filter(function (tr) {
+                if (!kw) return true;
                 var name = (tr.getAttribute('data-name') || '').toLowerCase();
-                var desc = (tr.querySelector('.ct-desc').textContent || '').toLowerCase();
-                var show = !kw || name.indexOf(kw) !== -1 || desc.indexOf(kw) !== -1;
-                tr.style.display = show ? '' : 'none';
-                if (show) visible++;
+                var desc = (tr.querySelector('.ct-desc') || {}).textContent || '';
+                var code = (tr.querySelector('.ct-code') || {}).textContent || '';
+                return name.indexOf(kw) !== -1
+                    || String(desc).toLowerCase().indexOf(kw) !== -1
+                    || String(code).toLowerCase().indexOf(kw) !== -1;
             });
-            if (counter) {
-                counter.textContent = kw
-                    ? ('匹配 ' + visible + ' / ' + rows.length + ' 个概念')
-                    : ('共 ' + rows.length + ' 个概念');
-            }
+            page = 1;
+            renderPage();
         }
+
+        function renderPage() {
+            var size = pageSize();
+            var total = filtered.length;
+            var totalPages = Math.max(1, Math.ceil(total / size));
+            if (page > totalPages) page = totalPages;
+            if (page < 1) page = 1;
+
+            var start = (page - 1) * size;
+            var slice = filtered.slice(start, start + size);
+
+            allRows.forEach(function (tr) { tr.style.display = 'none'; });
+            slice.forEach(function (tr) { tr.style.display = ''; });
+            if (emptyRow) emptyRow.style.display = total ? 'none' : '';
+
+            if (counter) {
+                counter.textContent = (total === allRows.length)
+                    ? ('共 ' + allRows.length + ' 个一级概念')
+                    : ('匹配 ' + total + ' / ' + allRows.length + ' 个一级概念');
+            }
+
+            pager.hidden = total === 0;
+            if (total === 0) {
+                pagerBody.innerHTML = '';
+                pagerInfo.textContent = '';
+                return;
+            }
+            pagerInfo.textContent = '第 ' + (start + 1) + '-' + (start + slice.length)
+                + ' 条 / 共 ' + total + ' 条（第 ' + page + '/' + totalPages + ' 页）';
+            renderPager(totalPages);
+        }
+
+        function mkPageBtn(text, opts) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pk2-page-btn' + (opts.active ? ' is-active' : '');
+            b.textContent = text;
+            if (opts.disabled) b.disabled = true;
+            b.addEventListener('click', opts.onClick);
+            return b;
+        }
+
+        function goPage(n) {
+            page = n;
+            renderPage();
+        }
+
+        function mkEllipsis() {
+            var s = document.createElement('span');
+            s.className = 'pk2-page-ellipsis';
+            s.textContent = '…';
+            return s;
+        }
+
+        function renderPager(totalPages) {
+            pagerBody.innerHTML = '';
+            pagerBody.appendChild(mkPageBtn('上一页', {
+                disabled: page <= 1,
+                onClick: function () { if (page > 1) goPage(page - 1); }
+            }));
+
+            var win = 5;
+            var s = Math.max(1, page - Math.floor(win / 2));
+            var e = Math.min(totalPages, s + win - 1);
+            s = Math.max(1, e - win + 1);
+
+            if (s > 1) {
+                pagerBody.appendChild(mkPageBtn('1', { onClick: function () { goPage(1); } }));
+                if (s > 2) pagerBody.appendChild(mkEllipsis());
+            }
+            for (var i = s; i <= e; i++) {
+                (function (n) {
+                    pagerBody.appendChild(mkPageBtn(String(n), {
+                        active: n === page,
+                        onClick: function () { goPage(n); }
+                    }));
+                })(i);
+            }
+            if (e < totalPages) {
+                if (e < totalPages - 1) pagerBody.appendChild(mkEllipsis());
+                pagerBody.appendChild(mkPageBtn(String(totalPages), {
+                    onClick: function () { goPage(totalPages); }
+                }));
+            }
+
+            pagerBody.appendChild(mkPageBtn('下一页', {
+                disabled: page >= totalPages,
+                onClick: function () { if (page < totalPages) goPage(page + 1); }
+            }));
+        }
+
         if (searchInput) searchInput.addEventListener('input', applyFilter);
+        if (pageSizeSel) pageSizeSel.addEventListener('change', function () { page = 1; renderPage(); });
 
         // ---- API 调用封装 ----
         function api(url, body) {
@@ -218,29 +350,6 @@
                 .catch(function (e) { toast('请求失败：' + e, false); })
                 .finally(function () { btn.disabled = false; });
         });
-
-        // ---- 从股票导入 ----
-        if (importBtn) {
-            importBtn.addEventListener('click', function () {
-                importBtn.disabled = true;
-                importBtn.textContent = '导入中...';
-                api('/api/pageK/import_from_stocks', {})
-                    .then(function (resp) {
-                        if (resp.body && resp.body.ok) {
-                            var added = resp.body.added || 0;
-                            toast('导入完成：新增 ' + added + ' 个概念', true);
-                            setTimeout(function () { window.location.reload(); }, 800);
-                        } else {
-                            toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
-                        }
-                    })
-                    .catch(function (e) { toast('请求失败：' + e, false); })
-                    .finally(function () {
-                        importBtn.disabled = false;
-                        importBtn.textContent = '从股票导入概念';
-                    });
-            });
-        }
 
         // ---- 编辑 / 删除 ----
         // 「编辑」不再弹窗，改为跳转到独立编辑页 /pageK/edit/<id>

@@ -1952,6 +1952,23 @@ a.industry-link.concept-chip:hover {
     font-size: 13px;
     color: #6b7280;
 }
+
+/* 页面 K：统计卡片紧凑版（不影响页面 J 等其他页面） */
+.page-k .stat-row {
+    gap: 10px;
+    margin-bottom: 14px;
+}
+.page-k .stat-card {
+    padding: 8px 12px;
+    border-radius: 8px;
+}
+.page-k .stat-num {
+    font-size: 18px;
+}
+.page-k .stat-label {
+    margin-top: 2px;
+    font-size: 11px;
+}
 .toolbar-select {
     padding: 10px 14px;
     border: 1px solid #d1d5db;
@@ -3072,4 +3089,134 @@ a.concept-card:hover {
 }
 .pageP-card.pageP-card-inline .pageP-card-desc {
     font-size: 11px;
+}
+
+/* ===== 页面 K：左右分栏重构 =====
+   左侧：概念统计 / 查询概念 / 新增概念
+   右侧：全部一级概念列表（分页） */
+.pk2-layout {
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+@media (max-width: 1000px) {
+    .pk2-layout { grid-template-columns: 1fr; }
+}
+.pk2-side {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: sticky;
+    top: 12px;
+}
+.pk2-main { min-width: 0; }
+
+.pk2-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.pk2-card-title {
+    margin: 0 0 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #111827;
+}
+.pk2-tip {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: #9ca3af;
+    line-height: 1.5;
+}
+
+/* 左侧统计卡：纵向紧凑排列 */
+.pk2-side .stat-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 0;
+}
+.pk2-side .stat-card {
+    display: flex;
+    flex-direction: row-reverse;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 8px 12px;
+    text-align: left;
+}
+.pk2-side .stat-label { margin-top: 0; }
+
+/* 左侧查询框 */
+.pk2-side #conceptSearch {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* 左侧新增表单：纵向排列 */
+.pk2-side .add-concept-panel { margin-top: 0; }
+.pk2-side .add-concept-head h3 { font-size: 14px; }
+.pk2-side .concept-add-form {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+}
+.pk2-side .concept-add-form .field-submit { display: block; }
+.pk2-side .concept-add-form .field-submit .btn-primary { width: 100%; }
+
+/* 右侧列表头部 */
+.pk2-main-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+.pk2-main-head .result-count { margin-left: auto; }
+
+/* 分页 */
+.pk2-pager {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: #6b7280;
+}
+.pk2-pager[hidden] { display: none; }
+.pk2-pager-body { display: flex; align-items: center; gap: 6px; }
+.pk2-page-btn {
+    min-width: 30px;
+    height: 30px;
+    padding: 0 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    color: #374151;
+    font-size: 13px;
+    cursor: pointer;
+}
+.pk2-page-btn:hover:not(:disabled) { border-color: #2563eb; color: #2563eb; }
+.pk2-page-btn.is-active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+    font-weight: 600;
+}
+.pk2-page-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.pk2-page-ellipsis { padding: 0 2px; color: #9ca3af; }
+.pk2-pager-info { font-size: 12px; }
+.pk2-page-size {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.pk2-page-size select {
+    padding: 4px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 13px;
+    color: #374151;
 }

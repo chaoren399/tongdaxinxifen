@@ -1238,7 +1238,8 @@ def _build_concept_tree_order(concepts, usage):
         for child in sorted(children.get(node["id"], []), key=lambda x: x["name"]):
             walk(child, f"{prefix} / {child['name']}")
 
-    for root in sorted(roots, key=lambda x: x["name"]):
+    # 一级概念按「新增时间」倒序（id 越大越晚创建），最新加的排最前
+    for root in sorted(roots, key=lambda x: x["id"], reverse=True):
         walk(root, root["name"])
     return ordered
 
@@ -1316,6 +1317,7 @@ def list_concepts(db_path=None):
     返回所有概念（按树形层级排序），每条含：
     {id, name, description, code, level, parent_id, usage, path}
     path 例如 "固态电池 / 材料 / 正极"。
+    一级概念按新增时间倒序（最新在前），子级保持原有顺序。
     """
     ensure_concepts_table(db_path)   # 保证旧库也有 code 列
     conn = get_conn(db_path)
@@ -1382,6 +1384,14 @@ def add_concept(name, description="", level=None, parent_id=None, db_path=None):
     conn = get_conn(db_path)
     cur = conn.cursor()
     try:
+        if CONCEPT_PATH_SEP in (name or ""):
+            # 名字里不允许带路径分隔符，否则会生成
+            # "固态电池/材料/正极/富锂锰基" 这种整段路径的假概念；
+            # 应逐级创建，或用 parent_id 挂到正确的父级下
+            raise ValueError(
+                f"概念名称不能包含「{CONCEPT_PATH_SEP}」，"
+                "请逐级创建（先建一级，再在编辑页里添加子级）"
+            )
         if parent_id is not None:
             cur.execute("SELECT level FROM concepts WHERE id = ?", (parent_id,))
             p = cur.fetchone()
