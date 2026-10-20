@@ -1921,7 +1921,7 @@ a.industry-link.concept-chip:hover {
 .arrow { color: #9ca3af; }
 .tag-stock { background: #ec4899; }
 
-/* ========== 页面 J：全部概念 ========== */
+/* ========== 统计卡片（页面 K 等共用） ========== */
 .stat-row {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -1953,7 +1953,7 @@ a.industry-link.concept-chip:hover {
     color: #6b7280;
 }
 
-/* 页面 K：统计卡片紧凑版（不影响页面 J 等其他页面） */
+/* 页面 K：统计卡片紧凑版（不影响其他页面） */
 .page-k .stat-row {
     gap: 10px;
     margin-bottom: 14px;
@@ -2299,6 +2299,18 @@ a.concept-card:hover {
     font-weight: 600;
     white-space: nowrap;
 }
+/* 页面 K：一级概念名称可点击跳转到页面 H */
+.page-k .ct-name-link {
+    color: #2563eb;
+    text-decoration: none;
+    border-bottom: 1px dashed transparent;
+    cursor: pointer;
+}
+.page-k .ct-name-link:hover {
+    border-bottom-color: #2563eb;
+    text-decoration: none;
+}
+.page-k .ct-no-name { color: #9ca3af; font-style: italic; }
 .ct-code {
     color: #6b7280;
     font-family: "SF Mono", Consolas, Monaco, monospace;

@@ -873,6 +873,95 @@ def find_tertiary_id(primary_name, secondary_name, tertiary_name, db_path=None):
     return row["id"] if row else None
 
 
+def find_secondary_id(primary_name, secondary_name, db_path=None):
+    """通过「一级 / 二级」行业名查询二级行业的 id，未找到返回 None。"""
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT s.id
+        FROM industries s
+        JOIN industries p ON s.parent_id = p.id
+        WHERE p.name = ? AND s.name = ? AND s.level = 2
+        """,
+        (primary_name, secondary_name),
+    )
+    row = cur.fetchone()
+    conn.close()
+    return row["id"] if row else None
+
+
+def add_tertiary_industry(primary_name, secondary_name, name, code="", db_path=None):
+    """
+    在指定二级行业下新增一个三级行业（如 有色 / 能源金属 下新增「镍」）。
+
+    返回新三级行业的 id。
+    同名三级行业已存在时抛 ValueError；二级行业不存在时抛 LookupError。
+    """
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("三级行业名称不能为空")
+    if "/" in name:
+        raise ValueError("三级行业名称不能包含「/」")
+
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT t.id
+            FROM industries t
+            JOIN industries s ON t.parent_id = s.id
+            JOIN industries p ON s.parent_id = p.id
+            WHERE p.name = ? AND s.name = ? AND t.name = ? AND t.level = 3
+            """,
+            (primary_name, secondary_name, name),
+        )
+        if cur.fetchone():
+            raise ValueError(f"三级行业「{name}」在 {primary_name} / {secondary_name} 下已存在")
+
+        cur.execute(
+            """
+            SELECT s.id
+            FROM industries s
+            JOIN industries p ON s.parent_id = p.id
+            WHERE p.name = ? AND s.name = ? AND s.level = 2
+            """,
+            (primary_name, secondary_name),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise LookupError(f"未找到二级行业：{primary_name} / {secondary_name}")
+
+        cur.execute(
+            "INSERT INTO industries (level, code, acode, name, parent_id) "
+            "VALUES (3, ?, '', ?, ?)",
+            (code or "", name, row["id"]),
+        )
+        new_id = cur.lastrowid
+        conn.commit()
+        return new_id
+    finally:
+        conn.close()
+
+
+def delete_tertiary_industry(tertiary_id, db_path=None):
+    """删除一个三级行业（须为空，不含股票），返回 True。"""
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT COUNT(*) AS c FROM stocks WHERE tertiary_id = ?", (tertiary_id,)
+        )
+        if cur.fetchone()["c"] > 0:
+            raise ValueError("该三级行业下还有股票，不能删除")
+        cur.execute("DELETE FROM industries WHERE id = ? AND level = 3", (tertiary_id,))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
 def add_stock(
     tertiary_id,
     name,
@@ -1242,6 +1331,27 @@ def _build_concept_tree_order(concepts, usage):
     for root in sorted(roots, key=lambda x: x["id"], reverse=True):
         walk(root, root["name"])
     return ordered
+
+
+def get_stock_counts(db_path=None):
+    """返回股票统计：(总股票数, 含概念的股票数)。
+
+    - 总股票数：stocks 表行数
+    - 含概念的股票数：stocks.concept 去空后非空的数量
+    """
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) AS c FROM stocks")
+        total = cur.fetchone()["c"]
+        cur.execute(
+            "SELECT COUNT(*) AS c FROM stocks "
+            "WHERE TRIM(COALESCE(concept, '')) <> ''"
+        )
+        with_concept = cur.fetchone()["c"]
+        return total, with_concept
+    finally:
+        conn.close()
 
 
 def build_concept_path(name, db_path=None):

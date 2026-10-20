@@ -713,53 +713,6 @@ def api_page_h_add_concept():
     })
 
 
-@app.route("/pageJ")
-def page_j():
-    """
-    页面 J：展示所有概念（概念1~5），并按股票数倒序排列。
-    点击概念可跳转到 pageH 查看该概念下的股票列表。
-    """
-    counts: Dict[str, int] = {}
-    total_stocks_with_concept = 0
-    for primary_name, primary in INDUSTRY_TREE.items():
-        for secondary_name, secondary in primary["secondaries"].items():
-            for tertiary_name, tertiary in secondary["tertiaries"].items():
-                for st in tertiary["stocks"]:
-                    fields = (
-                        st.get("concept1", ""),
-                        st.get("concept2", ""),
-                        st.get("concept3", ""),
-                        st.get("concept4", ""),
-                        st.get("concept5", ""),
-                    )
-                    # 只统计一级概念：完整路径 "固态电池/材料/锰矿" 归到
-                    # 一级 "固态电池"；同一股票的同名概念只计一次
-                    roots = set()
-                    for raw in fields:
-                        for piece in re.split(r"[-，,、\s;；]+", raw or ""):
-                            root = piece.split("/")[0].strip()
-                            if root:
-                                roots.add(root)
-                    for root in roots:
-                        counts[root] = counts.get(root, 0) + 1
-                    if roots:
-                        total_stocks_with_concept += 1
-
-    # 按股票数倒序，同数量按名称升序
-    items = sorted(counts.items(), key=lambda x: (-x[1], x[0]))
-    return render_template(
-        "pageJ.html",
-        concepts=items,
-        total_concepts=len(items),
-        total_stocks=len({st["name"]
-                          for p in INDUSTRY_TREE.values()
-                          for s in p["secondaries"].values()
-                          for t in s["tertiaries"].values()
-                          for st in t["stocks"]}),
-        total_stocks_with_concept=total_stocks_with_concept,
-    )
-
-
 @app.route("/pageL")
 def page_l():
     """
@@ -1037,6 +990,7 @@ def page_c():
             groups=groups,
             stats=stats,
             tertiary_options=_build_tertiary_options(groups),
+            secondary_options=_build_secondary_options(groups),
             added=added,
         ),
     )
@@ -1054,6 +1008,20 @@ def _build_tertiary_options(groups):
                         "label": f'{g["name"]} / {s["name"]} / {t["name"]}（{t["stockCount"]} 只）',
                     }
                 )
+    return options
+
+
+def _build_secondary_options(groups):
+    """构造二级下拉选项（一级||二级），用于「新增三级行业」选择父级。"""
+    options = []
+    for g in groups:
+        for s in g["secondaries"]:
+            options.append(
+                {
+                    "value": f'{g["name"]}||{s["name"]}',
+                    "label": f'{g["name"]} / {s["name"]}（{s["tertiaryCount"]} 三级）',
+                }
+            )
     return options
 
 
@@ -1365,6 +1333,61 @@ def _rewrite_csv_without(removed_rows):
         except Exception as e:
             print(f"[错误] SQLite 删除股票失败: {e}")
     return removed
+
+
+@app.route("/api/pageC/add_tertiary", methods=["POST"])
+def api_page_c_add_tertiary():
+    """在指定二级行业下新增一个三级行业（如 有色 / 能源金属 下新增「镍」）。
+
+    入参：{path: "一级||二级", name: "三级名称", code?: ""}
+    """
+    data = request.get_json(silent=True) or {}
+    path = (data.get("path") or "").strip()
+    name = (data.get("name") or "").strip()
+    code = (data.get("code") or "").strip()
+
+    if not path or "||" not in path:
+        return jsonify({"ok": False, "error": "请选择二级行业"}), 400
+    if not name:
+        return jsonify({"ok": False, "error": "请填写三级行业名称"}), 400
+
+    parts = path.split("||")
+    if len(parts) != 2:
+        return jsonify({"ok": False, "error": "二级行业路径不合法"}), 400
+    primary_name, secondary_name = parts
+
+    from db import add_tertiary_industry
+
+    try:
+        new_id = add_tertiary_industry(primary_name, secondary_name, name, code=code)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except LookupError as e:
+        return jsonify({"ok": False, "error": str(e)}), 404
+    except Exception as e:
+        print(f"[错误] 新增三级行业失败: {e}")
+        return jsonify({"ok": False, "error": f"写入数据库失败: {e}"}), 500
+
+    # 同步内存树，避免重启才能看到
+    primary = INDUSTRY_TREE.get(primary_name)
+    if primary is not None:
+        secondary = primary["secondaries"].get(secondary_name)
+        if secondary is not None:
+            secondary["tertiaries"][name] = {"name": name, "code": code, "stocks": []}
+    _invalidate_caches()
+
+    return jsonify(
+        {
+            "ok": True,
+            "id": new_id,
+            "tertiary": {
+                "name": name,
+                "code": code,
+                "stockCount": 0,
+            },
+            "path": f"{primary_name} / {secondary_name} / {name}",
+        }
+    )
 
 
 @app.route("/api/pageC/add_stock", methods=["POST"])
@@ -1840,9 +1863,15 @@ def api_page_c_reset():
 @app.route("/pageK")
 def page_k():
     """页面 K：概念字典表编辑（增/改/删/导入，可选同步股票数据）"""
-    from db import list_concepts
+    from db import list_concepts, get_stock_counts
     concepts = list_concepts()
-    return render_template("pageK.html", concepts=concepts)
+    stock_total, stock_with_concept = get_stock_counts()
+    return render_template(
+        "pageK.html",
+        concepts=concepts,
+        stock_total=stock_total,
+        stock_with_concept=stock_with_concept,
+    )
 
 
 @app.route("/pageK/edit/<int:cid>")

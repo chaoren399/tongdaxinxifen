@@ -153,7 +153,6 @@
             <a href="{{ url_for('page_b') }}">页面 B</a>
             <a href="{{ url_for('page_d') }}">页面 D</a>
             <a href="{{ url_for('page_h') }}">页面 H</a>
-            <a href="{{ url_for('page_j') }}">页面 J</a>
             <a href="{{ url_for('page_k') }}">页面 K</a>
             <a href="{{ url_for('page_l') }}">页面 L</a>
             <a href="{{ url_for('page_p') }}">页面 P</a>
@@ -164,6 +163,38 @@
         <div class="toolbar">
             <input id="searchInput" type="search" placeholder="搜索一级 / 二级 / 三级行业或股票名称..." />
         </div>
+
+        <!-- 新增三级行业面板（如：在 有色 / 能源金属 下新增「镍」） -->
+        <section class="add-panel">
+            <div class="add-panel-head">
+                <h3>新增三级行业</h3>
+            </div>
+            <form id="addTertiaryForm" class="add-form" autocomplete="off">
+                <div class="field field-wide">
+                    <label for="secondaryPath">所属二级行业 <span class="req">*</span></label>
+                    <select id="secondaryPath" name="path" required>
+                        <option value="">— 请选择一级 / 二级行业 —</option>
+                        {% for opt in secondary_options %}
+                        <option value="{{ opt.value }}">{{ opt.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="tertiaryName">三级行业名称 <span class="req">*</span></label>
+                    <input id="tertiaryName" name="name" type="text" required maxlength="20"
+                           placeholder="例如：镍" />
+                </div>
+                <div class="field">
+                    <label for="tertiaryCode">行业代码</label>
+                    <input id="tertiaryCode" name="code" type="text" maxlength="10"
+                           placeholder="可留空" />
+                </div>
+                <div class="field field-submit">
+                    <button type="submit" class="btn-primary">新增三级行业</button>
+                </div>
+            </form>
+            <div id="addTertiaryResult" class="add-result" hidden></div>
+        </section>
 
         <!-- 新增股票面板 -->
         <section class="add-panel">

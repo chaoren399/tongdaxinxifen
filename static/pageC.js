@@ -1,6 +1,73 @@
-/* 页面 C：在三级行业下新增股票 */
+/* 页面 C：新增三级行业 + 在三级行业下新增股票 */
 (function () {
     "use strict";
+
+    // ====== 新增三级行业 ======
+    (function initAddTertiary() {
+        const $tForm = document.getElementById("addTertiaryForm");
+        const $tPath = document.getElementById("secondaryPath");
+        const $tName = document.getElementById("tertiaryName");
+        const $tCode = document.getElementById("tertiaryCode");
+        const $tResult = document.getElementById("addTertiaryResult");
+        if (!$tForm) return;
+
+        function showTertiaryResult(ok, msg) {
+            $tResult.hidden = false;
+            $tResult.className = "add-result " + (ok ? "ok" : "err");
+            $tResult.textContent = msg;
+            if (ok) {
+                setTimeout(() => {
+                    $tResult.hidden = true;
+                }, 3000);
+            }
+        }
+
+        $tForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const payload = {
+                path: $tPath.value.trim(),
+                name: $tName.value.trim(),
+                code: $tCode.value.trim(),
+            };
+            if (!payload.path) {
+                showTertiaryResult(false, "请选择所属二级行业");
+                $tPath.focus();
+                return;
+            }
+            if (!payload.name) {
+                showTertiaryResult(false, "请填写三级行业名称");
+                $tName.focus();
+                return;
+            }
+
+            const submitBtn = $tForm.querySelector("button[type=submit]");
+            submitBtn.disabled = true;
+            submitBtn.textContent = "提交中...";
+            try {
+                const r = await fetch("/api/pageC/add_tertiary", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                const data = await r.json();
+                if (!r.ok || !data.ok) {
+                    showTertiaryResult(false, data.error || `提交失败 (HTTP ${r.status})`);
+                } else {
+                    showTertiaryResult(true, `已新增三级行业「${data.path}」`);
+                    $tName.value = "";
+                    $tCode.value = "";
+                    $tName.focus();
+                    // 新行业要出现在下方表格和其他下拉里，刷新页面
+                    setTimeout(() => location.reload(), 900);
+                }
+            } catch (err) {
+                showTertiaryResult(false, "网络错误：" + err.message);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "新增三级行业";
+            }
+        });
+    })();
 
     const $form = document.getElementById("addStockForm");
     const $path = document.getElementById("tertiaryPath");
