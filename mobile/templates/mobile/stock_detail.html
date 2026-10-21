@@ -1,0 +1,56 @@
+{% extends "mobile/base.html" %}
+
+{% block heading %}{{ stock.name }}{% endblock %}
+
+{% block content %}
+<nav class="m-crumbs">
+    <a href="{{ url_for('mobile.industry') }}">一级行业</a>
+    <span class="m-crumb-sep">/</span>
+    <a href="{{ url_for('mobile.tertiary_stocks', tid=stock.tertiary_id) }}">{{ stock.tertiary_name }}</a>
+    <span class="m-crumb-sep">/</span>
+    <span class="is-current">{{ stock.name }}</span>
+</nav>
+
+<!-- 基本信息 -->
+<section class="m-card">
+    <div class="m-card-head"><span class="m-card-title">基本信息</span></div>
+    <div class="m-kv">
+        <div class="m-kv-row"><span class="m-kv-k">股票名称</span><span class="m-kv-v">{{ stock.name }}</span></div>
+        <div class="m-kv-row"><span class="m-kv-k">股票代码</span><span class="m-kv-v">{{ stock.code or '—' }}</span></div>
+        <div class="m-kv-row"><span class="m-kv-k">所属行业</span><span class="m-kv-v">{{ stock.primary_name }} / {{ stock.secondary_name }} / {{ stock.tertiary_name }}</span></div>
+        <div class="m-kv-row"><span class="m-kv-k">概念</span><span class="m-kv-v">{{ stock.concept or '—' }}</span></div>
+    </div>
+</section>
+
+<!-- 选项字段 -->
+<section class="m-card">
+    <div class="m-card-head"><span class="m-card-title">扩展字段</span></div>
+    <div class="m-kv">
+        {% for label, val in [
+            ('选项A', stock.option_a), ('选项B', stock.option_b),
+            ('选项C', stock.option_c), ('选项D', stock.option_d),
+            ('选项E', stock.option_e), ('选项F', stock.option_f),
+            ('选项G', stock.option_g), ('选项H', stock.option_h)] %}
+        <div class="m-kv-row"><span class="m-kv-k">{{ label }}</span><span class="m-kv-v">{{ val or '—' }}</span></div>
+        {% endfor %}
+    </div>
+</section>
+
+<!-- 图片 -->
+<section class="m-card">
+    <div class="m-card-head">
+        <span class="m-card-title">图表（{{ stock.images|length }}）</span>
+    </div>
+    {% if stock.images %}
+    <div class="m-imgs">
+        {% for fn in stock.images %}
+        <a href="/stock_images/{{ fn }}" target="_blank" rel="noopener">
+            <img src="/stock_images/{{ fn }}" alt="{{ stock.name }} 图 {{ loop.index }}" loading="lazy" />
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="m-empty m-empty-inline">暂无图片</div>
+    {% endif %}
+</section>
+{% endblock %}

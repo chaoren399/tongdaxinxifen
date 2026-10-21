@@ -1,0 +1,43 @@
+{% extends "mobile/base.html" %}
+
+{% block heading %}{% if crumbs %}{{ crumbs[-1].label }}{% else %}行业浏览{% endif %}{% endblock %}
+
+{% block content %}
+<!-- 面包屑 -->
+<nav class="m-crumbs">
+    {% for c in crumbs %}
+        {% if c.url %}<a href="{{ c.url }}">{{ c.label }}</a>{% else %}<span class="is-current">{{ c.label }}</span>{% endif %}
+        {% if not loop.last %}<span class="m-crumb-sep">/</span>{% endif %}
+    {% endfor %}
+</nav>
+
+{% if not items %}
+<div class="m-empty">该层级下暂无下级行业</div>
+{% else %}
+<ul class="m-list">
+    {% for it in items %}
+    <li class="m-list-item">
+        <a href="{{ m_item_url(it, level) }}">
+            <div class="m-list-main">
+                <span class="m-list-name">{{ it.name }}</span>
+                {% if it.code %}<span class="m-list-code">{{ it.code }}</span>{% endif %}
+            </div>
+            <div class="m-list-meta">
+                {% if level == 1 %}
+                    <span>{{ it.secondary_count }} 二级</span>
+                    <span>{{ it.tertiary_count }} 三级</span>
+                    <span>{{ it.stock_count }} 只</span>
+                {% elif level == 2 %}
+                    <span>{{ it.tertiary_count }} 三级</span>
+                    <span>{{ it.stock_count }} 只</span>
+                {% else %}
+                    <span>{{ it.stock_count }} 只股票</span>
+                {% endif %}
+            </div>
+            <span class="m-list-arrow">›</span>
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

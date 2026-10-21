@@ -1,0 +1,35 @@
+{% extends "mobile/base.html" %}
+
+{% block heading %}更多{% endblock %}
+
+{% block content %}
+<section class="m-card">
+    <div class="m-card-head"><span class="m-card-title">当前数据</span></div>
+    <div class="m-kv">
+        <div class="m-kv-row"><span class="m-kv-k">一级行业</span><span class="m-kv-v">{{ stats.primary }}</span></div>
+        <div class="m-kv-row"><span class="m-kv-k">二级行业</span><span class="m-kv-v">{{ stats.secondary }}</span></div>
+        <div class="m-kv-row"><span class="m-kv-k">三级行业</span><span class="m-kv-v">{{ stats.tertiary }}</span></div>
+        <div class="m-kv-row"><span class="m-kv-k">股票总数</span><span class="m-kv-v">{{ stats.stocks }}</span></div>
+        <div class="m-kv-row"><span class="m-kv-k">含概念股票</span><span class="m-kv-v">{{ stats.with_concept }}</span></div>
+        <div class="m-kv-row"><span class="m-kv-k">图片数量</span><span class="m-kv-v">{{ stats.images }}</span></div>
+    </div>
+</section>
+
+<section class="m-card">
+    <div class="m-card-head"><span class="m-card-title">版本</span></div>
+    <div class="m-entry-list">
+        <a class="m-entry" href="{{ url_for('mobile.switch_view', to='pc', next='/') }}">
+            <span class="m-entry-icon">🖥</span>
+            <span class="m-entry-text">切换到电脑版<span class="m-entry-sub">数据维护功能请在电脑端操作</span></span>
+            <span class="m-entry-arrow">›</span>
+        </a>
+        <a class="m-entry" href="{{ url_for('mobile.switch_view', to='mobile', next='/m/') }}">
+            <span class="m-entry-icon">📱</span>
+            <span class="m-entry-text">记住使用手机版<span class="m-entry-sub">之后访问 PC 域名会自动跳转到这里</span></span>
+            <span class="m-entry-arrow">›</span>
+        </a>
+    </div>
+</section>
+
+<p class="m-footnote">手机端 v0.1 · 仅浏览与搜索，编辑功能仍在电脑端</p>
+{% endblock %}

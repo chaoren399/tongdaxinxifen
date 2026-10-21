@@ -1,0 +1,82 @@
+{% extends "mobile/base.html" %}
+
+{% block heading %}通达信行业分类{% endblock %}
+
+{% block content %}
+<!-- 搜索 -->
+<form class="m-searchbar" action="{{ url_for('mobile.search') }}" method="get">
+    <input type="search" name="q" class="m-search-input"
+           placeholder="搜索股票名称 / 代码 / 概念" autocomplete="off" />
+    <button type="submit" class="m-search-btn">搜索</button>
+</form>
+
+{% if history %}
+<div class="m-card">
+    <div class="m-card-head">
+        <span class="m-card-title">最近搜索</span>
+    </div>
+    <div class="m-chips">
+        {% for h in history %}
+        <a class="m-chip" href="{{ url_for('mobile.search', q=h.keyword) }}">{{ h.keyword }}</a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- 概览统计 -->
+<section class="m-card">
+    <div class="m-card-head">
+        <span class="m-card-title">数据概览</span>
+        <a class="m-card-more" href="{{ url_for('mobile.industry') }}">查看全部 ›</a>
+    </div>
+    <div class="m-stat-grid">
+        <div class="m-stat"><span class="m-stat-num">{{ stats.primary }}</span><span class="m-stat-label">一级行业</span></div>
+        <div class="m-stat"><span class="m-stat-num">{{ stats.secondary }}</span><span class="m-stat-label">二级行业</span></div>
+        <div class="m-stat"><span class="m-stat-num">{{ stats.tertiary }}</span><span class="m-stat-label">三级行业</span></div>
+        <div class="m-stat"><span class="m-stat-num">{{ stats.stocks }}</span><span class="m-stat-label">股票总数</span></div>
+    </div>
+</section>
+
+<!-- 一级行业快捷入口 -->
+<section class="m-card">
+    <div class="m-card-head">
+        <span class="m-card-title">一级行业</span>
+        <a class="m-card-more" href="{{ url_for('mobile.industry') }}">全部 {{ stats.primary }} 个 ›</a>
+    </div>
+    <div class="m-grid">
+        {% for p in primaries %}
+        <a class="m-grid-item" href="{{ url_for('mobile.secondary', pid=p.id) }}">
+            <span class="m-grid-name">{{ p.name }}</span>
+            <span class="m-grid-meta">{{ p.stock_count }} 只股票</span>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+
+<!-- 待迭代入口 -->
+<section class="m-card">
+    <div class="m-card-head"><span class="m-card-title">更多功能</span></div>
+    <div class="m-entry-list">
+        <a class="m-entry" href="{{ url_for('mobile.industry') }}">
+            <span class="m-entry-icon">🗂</span>
+            <span class="m-entry-text">行业层级浏览<span class="m-entry-sub">一级 → 二级 → 三级 → 股票</span></span>
+            <span class="m-entry-arrow">›</span>
+        </a>
+        <a class="m-entry" href="{{ url_for('mobile.search') }}">
+            <span class="m-entry-icon">🔍</span>
+            <span class="m-entry-text">股票搜索<span class="m-entry-sub">名称 / 代码 / 概念</span></span>
+            <span class="m-entry-arrow">›</span>
+        </a>
+        <div class="m-entry is-disabled">
+            <span class="m-entry-icon">🖼</span>
+            <span class="m-entry-text">图表管理<span class="m-entry-sub">规划中 · 请到电脑端操作</span></span>
+            <span class="m-entry-arrow">›</span>
+        </div>
+        <div class="m-entry is-disabled">
+            <span class="m-entry-icon">🧩</span>
+            <span class="m-entry-text">概念字典<span class="m-entry-sub">规划中 · 请到电脑端操作</span></span>
+            <span class="m-entry-arrow">›</span>
+        </div>
+    </div>
+</section>
+{% endblock %}

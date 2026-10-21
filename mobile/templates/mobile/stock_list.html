@@ -1,0 +1,38 @@
+{% extends "mobile/base.html" %}
+
+{% block heading %}{{ node.name }}{% endblock %}
+
+{% block content %}
+<nav class="m-crumbs">
+    {% for c in crumbs %}
+        {% if c.url %}<a href="{{ c.url }}">{{ c.label }}</a>{% else %}<span class="is-current">{{ c.label }}</span>{% endif %}
+        {% if not loop.last %}<span class="m-crumb-sep">/</span>{% endif %}
+    {% endfor %}
+</nav>
+
+<div class="m-subbar">共 <b>{{ stocks|length }}</b> 只股票</div>
+
+{% if not stocks %}
+<div class="m-empty">该三级行业下暂无股票</div>
+{% else %}
+<ul class="m-list">
+    {% for st in stocks %}
+    <li class="m-list-item">
+        <a href="{{ url_for('mobile.stock_detail', sid=st.id) }}">
+            {% if st.image %}
+            <img class="m-thumb" src="/stock_images/{{ st.image }}" alt="{{ st.name }}" loading="lazy" />
+            {% else %}
+            <span class="m-thumb m-thumb-empty">{{ st.name[0] }}</span>
+            {% endif %}
+            <div class="m-list-main">
+                <span class="m-list-name">{{ st.name }}</span>
+                <span class="m-list-code">{{ st.code or '—' }}</span>
+                {% if st.concept %}<span class="m-tag">{{ st.concept }}</span>{% endif %}
+            </div>
+            <span class="m-list-arrow">›</span>
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

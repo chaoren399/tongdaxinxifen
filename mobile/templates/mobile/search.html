@@ -1,0 +1,41 @@
+{% extends "mobile/base.html" %}
+
+{% block heading %}股票搜索{% endblock %}
+
+{% block content %}
+<form class="m-searchbar" action="{{ url_for('mobile.search') }}" method="get">
+    <input type="search" name="q" class="m-search-input" value="{{ keyword }}"
+           placeholder="股票名称 / 代码 / 概念" autocomplete="off" />
+    <button type="submit" class="m-search-btn">搜索</button>
+</form>
+
+{% if keyword %}
+<div class="m-subbar">“<b>{{ keyword }}</b>” 匹配到 {{ stocks|length }} 条</div>
+
+{% if not stocks %}
+<div class="m-empty">没有找到相关股票，换个关键词试试</div>
+{% else %}
+<ul class="m-list">
+    {% for st in stocks %}
+    <li class="m-list-item">
+        <a href="{{ url_for('mobile.stock_detail', sid=st.id) }}">
+            {% if st.image %}
+            <img class="m-thumb" src="/stock_images/{{ st.image }}" alt="{{ st.name }}" loading="lazy" />
+            {% else %}
+            <span class="m-thumb m-thumb-empty">{{ st.name[0] }}</span>
+            {% endif %}
+            <div class="m-list-main">
+                <span class="m-list-name">{{ st.name }}</span>
+                <span class="m-list-code">{{ st.code or '—' }}</span>
+                <span class="m-list-path">{{ st.primary_name }} / {{ st.secondary_name }} / {{ st.tertiary_name }}</span>
+            </div>
+            <span class="m-list-arrow">›</span>
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
+{% else %}
+<div class="m-empty">输入关键词开始搜索</div>
+{% endif %}
+{% endblock %}

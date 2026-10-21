@@ -236,6 +236,11 @@ class _GzipMiddleware:
 app.wsgi_app = _GzipMiddleware(app.wsgi_app)
 
 
+# 挂载手机端子应用（mobile/ 包）：PC 端仍走 /，手机端走 /m/，手机 UA 自动引导
+from mobile import register_mobile  # noqa: E402
+register_mobile(app)
+
+
 def serialize_primary(name, primary):
     """序列化一个一级行业（仅含自身元信息 + 统计数量）"""
     secondary_count = len(primary["secondaries"])

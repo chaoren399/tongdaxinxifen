@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1e3a8a" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>{% block title %}通达信行业分类 · 手机版{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+    <link rel="stylesheet" href="{{ url_for('mobile.static', filename='css/mobile.css') }}?v=1" />
+</head>
+<body>
+<header class="m-header">
+    <a class="m-back" href="{{ back_url or url_for('mobile.home') }}" aria-label="返回">‹</a>
+    <h1 class="m-heading">{% block heading %}通达信行业分类{% endblock %}</h1>
+    <a class="m-home-btn" href="{{ url_for('mobile.home') }}" aria-label="首页">⌂</a>
+</header>
+
+<main class="m-main">
+    {% block content %}{% endblock %}
+</main>
+
+<nav class="m-tabbar">
+    {% for t in tabs %}
+    <a class="m-tab {% if t.key == active_tab %}is-active{% endif %}" href="{{ url_for(t.endpoint) }}">
+        <span class="m-tab-icon">{{ t.icon }}</span>
+        <span class="m-tab-label">{{ t.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<script src="{{ url_for('mobile.static', filename='js/mobile.js') }}?v=1"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
