@@ -590,6 +590,46 @@ mark.hl {
     gap: 8px;
     align-items: center;
 }
+/* 搜索框联想：绝对定位于输入框下方 */
+.pf-search-input-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+.pf-suggest {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
+    max-height: 240px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16);
+    padding: 4px 0;
+    z-index: 30;
+}
+.pf-suggest[hidden] { display: none; }
+.pf-suggest-item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #374151;
+    cursor: pointer;
+}
+.pf-suggest-item.is-active { background: #eff6ff; }
+.pf-suggest-item b { color: #2563eb; font-weight: 700; }
+.pf-suggest-code {
+    margin-left: auto;
+    font-size: 11px;
+    color: #9ca3af;
+    font-family: "SF Mono", Consolas, Monaco, monospace;
+}
+.pf-suggest-empty { padding: 8px 12px; font-size: 12px; color: #9ca3af; }
 .batch-search-row input {
     flex: 1;
     box-sizing: border-box;

@@ -1028,9 +1028,164 @@
         if (e.isComposing || e.keyCode === 229) return;
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
+            // 联想面板打开且有高亮项：先补全成完整股票名称再搜索
+            if (suggestBox && !suggestBox.hidden && suggestIndex >= 0 && suggestItems[suggestIndex]) {
+                applySuggest(suggestIndex);
+            }
             doSearch();
         }
     });
+
+    // ===== 搜索框股票名称联想（同页面 K 批量添加股票的提示） =====
+    var suggestBox = document.getElementById("batchSuggest");
+    var suggestItems = [];   // 当前候选 [{name, code}]
+    var suggestIndex = -1;   // 高亮项下标
+    var allStocks = null;    // 全量股票缓存
+    var suggestTimer = null;
+
+    function loadAllStocks() {
+        if (allStocks) return;
+        fetch("/api/pageK/all_stocks")
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (!j.ok) return;
+                allStocks = j.stocks || [];
+            })
+            .catch(function () { /* 静默失败：联想不可用不影响正常搜索 */ });
+    }
+
+    function matchStocks(term, limit) {
+        // 名称匹配优先于代码匹配，开头匹配优先于包含匹配
+        var kw = (term || "").trim();
+        if (!kw || !allStocks) return [];
+        var lower = kw.toLowerCase();
+        var starts = [];
+        var contains = [];
+        for (var i = 0; i < allStocks.length; i++) {
+            var s = allStocks[i];
+            var name = s.name || "";
+            var code = (s.code || "").toString();
+            var ni = name.indexOf(kw);
+            var ci = code.toLowerCase().indexOf(lower);
+            if (ni === 0) starts.push(s);
+            else if (ci === 0 && code) starts.push(s);
+            else if (ni > 0) contains.push(s);
+            else if (ci > 0) contains.push(s);
+            if (starts.length >= limit) break;
+        }
+        return starts.concat(contains).slice(0, limit);
+    }
+
+    function hideSuggest() {
+        if (!suggestBox) return;
+        suggestBox.hidden = true;
+        suggestItems = [];
+        suggestIndex = -1;
+    }
+
+    function setSuggestIndex(idx) {
+        suggestIndex = idx;
+        var rows = suggestBox.querySelectorAll(".pf-suggest-item");
+        for (var i = 0; i < rows.length; i++) {
+            if (i === idx) rows[i].classList.add("is-active");
+            else rows[i].classList.remove("is-active");
+        }
+        var act = suggestBox.querySelector(".pf-suggest-item.is-active");
+        if (act && act.scrollIntoView) act.scrollIntoView({ block: "nearest" });
+    }
+
+    function renderSuggest(term) {
+        if (!suggestBox) return;
+        suggestBox.innerHTML = "";
+        var list2 = matchStocks(term, 8);
+        suggestItems = list2.map(function (s) {
+            return { name: s.name || "", code: s.code || "" };
+        });
+        suggestIndex = suggestItems.length ? 0 : -1;
+
+        if (!suggestItems.length) {
+            var empty = document.createElement("div");
+            empty.className = "pf-suggest-empty";
+            empty.textContent = "没有匹配的股票";
+            suggestBox.appendChild(empty);
+            suggestBox.hidden = false;
+            return;
+        }
+
+        suggestItems.forEach(function (item, idx) {
+            var row = document.createElement("div");
+            row.className = "pf-suggest-item";
+            if (idx === suggestIndex) row.classList.add("is-active");
+
+            // 高亮命中片段（用 DOM 拼接，避免 innerHTML 注入）
+            var nm = document.createElement("span");
+            nm.className = "pf-suggest-name";
+            var pos = item.name.indexOf(term);
+            if (pos >= 0 && term) {
+                nm.appendChild(document.createTextNode(item.name.slice(0, pos)));
+                var b = document.createElement("b");
+                b.textContent = item.name.slice(pos, pos + term.length);
+                nm.appendChild(b);
+                nm.appendChild(document.createTextNode(item.name.slice(pos + term.length)));
+            } else {
+                nm.textContent = item.name;
+            }
+            row.appendChild(nm);
+
+            if (item.code) {
+                var cd = document.createElement("span");
+                cd.className = "pf-suggest-code";
+                cd.textContent = item.code;
+                row.appendChild(cd);
+            }
+
+            row.addEventListener("mousedown", function (ev) {
+                ev.preventDefault();      // 防止输入框先失焦
+                applySuggest(idx);
+            });
+            row.addEventListener("mouseenter", function () { setSuggestIndex(idx); });
+            suggestBox.appendChild(row);
+        });
+        suggestBox.hidden = false;
+    }
+
+    function updateSuggest() {
+        var term = (input.value || "").trim();
+        if (!term) { hideSuggest(); return; }
+        loadAllStocks();
+        renderSuggest(term);
+    }
+
+    function applySuggest(idx) {
+        var item = suggestItems[idx];
+        if (!item) return;
+        input.value = item.name;
+        hideSuggest();
+        input.focus();
+    }
+
+    if (suggestBox && input) {
+        input.addEventListener("input", function () {
+            clearTimeout(suggestTimer);
+            suggestTimer = setTimeout(updateSuggest, 120);
+        });
+        input.addEventListener("focus", function () { loadAllStocks(); });
+        input.addEventListener("blur", function () { hideSuggest(); });
+        input.addEventListener("keydown", function (e) {
+            if (e.isComposing || e.keyCode === 229) return;
+            if (suggestBox.hidden || !suggestItems.length) return;
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setSuggestIndex((suggestIndex + 1) % suggestItems.length);
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setSuggestIndex((suggestIndex - 1 + suggestItems.length) % suggestItems.length);
+            } else if (e.key === "Escape") {
+                e.preventDefault();
+                hideSuggest();
+            }
+        });
+    }
 
     // 支持 URL 参数 ?q=... 进入时自动搜索（供页面 D 等跳转使用）
     var initQ = new URLSearchParams(window.location.search).get("q");

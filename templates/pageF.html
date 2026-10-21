@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>通达信行业分类 - 页面 F · 多股票搜索</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=54" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=55" />
 </head>
 <body>
     <header class="topbar topbar-pageF">
@@ -23,7 +23,10 @@
     <main class="container">
         <div class="batch-search-box">
             <div class="batch-search-row">
-                <input type="text" id="batchSearchInput" placeholder="输入股票名称/代码/概念/关键词" />
+                <div class="pf-search-input-wrap">
+                    <input type="text" id="batchSearchInput" placeholder="输入股票名称/代码/概念/关键词" autocomplete="off" />
+                    <div class="pf-suggest" id="batchSuggest" hidden></div>
+                </div>
                 <button id="batchSearchBtn" type="button">搜 索</button>
             </div>
             <div class="search-history-row" id="searchHistoryRow" hidden>
@@ -39,7 +42,7 @@
         </div>
     </main>
 
-    <script src="{{ url_for('static', filename='pageF.js') }}?v=45"></script>
+    <script src="{{ url_for('static', filename='pageF.js') }}?v=46"></script>
     <script src="{{ url_for('static', filename='stock_tip.js') }}?v=1"></script>
 </body>
 </html>
