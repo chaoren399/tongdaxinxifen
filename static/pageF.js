@@ -727,8 +727,6 @@
             }
 
             var rows = buildRows(fields) +
-                '<div class="batch-modal-section-title">概念（从一级概念中选择）</div>' +
-                buildConceptSelects(conceptFields) +
                 '<div class="batch-modal-section-title">选项 A ~ H</div>' +
                 buildRows(optionFields) +
                 '<div class="batch-modal-section-title">图片（可上传多张）</div>' +
@@ -739,7 +737,9 @@
                         '<button type="button" class="batch-btn" id="modalUploadBtn">添加图片</button>' +
                         '<span class="batch-modal-image-hint">可多选，或直接按 Ctrl+V 粘贴图片</span>' +
                     '</div>' +
-                '</div>';
+                '</div>' +
+                '<div class="batch-modal-section-title">概念（从一级概念中选择）</div>' +
+                buildConceptSelects(conceptFields);
 
             var modal = document.createElement("div");
             modal.id = "batchEditModal";
