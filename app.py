@@ -2107,7 +2107,7 @@ def api_page_k_update_concept():
     code 可省略表示不改编码；传空串表示清空编码。
     sync_stocks=true 时，把所有股票概念串中的旧名称替换为新名称。
     """
-    from db import update_concept, sync_concept_in_stocks
+    from db import update_concept, sync_concept_path_in_stocks, build_concept_path_by_id
     data = request.get_json(silent=True) or {}
     concept_id = data.get("id")
     name = (data.get("name") or "").strip()
@@ -2132,6 +2132,9 @@ def api_page_k_update_concept():
     if concept_id is None:
         return jsonify({"ok": False, "error": "缺少概念 id"}), 400
 
+    # 改名/移动前先记下旧路径，用于按路径同步股票（概念名可重名，按名字会误伤）
+    old_path = build_concept_path_by_id(concept_id)
+
     try:
         old_name, new_name = update_concept(
             concept_id,
@@ -2148,7 +2151,9 @@ def api_page_k_update_concept():
     synced = 0
     if sync and new_name != old_name:
         try:
-            synced = sync_concept_in_stocks(old_name, new_name)
+            new_path = build_concept_path_by_id(concept_id)
+            if old_path and new_path and old_path != new_path:
+                synced = sync_concept_path_in_stocks(old_path, new_path)
             reload_industry_tree()
         except Exception as e:
             return jsonify(
@@ -2172,7 +2177,7 @@ def api_page_k_update_concepts_batch():
     parent_id 省略表示保持原上级；null/"" 表示移到根。
     返回 {"ok": true, "updated": n, "synced_stocks": n, "failed": [{"id", "error"}]}
     """
-    from db import update_concept, sync_concept_in_stocks
+    from db import update_concept, sync_concept_path_in_stocks, build_concept_path_by_id
     data = request.get_json(silent=True) or {}
     items = data.get("items")
     sync = bool(data.get("sync_stocks"))
@@ -2212,6 +2217,7 @@ def api_page_k_update_concepts_batch():
                 failed.append({"id": concept_id, "error": "上级分类 id 无效"})
                 continue
 
+        old_path = build_concept_path_by_id(concept_id)
         try:
             old_name, new_name = update_concept(
                 concept_id,
@@ -2229,7 +2235,9 @@ def api_page_k_update_concepts_batch():
         updated += 1
         if sync and new_name != old_name:
             try:
-                synced += sync_concept_in_stocks(old_name, new_name)
+                new_path = build_concept_path_by_id(concept_id)
+                if old_path and new_path and old_path != new_path:
+                    synced += sync_concept_path_in_stocks(old_path, new_path)
             except Exception as e:
                 failed.append(
                     {"id": concept_id, "error": f"已更新，但同步股票失败：{e}"}
@@ -2252,13 +2260,23 @@ def api_page_k_delete_concept():
     删除概念 {"id": 1, "sync_stocks": true}
     级联删除其所有子孙分类。sync_stocks=true 时，把被删除的所有概念从股票串中移除。
     """
-    from db import delete_concept, sync_concept_in_stocks
+    from db import (
+        delete_concept,
+        sync_concept_path_in_stocks,
+        collect_concept_paths,
+    )
     data = request.get_json(silent=True) or {}
     concept_id = data.get("id")
     sync = bool(data.get("sync_stocks"))
 
     if concept_id is None:
         return jsonify({"ok": False, "error": "缺少概念 id"}), 400
+
+    # 删除前先取完整路径（概念名可重名，按名字同步会误删同名分支）
+    try:
+        old_paths = collect_concept_paths(concept_id) if sync else []
+    except Exception:
+        old_paths = []
 
     try:
         names = delete_concept(concept_id)
@@ -2270,8 +2288,8 @@ def api_page_k_delete_concept():
     synced = 0
     if sync:
         try:
-            for n in names:
-                synced += sync_concept_in_stocks(n, new_name=None)
+            for p in old_paths:
+                synced += sync_concept_path_in_stocks(p, new_path=None)
             reload_industry_tree()
         except Exception as e:
             return jsonify(
@@ -2405,7 +2423,8 @@ def api_page_k_all_stocks():
 def api_page_k_add_stocks_to_concept():
     """
     为一批已存在的股票添加某概念。
-    请求: {"name": "正极", "stocks": ["股票A", "股票B"]}
+    请求: {"id": 12, "name": "正极", "stocks": ["股票A", "股票B"]}
+    - 传 id 时按 id 定位概念（概念名可重名，推荐传 id）；否则按 name 定位
     - 概念不存在于概念表时自动创建
     - 已拥有该概念的股票自动跳过
     - 写入格式：该概念的完整路径（一级/二级/.../name），
@@ -2418,30 +2437,37 @@ def api_page_k_add_stocks_to_concept():
         add_concept,
         update_stock_concept,
         build_concept_path,
+        build_concept_path_by_id,
     )
     data = request.get_json(silent=True) or {}
     concept_name = (data.get("name") or "").strip()
+    concept_id = data.get("id") or data.get("concept_id")
     stock_names = data.get("stocks") or []
     if isinstance(stock_names, str):
         stock_names = [s.strip() for s in stock_names.replace("，", ",").split(",")]
     stock_names = [s.strip() for s in stock_names if s.strip()]
 
-    if not concept_name:
+    if not concept_name and concept_id is None:
         return jsonify({"ok": False, "error": "缺少概念名称"}), 400
     if not stock_names:
         return jsonify({"ok": False, "error": "请填写至少一个股票名称"}), 400
 
-    # 确保概念存在于概念表（不存在则自动创建）
-    conn_ok = True
-    try:
-        add_concept(concept_name, "")
-    except ValueError:
-        pass  # 已存在，正常
-    except Exception as e:
-        return jsonify({"ok": False, "error": f"数据库写入失败：{e}"}), 500
-
     # 写入完整路径：一级概念=自身，子概念="一级/.../name"
-    target_concept = build_concept_path(concept_name) or concept_name
+    # 优先按 id 定位（概念名可重名），没有 id 时才按 name 兜底并自动创建
+    target_concept = None
+    if concept_id is not None:
+        try:
+            target_concept = build_concept_path_by_id(int(concept_id))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "概念 id 无效"}), 400
+    if not target_concept:
+        try:
+            add_concept(concept_name, "")   # 不存在则自动创建
+        except ValueError:
+            pass  # 已存在，正常
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"数据库写入失败：{e}"}), 500
+        target_concept = build_concept_path(concept_name) or concept_name
 
     added, skipped, not_found = [], [], []
     for sn in stock_names:
@@ -2471,19 +2497,29 @@ def api_page_k_add_stocks_to_concept():
 def api_page_k_remove_stock_from_concept():
     """
     从指定股票移除某概念。
-    请求: {"name": "火电", "stock": "郑州煤电"}
+    请求: {"concept_id": 12, "name": "火电", "stock": "郑州煤电"}
+    concept_id 提供时按完整路径精确移除（概念名可重名，推荐传 id）。
     返回 {"ok": true, "new_concept": "机器人"}
     """
     from db import remove_concept_from_stock
     data = request.get_json(silent=True) or {}
     concept_name = (data.get("name") or "").strip()
+    concept_id = data.get("concept_id") or data.get("id")
     stock_name = (data.get("stock") or "").strip()
 
-    if not concept_name or not stock_name:
+    if concept_id is not None:
+        try:
+            concept_id = int(concept_id)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "概念 id 无效"}), 400
+
+    if (not concept_name and concept_id is None) or not stock_name:
         return jsonify({"ok": False, "error": "缺少概念或股票名称"}), 400
 
     try:
-        new_val, changed = remove_concept_from_stock(stock_name, concept_name)
+        new_val, changed = remove_concept_from_stock(
+            stock_name, concept_name, concept_id=concept_id
+        )
     except LookupError as e:
         return jsonify({"ok": False, "error": str(e)}), 404
     except Exception as e:

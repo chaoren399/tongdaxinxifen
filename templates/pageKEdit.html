@@ -626,7 +626,10 @@
                         x.addEventListener('click', function () {
                             if (!confirm('确定从概念「' + st.concept_path + '」移除股票「' + st.name + '」？')) return;
                             x.disabled = true;
-                            api('/api/pageK/remove_stock_from_concept', { name: st.concept_name, stock: st.name })
+                            // 传 concept_id：概念名在不同分支下可重复，按 id 才能精确移除
+                            api('/api/pageK/remove_stock_from_concept', {
+                                concept_id: st.concept_id, name: st.concept_name, stock: st.name
+                            })
                                 .then(function (resp) {
                                     if (resp.body && resp.body.ok) {
                                         toast('已从「' + st.concept_path + '」移除 ' + st.name, true);
@@ -964,7 +967,10 @@
             if (!names.length) { toast('请输入股票名称', false); return; }
 
             ketModalOk.disabled = true;
-            api('/api/pageK/add_stocks_to_concept', { name: concept.name, stocks: names })
+            // 传概念 id：概念名在不同分支下可重复，按 id 才能加到正确的分支
+            api('/api/pageK/add_stocks_to_concept', {
+                id: concept.id, name: concept.name, stocks: names
+            })
                 .then(function (resp) {
                     if (resp.body && resp.body.ok) {
                         var target = resp.body.target || concept.name;

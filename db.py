@@ -73,9 +73,10 @@ CREATE TABLE IF NOT EXISTS stock_images (
 );
 CREATE INDEX IF NOT EXISTS idx_stock_images_stock ON stock_images(stock_id);
 
+-- 概念名只要求「同一上级下不重名」：不同分支可以各有一个「其他」
 CREATE TABLE IF NOT EXISTS concepts (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name        TEXT NOT NULL UNIQUE,
+    name        TEXT NOT NULL,
     description TEXT DEFAULT '',
     level       INTEGER NOT NULL DEFAULT 1,   -- 1~5 级概念分类
     parent_id   INTEGER,
@@ -88,26 +89,109 @@ CREATE INDEX IF NOT EXISTS idx_stocks_tertiary   ON stocks(tertiary_id);
 CREATE INDEX IF NOT EXISTS idx_stocks_name       ON stocks(name);
 CREATE INDEX IF NOT EXISTS idx_stocks_concept    ON stocks(concept);
 CREATE INDEX IF NOT EXISTS idx_concepts_name     ON concepts(name);
+-- 同一上级下不允许同名；一级概念 parent_id 为 NULL，SQLite 唯一索引中 NULL 互不相等，
+-- 故用 IFNULL(parent_id, 0) 兜底，保证一级概念同名也能拦住
+CREATE UNIQUE INDEX IF NOT EXISTS idx_concepts_parent_name
+    ON concepts(IFNULL(parent_id, 0), name);
 """
+
+
+# 概念名只要求「同一上级下不重名」，故 name 不再带列级 UNIQUE
+_CONCEPTS_DDL = """
+CREATE TABLE concepts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    code        TEXT DEFAULT '',
+    level       INTEGER NOT NULL DEFAULT 1,
+    parent_id   INTEGER,
+    FOREIGN KEY(parent_id) REFERENCES concepts(id)
+)
+"""
+
+
+def _concepts_name_unique_is_global(cur):
+    """判断 concepts 是否仍是旧结构（name 全局唯一）。
+    列级 UNIQUE 在 SQLite 里表现为一个名为 sqlite_autoindex_* 的唯一索引。"""
+    try:
+        rows = cur.execute("PRAGMA index_list(concepts)").fetchall()
+    except Exception:
+        return False
+    for r in rows:
+        if not r["unique"]:
+            continue
+        try:
+            cols = [c["name"] for c in cur.execute(f"PRAGMA index_info({r['name']})").fetchall()]
+        except Exception:
+            continue
+        if cols == ["name"]:
+            return True
+    return False
+
+
+def _rebuild_concepts_for_sibling_unique(conn):
+    """
+    旧库迁移：把 concepts 的「name 全局唯一」改成「同一上级下唯一」。
+    SQLite 无法直接删列约束，只能建新表 → 搬数据 → 换名。
+    """
+    conn.execute("PRAGMA foreign_keys=OFF")
+    conn.executescript(f"""
+        BEGIN;
+        CREATE TABLE concepts__new (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            code        TEXT DEFAULT '',
+            level       INTEGER NOT NULL DEFAULT 1,
+            parent_id   INTEGER,
+            FOREIGN KEY(parent_id) REFERENCES concepts__new(id)
+        );
+        INSERT INTO concepts__new (id, name, description, code, level, parent_id)
+            SELECT id, name, description, code, level, parent_id FROM concepts;
+        DROP TABLE concepts;
+        ALTER TABLE concepts__new RENAME TO concepts;
+        COMMIT;
+    """)
+    # 修正自增序列，避免新概念复用已删除的 id
+    conn.execute("""
+        INSERT INTO sqlite_sequence(name, seq)
+        SELECT 'concepts', COALESCE(MAX(id), 0) FROM concepts
+        WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'concepts')
+    """)
+    conn.execute("""
+        UPDATE sqlite_sequence
+           SET seq = (SELECT COALESCE(MAX(id), 0) FROM concepts)
+         WHERE name = 'concepts'
+           AND COALESCE(seq, 0) < (SELECT COALESCE(MAX(id), 0) FROM concepts)
+    """)
+    # 重建过程可能留下同名重复行，保留 seq 最大的一条即可
+    conn.execute("""
+        DELETE FROM sqlite_sequence
+         WHERE rowid NOT IN (
+             SELECT MAX(rowid) FROM sqlite_sequence GROUP BY name
+         )
+    """)
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys=ON")
 
 
 def ensure_concepts_table(db_path=None):
     """
     确保 concepts 表存在（对旧数据库的增量迁移，不动其他表数据）。
-    旧库若无 level / parent_id 列，则用 ALTER TABLE 增量补齐。
+    旧库若无 level / parent_id 列，则用 ALTER TABLE 增量补齐；
+    旧库若仍是「name 全局唯一」，则重建表改为「同一上级下唯一」。
     """
     conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='concepts'")
+    if cur.fetchone() is None:
+        conn.executescript(_CONCEPTS_DDL)
+    elif _concepts_name_unique_is_global(cur):
+        _rebuild_concepts_for_sibling_unique(conn)
     conn.executescript("""
-        CREATE TABLE IF NOT EXISTS concepts (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            name        TEXT NOT NULL UNIQUE,
-            description TEXT DEFAULT '',
-            code        TEXT DEFAULT '',
-            level       INTEGER NOT NULL DEFAULT 1,
-            parent_id   INTEGER,
-            FOREIGN KEY(parent_id) REFERENCES concepts(id)
-        );
         CREATE INDEX IF NOT EXISTS idx_concepts_name ON concepts(name);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_concepts_parent_name
+            ON concepts(IFNULL(parent_id, 0), name);
     """)
     # 增量迁移：旧版本 concepts 表可能没有 level / parent_id / code 列
     cur = conn.cursor()
@@ -1232,9 +1316,12 @@ def update_stock_concept(
             # 新概念是这条旧值的更细版本（旧值是其前缀）→ 用更细的覆盖粗的
             if new_norm.startswith(item_norm + CONCEPT_PATH_SEP):
                 continue
-            # 末级概念已挂在股票上（可能挂在另一条路径里）→ 视为重复
-            if new_leaf in segs:
-                raise ValueError("该股票已有此概念")
+            # 旧值已经是本次概念的更细版本 → 保留更细的那条
+            if item_norm.startswith(new_norm + CONCEPT_PATH_SEP):
+                kept.append(item_norm)
+                continue
+            # 概念名允许在不同分支下重复（如「硫化物/其他」与「隔膜/其他」），
+            # 路径不同即视为不同概念，不再按末级名字判重
             kept.append(item_norm)
 
         new_full = "-".join(kept + [new_norm]) if kept else new_norm
@@ -1447,6 +1534,53 @@ def build_concept_path(name, db_path=None):
     return CONCEPT_PATH_SEP.join(names)
 
 
+def _path_of_id(rows, concept_id):
+    """在已取出的概念行里按 id 拼出完整路径串。"""
+    by_id = {r["id"]: r for r in rows}
+    node = by_id.get(concept_id)
+    if node is None:
+        return None
+    names = []
+    seen = set()
+    while node is not None and node["id"] not in seen:
+        seen.add(node["id"])
+        names.append(node["name"])
+        pid = node["parent_id"]
+        node = by_id.get(pid) if pid is not None else None
+    names.reverse()
+    return CONCEPT_PATH_SEP.join(names)
+
+
+def build_concept_path_by_id(concept_id, db_path=None):
+    """
+    按 id 返回概念的完整路径串（一级/二级/.../name）。
+    概念名允许在不同分支下重复，故定位概念应优先用 id 而非 name。
+    id 不存在时返回 None。
+    """
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT id, name, parent_id FROM concepts")
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    return _path_of_id(rows, concept_id)
+
+
+def find_sibling_concept(cur, name, parent_id, exclude_id=None):
+    """查找同一上级下是否已存在同名概念，返回其 id 或 None。"""
+    if parent_id is None:
+        sql = "SELECT id FROM concepts WHERE name = ? AND parent_id IS NULL"
+        args = [name]
+    else:
+        sql = "SELECT id FROM concepts WHERE name = ? AND parent_id = ?"
+        args = [name, parent_id]
+    if exclude_id is not None:
+        sql += " AND id != ?"
+        args.append(exclude_id)
+    cur.execute(sql, args)
+    row = cur.fetchone()
+    return row["id"] if row else None
+
+
 def resolve_primary_concept(name, db_path=None):
     """
     返回概念 name 所属的一级概念名。
@@ -1549,7 +1683,7 @@ def add_concept(name, description="", level=None, parent_id=None, db_path=None):
     新增概念（支持最多五级分类）。
     - parent_id 提供时：自动推断 level = 父级 level + 1（最多五级）
     - parent_id 为空时：level = 1（一级概念）
-    返回新概念 id。重名/越级抛 ValueError，父级不存在抛 LookupError。
+    返回新概念 id。同一上级下重名/越级抛 ValueError，父级不存在抛 LookupError。
     """
     conn = get_conn(db_path)
     cur = conn.cursor()
@@ -1573,6 +1707,14 @@ def add_concept(name, description="", level=None, parent_id=None, db_path=None):
             level = inferred
         else:
             level = 1
+        # 重名只在「同一上级下」禁止：不同分支可以各有一个「其他」
+        if find_sibling_concept(cur, name, parent_id) is not None:
+            cur.execute("SELECT id, name, parent_id FROM concepts")
+            rows = [dict(r) for r in cur.fetchall()]
+            where = _path_of_id(rows, parent_id) or "一级概念"
+            raise ValueError(
+                f"「{where}」下已存在同名概念「{name}」，请换一个名称"
+            )
         cur.execute(
             "INSERT INTO concepts (name, description, level, parent_id) "
             "VALUES (?, ?, ?, ?)",
@@ -1644,6 +1786,14 @@ def update_concept(
                     raise ValueError(f"概念最多 {MAX_CONCEPT_LEVEL} 级分类，不能超过五级")
                 new_parent = pid
 
+        # 改名/移动后不能与「同一上级下」的兄弟概念重名
+        if find_sibling_concept(cur, new_name, new_parent, exclude_id=concept_id) is not None:
+            cur.execute("SELECT id, name, parent_id FROM concepts")
+            rows = [dict(r) for r in cur.fetchall()]
+            where = _path_of_id(rows, new_parent) or "一级概念"
+            raise ValueError(
+                f"「{where}」下已存在同名概念「{new_name}」，请换一个名称"
+            )
         cur.execute(
             "UPDATE concepts SET name = ?, description = ?, code = ?, "
             "level = ?, parent_id = ? "
@@ -1759,6 +1909,68 @@ def sync_concept_in_stocks(old_name, new_name=None, db_path=None):
         conn.close()
 
 
+def collect_concept_paths(concept_id, db_path=None):
+    """收集概念自身及其所有子孙的完整路径串列表。
+    删除概念前调用，用于按路径精确清理股票概念串（概念名可能重名）。
+    """
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT id, name, parent_id FROM concepts")
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    ids = [concept_id] + _get_descendant_ids(concept_id, db_path)
+    return [p for p in (_path_of_id(rows, i) for i in ids) if p]
+
+
+def sync_concept_path_in_stocks(old_path, new_path=None, db_path=None):
+    """
+    按「完整路径」同步股票 concept 串中的概念（概念名可重名，按名字会误伤
+    其它分支下的同名概念，故改名 / 删除概念应走路径而不是名字）。
+    - new_path 提供时：把等于 old_path 或以 old_path/ 开头的项改成 new_path 开头（重命名/移动）
+    - new_path 为 None 时：丢弃这些项（删除及级联）
+    返回受影响的股票行数。
+    """
+    if not old_path:
+        return 0
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id, concept FROM stocks WHERE concept LIKE ?",
+            (f"%{old_path}%",),
+        )
+        prefix = old_path + CONCEPT_PATH_SEP
+        changed = 0
+        for row in cur.fetchall():
+            new_pieces = []
+            touched = False
+            for p in _split_concept_raw(row["concept"]):
+                segs = [s.strip() for s in p.split(CONCEPT_PATH_SEP) if s.strip()]
+                item = CONCEPT_PATH_SEP.join(segs)
+                if item != old_path and not item.startswith(prefix):
+                    new_pieces.append(p)
+                    continue
+                touched = True
+                if new_path is None:
+                    continue  # 删除：整条路径一起去掉
+                new_pieces.append(new_path + item[len(old_path):])
+            if not touched:
+                continue
+            new_val = "-".join(new_pieces)
+            if new_val != (row["concept"] or ""):
+                cur.execute(
+                    "UPDATE stocks SET concept = ? WHERE id = ?",
+                    (new_val, row["id"]),
+                )
+                # 关联表跟着文本走：删概念会去掉关系，改名不影响 concept_id
+                _sync_stock_concept_rows(cur, row["id"], new_val)
+                changed += 1
+        conn.commit()
+        return changed
+    finally:
+        conn.close()
+
+
 def import_concepts_from_stocks(db_path=None):
     """
     把 stocks.concept 中出现的所有概念导入 concepts 表（去重，已存在跳过）。
@@ -1776,7 +1988,8 @@ def import_concepts_from_stocks(db_path=None):
             for piece in _split_concept_segments(row["concept"]):
                 seen.add(piece)
 
-        cur.execute("SELECT name FROM concepts")
+        # 导入的都是一级概念，只需与已有「一级概念」判重（概念名可跨分支重复）
+        cur.execute("SELECT name FROM concepts WHERE parent_id IS NULL")
         existing = {r["name"] for r in cur.fetchall()}
 
         added = 0
@@ -2195,11 +2408,13 @@ def get_businesses_for_stock_ids(stock_ids, db_path=None):
         conn.close()
 
 
-def remove_concept_from_stock(stock_name, concept_name, db_path=None):
+def remove_concept_from_stock(stock_name, concept_name, db_path=None, concept_id=None):
     """
     从指定股票的概念串中移除某概念（其余概念保留，'-' 重组）。
     概念串中的一项可能是完整路径（"一级/二级/..."），若任一级等于
     concept_name，则丢弃该整条路径。
+    concept_id 提供时按「完整路径」精确匹配（概念名可重名，按名字会误删
+    其它分支下的同名概念），只丢弃该分支及其子孙路径。
     返回 (new_concept, changed: bool)。股票不存在抛 LookupError。
     """
     conn = get_conn(db_path)
@@ -2213,12 +2428,28 @@ def remove_concept_from_stock(stock_name, concept_name, db_path=None):
         if row is None:
             raise LookupError(f"未找到股票：{stock_name}")
 
+        # 按 id 定位：拿到该概念的完整路径，连子孙路径一起移除
+        target_path = None
+        removed_ids = set()
+        if concept_id is not None:
+            target_path = build_concept_path_by_id(concept_id, db_path)
+            if target_path:
+                removed_ids = {concept_id} | set(_get_descendant_ids(concept_id, db_path))
+
         kept = []
         removed = False
         removed_segs = set()
+        prefix = (target_path + CONCEPT_PATH_SEP) if target_path else None
         for item in _split_concept_raw(row["concept"]):
             segs = [s.strip() for s in item.split(CONCEPT_PATH_SEP) if s.strip()]
-            if concept_name in segs:
+            if target_path is not None:
+                item_norm = CONCEPT_PATH_SEP.join(segs)
+                hit = item_norm == target_path or (
+                    prefix is not None and item_norm.startswith(prefix)
+                )
+            else:
+                hit = concept_name in segs
+            if hit:
                 removed = True
                 removed_segs.update(segs)
                 continue
@@ -2232,9 +2463,19 @@ def remove_concept_from_stock(stock_name, concept_name, db_path=None):
         )
         # 同步「股票 × 概念」关联表（被移除的概念关系一并删掉）
         _sync_stock_concept_rows(cur, row["id"], new_val)
-        # 同步清理这些概念下的业务描述（按概念名找 id）
-        if removed_segs:
-            _ensure_business_table(cur)
+        # 同步清理这些概念下的业务描述
+        _ensure_business_table(cur)
+        if removed_ids:
+            # 按 id 精确清理（含子孙概念）
+            placeholders = ",".join("?" * len(removed_ids))
+            cur.execute(
+                f"""
+                DELETE FROM stock_concept_businesses
+                WHERE stock_id = ? AND concept_id IN ({placeholders})
+                """,
+                [row["id"], *removed_ids],
+            )
+        elif removed_segs:
             placeholders = ",".join("?" * len(removed_segs))
             cur.execute(
                 f"""
@@ -2539,18 +2780,18 @@ def build_concept_edit_table(concept_id, db_path=None):
             if k not in join_time or v < join_time[k]:
                 join_time[k] = v
 
-        # 业务描述：{(股票名, 概念名): 描述}
+        # 业务描述：{(股票名, 概念 id): 描述}
+        # 概念名可重复（不同分支），故按 id 关联，避免同名概念的业务描述互相串
         cur.execute(
             """
-            SELECT s.name AS stock_name, c.name AS concept_name, b.business
+            SELECT s.name AS stock_name, b.concept_id, b.business
             FROM stock_concept_businesses b
             JOIN stocks s ON s.id = b.stock_id
-            JOIN concepts c ON c.id = b.concept_id
             """
         )
         biz_map = {}
         for r in cur.fetchall():
-            biz_map[(r["stock_name"], r["concept_name"])] = r["business"]
+            biz_map[(r["stock_name"], r["concept_id"])] = r["business"]
 
         # 股票 → 子树上的挂载点（叶概念）
         # 按 stocks.id 升序取，保证同一概念内的股票按「添加顺序」排列
@@ -2594,7 +2835,7 @@ def build_concept_edit_table(concept_id, db_path=None):
                     "concept_id": node["id"],
                     "concept_name": node["name"],
                     "concept_path": node["path"],
-                    "business": biz_map.get((r["name"], node["name"]), ""),
+                    "business": biz_map.get((r["name"], node["id"]), ""),
                 }
                 bucket = mounted.setdefault(cur_id, [])
                 if not any(x["name"] == stock["name"] for x in bucket):
