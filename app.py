@@ -1309,6 +1309,46 @@ def page_p():
     return render_template("pageP.html")
 
 
+@app.route("/pageO")
+def page_o():
+    """
+    页面 O（PC 端）：展示所有「没有股票代码」的股票。
+    按一级 / 二级 / 三级行业分组展示，支持关键词过滤。
+    """
+    from db import get_stocks_without_code
+
+    kw = (request.args.get("kw") or "").strip()
+    rows = get_stocks_without_code()
+
+    kw_lower = kw.lower()
+    if kw_lower:
+        rows = [
+            r for r in rows
+            if kw_lower in r["name"].lower()
+            or kw_lower in (r["primary"] or "").lower()
+            or kw_lower in (r["secondary"] or "").lower()
+            or kw_lower in (r["tertiary"] or "").lower()
+        ]
+
+    # 按一级 > 二级 > 三级分组：{(p, s, t): [names]}
+    groups = []
+    index = {}
+    for r in rows:
+        key = (r["primary"], r["secondary"], r["tertiary"])
+        if key not in index:
+            index[key] = {"primary": r["primary"], "secondary": r["secondary"],
+                          "tertiary": r["tertiary"], "stocks": []}
+            groups.append(index[key])
+        index[key]["stocks"].append(r["name"])
+
+    return render_template(
+        "pageO.html",
+        groups=groups,
+        total=len(rows),
+        kw=kw,
+    )
+
+
 def _stock_hit_keyword(st, tertiary_name, kw):
     """判断股票 st 在全字段上是否包含关键词 kw（均为小写比较）"""
     fields = [

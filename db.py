@@ -2409,6 +2409,41 @@ def get_all_stocks_flat(db_path=None):
     return result
 
 
+def get_stocks_without_code(db_path=None):
+    """返回所有「没有股票代码」的股票（code 为 NULL / 空串 / 纯空白）。
+
+    供页面 O 使用，按行业层级 + 名称排序。
+    [{"name", "primary", "secondary", "tertiary"}]
+    """
+    conn = get_conn(db_path)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT s.name,
+               p.name AS primary_name,
+               sc.name AS secondary_name,
+               t.name AS tertiary_name
+        FROM stocks s
+        JOIN industries t ON s.tertiary_id = t.id
+        JOIN industries sc ON t.parent_id = sc.id
+        JOIN industries p ON sc.parent_id = p.id
+        WHERE s.code IS NULL OR TRIM(s.code) = ''
+        ORDER BY p.name, sc.name, t.name, s.name
+        """
+    )
+    result = [
+        {
+            "name": r["name"],
+            "primary": r["primary_name"],
+            "secondary": r["secondary_name"],
+            "tertiary": r["tertiary_name"],
+        }
+        for r in cur.fetchall()
+    ]
+    conn.close()
+    return result
+
+
 def build_concept_edit_table(concept_id, db_path=None):
     """
     构造「页面 H 风格」的概念层级大表，用于页面 K 的一级概念编辑页。

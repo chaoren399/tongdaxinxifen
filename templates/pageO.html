@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>通达信行业分类 - 页面 O · 无代码股票</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=55" />
+    <style>
+        .pageO-wrap { max-width: 1200px; margin: 0 auto; padding: 20px 16px 40px; }
+        .pageO-head {
+            display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px;
+            background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+            padding: 16px 20px; margin-bottom: 14px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+        .pageO-title { font-size: 18px; font-weight: 700; color: #111827; }
+        .pageO-sub { font-size: 13px; color: #6b7280; }
+        .pageO-count { margin-left: auto; font-size: 13px; color: #374151; }
+        .pageO-count b { color: #dc2626; font-size: 16px; }
+        .pageO-filter { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+        .pageO-filter input {
+            flex: 1; max-width: 360px; padding: 9px 14px;
+            border: 1px solid #d1d5db; border-radius: 10px; font-size: 14px; outline: none;
+        }
+        .pageO-filter input:focus {
+            border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+        }
+        .pageO-group-path { font-size: 12px; color: #9ca3af; margin-bottom: 6px; }
+        .pageO-group-head {
+            display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px;
+        }
+        .pageO-group-name { font-size: 15px; font-weight: 700; color: #111827; }
+        .pageO-group-count { font-size: 12px; color: #6b7280; }
+    </style>
+</head>
+<body>
+    <header class="topbar topbar-pageF">
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_d') }}">页面 D</a>
+            <a href="{{ url_for('page_k') }}">页面 K</a>
+            <a href="{{ url_for('page_l') }}">页面 L</a>
+            <a href="{{ url_for('page_p') }}">页面 P</a>
+        </nav>
+    </header>
+
+    <main class="pageO-wrap">
+        <div class="pageO-head">
+            <span class="pageO-title">页面 O · 无股票代码的股票</span>
+            <span class="pageO-sub">以下股票在数据库中代码为空，按所属行业分组展示</span>
+            <span class="pageO-count">共 <b>{{ total }}</b> 只</span>
+        </div>
+
+        <form class="pageO-filter" method="get" action="{{ url_for('page_o') }}">
+            <input type="text" name="kw" value="{{ kw }}" placeholder="按股票名称 / 行业名称过滤" />
+            <button type="submit" class="btn-primary">过 滤</button>
+            {% if kw %}<a class="btn-secondary" href="{{ url_for('page_o') }}">清除</a>{% endif %}
+        </form>
+
+        {% if groups %}
+            {% for g in groups %}
+            <div class="industry-group-card">
+                <div class="pageO-group-path">{{ g.primary }} / {{ g.secondary }}</div>
+                <div class="pageO-group-head">
+                    <span class="pageO-group-name">{{ g.tertiary }}</span>
+                    <span class="pageO-group-count">{{ g.stocks | length }} 只</span>
+                </div>
+                <div class="industry-stock-cloud">
+                    {% for nm in g.stocks %}
+                    <a class="industry-link" href="{{ url_for('index', q=nm) }}" data-stock="{{ nm }}">
+                        <span class="is-name">{{ nm }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="industry-group-card">
+                <p class="empty">
+                    {% if kw %}
+                    没有匹配「{{ kw }}」的无代码股票
+                    {% else %}
+                    当前所有股票均已填写代码
+                    {% endif %}
+                </p>
+            </div>
+        {% endif %}
+    </main>
+    <script src="{{ url_for('static', filename='stock_tip.js') }}?v=1"></script>
+</body>
+</html>
