@@ -562,6 +562,8 @@ def page_g():
     """
     level = (request.args.get("level") or "").strip().lower()
     name = (request.args.get("name") or "").strip()
+    # hl：来自页面 F 股票详情的来源股票名，用于在列表中高亮定位
+    hl = (request.args.get("hl") or "").strip()
     level_map = {
         "1": 1, "2": 2, "3": 3,
         "primary": 1, "secondary": 2, "tertiary": 3,
@@ -621,6 +623,7 @@ def page_g():
         total=total,
         query_name=name,
         query_level=level,
+        hl=hl,
     )
 
 

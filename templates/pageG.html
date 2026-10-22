@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>通达信行业分类 - 页面 G · 行业股票列表</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=56" />
 </head>
 <body>
     <header class="topbar topbar-pageF">
@@ -31,6 +31,9 @@
             <div class="industry-head-parent">上级：{{ industry.parent }}</div>
             {% endif %}
             <div class="industry-head-count">共 {{ total }} 只股票</div>
+            {% if hl %}
+            <div class="industry-head-hl">已定位来源股票：<b>{{ hl }}</b></div>
+            {% endif %}
         </div>
 
         {% for g in groups %}
@@ -44,9 +47,16 @@
             {% if g.stocks %}
             <div class="industry-stock-cloud">
                 {% for st in g.stocks %}
+                {% if hl and st.name == hl %}
+                <a class="industry-link is-highlight" id="hl-stock"
+                   href="{{ url_for('index', q=st.name) }}" data-stock="{{ st.name }}">
+                    <span class="is-name">{{ st.name }}</span>
+                </a>
+                {% else %}
                 <a class="industry-link" href="{{ url_for('index', q=st.name) }}" data-stock="{{ st.name }}">
                     <span class="is-name">{{ st.name }}</span>
                 </a>
+                {% endif %}
                 {% endfor %}
             </div>
             {% else %}
@@ -67,5 +77,15 @@
         {% endif %}
     </main>
     <script src="{{ url_for('static', filename='stock_tip.js') }}?v=1"></script>
+    {% if hl %}
+    <script>
+        (function () {
+            var el = document.getElementById("hl-stock");
+            if (el && el.scrollIntoView) {
+                el.scrollIntoView({ block: "center", behavior: "smooth" });
+            }
+        })();
+    </script>
+    {% endif %}
 </body>
 </html>

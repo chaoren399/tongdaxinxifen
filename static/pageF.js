@@ -294,7 +294,9 @@
         function industryTag(text, level) {
             var a = document.createElement("a");
             a.className = "stock-detail-industry";
-            a.href = "/pageG?level=" + level + "&name=" + encodeURIComponent(text);
+            // hl：来源股票名，页面 G 会高亮定位该股票
+            a.href = "/pageG?level=" + level + "&name=" + encodeURIComponent(text)
+                + "&hl=" + encodeURIComponent(it.name || "");
             a.title = "查看「" + text + "」行业下所有股票";
             a.textContent = text;
             return a;
