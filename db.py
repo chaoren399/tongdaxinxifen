@@ -2621,13 +2621,13 @@ def set_stock_image(tertiary_id, stock_name, image_path, db_path=None):
 def get_all_stocks_flat(db_path=None):
     """
     返回所有股票的扁平列表（供 datalist 自动补全）。
-    [{"name", "code", "primary", "secondary", "tertiary"}]
+    [{"name", "code", "primary", "secondary", "tertiary", "option_b"}]
     """
     conn = get_conn(db_path)
     cur = conn.cursor()
     cur.execute(
         """
-        SELECT s.name, s.code,
+        SELECT s.name, s.code, s.option_b,
                p.name AS primary_name, sc.name AS secondary_name, t.name AS tertiary_name
         FROM stocks s
         JOIN industries t ON s.tertiary_id = t.id
@@ -2643,6 +2643,7 @@ def get_all_stocks_flat(db_path=None):
             "primary": r["primary_name"],
             "secondary": r["secondary_name"],
             "tertiary": r["tertiary_name"],
+            "option_b": r["option_b"] or "",
         }
         for r in cur.fetchall()
     ]
