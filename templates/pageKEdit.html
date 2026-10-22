@@ -183,12 +183,23 @@
             margin-left: auto;
             font-size: 11px;
             color: #94a3b8;
-            max-width: 45%;
+            max-width: 40%;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
         .ket-suggest-item.is-owned .ket-suggest-b { margin-left: 0; }
+        /* 选项D：跟在 B 后面（无 B 时自己靠右），颜色更浅以便区分 */
+        .ket-suggest-d {
+            margin-left: auto;
+            font-size: 11px;
+            color: #c2cad6;
+            max-width: 36%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .ket-suggest-b + .ket-suggest-d { margin-left: 8px; }
         .ket-suggest-item.is-owned { color: #9ca3af; }
         .ket-suggest-empty { padding: 8px 12px; font-size: 12px; color: #9ca3af; }
 
@@ -870,6 +881,7 @@
                     name: s.name || '',
                     code: s.code || '',
                     optionB: (s.option_b || '').trim(),
+                    optionD: (s.option_d || '').trim(),
                     owned: !!ownedNames && ownedNames.indexOf(s.name) >= 0
                 };
             });
@@ -902,9 +914,12 @@
                 row.appendChild(nm);
 
                 if (item.code) row.appendChild(el('span', 'ket-suggest-code', item.code));
-                // 选项B 只取前 10 个字符做提示
+                // 选项B / 选项D 各只取前 15 个字符做提示
                 if (item.optionB) {
-                    row.appendChild(el('span', 'ket-suggest-b', item.optionB.slice(0, 10)));
+                    row.appendChild(el('span', 'ket-suggest-b', item.optionB.slice(0, 15)));
+                }
+                if (item.optionD) {
+                    row.appendChild(el('span', 'ket-suggest-d', item.optionD.slice(0, 15)));
                 }
                 if (item.owned) row.appendChild(el('span', 'ket-suggest-tag', '已拥有'));
 

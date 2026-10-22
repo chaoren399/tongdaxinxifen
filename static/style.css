@@ -629,6 +629,28 @@ mark.hl {
     color: #9ca3af;
     font-family: "SF Mono", Consolas, Monaco, monospace;
 }
+/* 有选项B 时：代码紧贴名称，选项B 靠右占位 */
+.pf-suggest-item.has-b .pf-suggest-code { margin-left: 0; }
+.pf-suggest-b {
+    margin-left: auto;
+    max-width: 40%;
+    font-size: 11px;
+    color: #94a3b8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* 选项D：跟在 B 后面（无 B 时自己靠右），颜色更浅以便区分 */
+.pf-suggest-d {
+    margin-left: auto;
+    max-width: 36%;
+    font-size: 11px;
+    color: #c2cad6;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.pf-suggest-b + .pf-suggest-d { margin-left: 8px; }
 .pf-suggest-empty { padding: 8px 12px; font-size: 12px; color: #9ca3af; }
 .batch-search-row input {
     flex: 1;

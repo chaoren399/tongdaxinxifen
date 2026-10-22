@@ -1101,7 +1101,12 @@
         suggestBox.innerHTML = "";
         var list2 = matchStocks(term, 8);
         suggestItems = list2.map(function (s) {
-            return { name: s.name || "", code: s.code || "" };
+            return {
+                name: s.name || "",
+                code: s.code || "",
+                optionB: (s.option_b || "").trim(),
+                optionD: (s.option_d || "").trim()
+            };
         });
         suggestIndex = suggestItems.length ? 0 : -1;
 
@@ -1139,6 +1144,24 @@
                 cd.className = "pf-suggest-code";
                 cd.textContent = item.code;
                 row.appendChild(cd);
+            }
+
+            // 选项B / 选项D 各只取前 15 个字符做提示（与页面 K 批量添加股票的联想一致）
+            if (item.optionB) {
+                row.classList.add("has-b");
+                var ob = document.createElement("span");
+                ob.className = "pf-suggest-b";
+                ob.textContent = item.optionB.slice(0, 15);
+                ob.title = item.optionB;
+                row.appendChild(ob);
+            }
+            if (item.optionD) {
+                row.classList.add("has-d");
+                var od = document.createElement("span");
+                od.className = "pf-suggest-d";
+                od.textContent = item.optionD.slice(0, 15);
+                od.title = item.optionD;
+                row.appendChild(od);
             }
 
             row.addEventListener("mousedown", function (ev) {
