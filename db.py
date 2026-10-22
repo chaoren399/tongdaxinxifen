@@ -2409,8 +2409,8 @@ def get_all_stocks_flat(db_path=None):
     return result
 
 
-def get_stocks_without_code(db_path=None):
-    """返回所有「没有股票代码」的股票（code 为 NULL / 空串 / 纯空白）。
+def get_st_stocks(db_path=None):
+    """返回所有名称中带「ST」标记的股票（ST、*ST、S*ST、SST 等）。
 
     供页面 O 使用，按行业层级 + 名称排序。
     [{"name", "primary", "secondary", "tertiary"}]
@@ -2427,7 +2427,7 @@ def get_stocks_without_code(db_path=None):
         JOIN industries t ON s.tertiary_id = t.id
         JOIN industries sc ON t.parent_id = sc.id
         JOIN industries p ON sc.parent_id = p.id
-        WHERE s.code IS NULL OR TRIM(s.code) = ''
+        WHERE UPPER(s.name) LIKE '%ST%'
         ORDER BY p.name, sc.name, t.name, s.name
         """
     )

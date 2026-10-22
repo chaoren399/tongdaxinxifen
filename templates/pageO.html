@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>通达信行业分类 - 页面 O · 无代码股票</title>
+    <title>通达信行业分类 - 页面 O · ST 股票</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=55" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=57" />
     <style>
         .pageO-wrap { max-width: 1200px; margin: 0 auto; padding: 20px 16px 40px; }
         .pageO-head {
@@ -49,8 +49,8 @@
 
     <main class="pageO-wrap">
         <div class="pageO-head">
-            <span class="pageO-title">页面 O · 无股票代码的股票</span>
-            <span class="pageO-sub">以下股票在数据库中代码为空，按所属行业分组展示</span>
+            <span class="pageO-title">页面 O · ST 股票</span>
+            <span class="pageO-sub">以下股票名称带 ST 标记（ST / *ST 等），按所属行业分组展示</span>
             <span class="pageO-count">共 <b>{{ total }}</b> 只</span>
         </div>
 
@@ -70,7 +70,7 @@
                 </div>
                 <div class="industry-stock-cloud">
                     {% for nm in g.stocks %}
-                    <a class="industry-link" href="{{ url_for('index', q=nm) }}" data-stock="{{ nm }}">
+                    <a class="industry-link pageO-st" href="{{ url_for('index', q=nm) }}" data-stock="{{ nm }}">
                         <span class="is-name">{{ nm }}</span>
                     </a>
                     {% endfor %}
@@ -81,9 +81,9 @@
             <div class="industry-group-card">
                 <p class="empty">
                     {% if kw %}
-                    没有匹配「{{ kw }}」的无代码股票
+                    没有匹配「{{ kw }}」的 ST 股票
                     {% else %}
-                    当前所有股票均已填写代码
+                    当前没有名称带 ST 的股票
                     {% endif %}
                 </p>
             </div>

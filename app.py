@@ -1315,13 +1315,13 @@ def page_p():
 @app.route("/pageO")
 def page_o():
     """
-    页面 O（PC 端）：展示所有「没有股票代码」的股票。
+    页面 O（PC 端）：展示所有名称中带「ST」标记的股票（ST、*ST 等）。
     按一级 / 二级 / 三级行业分组展示，支持关键词过滤。
     """
-    from db import get_stocks_without_code
+    from db import get_st_stocks
 
     kw = (request.args.get("kw") or "").strip()
-    rows = get_stocks_without_code()
+    rows = get_st_stocks()
 
     kw_lower = kw.lower()
     if kw_lower:

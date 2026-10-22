@@ -1116,6 +1116,18 @@ a.industry-link.concept-chip:hover {
     animation: hlStockFlash 1.1s ease-out 2;
 }
 
+/* 页面 O：ST 股票用红色标识，与风险警示语义一致 */
+.industry-stock-cloud a.industry-link.pageO-st .is-name {
+    color: #b91c1c;
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+.industry-stock-cloud a.industry-link.pageO-st:hover .is-name {
+    color: #991b1b;
+    background: #fee2e2;
+    border-color: #f87171;
+}
+
 /* ========== 股票详情卡片（页面 F 使用） ========== */
 .stock-detail-card {
     background: #fff;
