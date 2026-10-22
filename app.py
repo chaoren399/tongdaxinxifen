@@ -116,6 +116,28 @@ def reload_industry_tree():
     return INDUSTRY_TREE
 
 
+# 当数据库文件被「应用之外」的方式修改（例如直接用数据库工具改名、改概念）
+# 时，内存树会滞后于磁盘。这里在每个请求前比对 DB 文件的 mtime，
+# 一旦发现变化就自动重载整棵树，从根本上避免「页面仍显示旧股票名称」这类问题。
+_TREE_DB_MTIME = None
+
+
+@app.before_request
+def _auto_reload_tree_if_db_changed():
+    global _TREE_DB_MTIME
+    from db import DB_FILE
+    try:
+        mtime = os.path.getmtime(DB_FILE)
+    except OSError:
+        return
+    if _TREE_DB_MTIME is None:
+        _TREE_DB_MTIME = mtime
+        return
+    if mtime != _TREE_DB_MTIME:
+        reload_industry_tree()
+        _TREE_DB_MTIME = mtime
+
+
 # ====== 数据/渲染缓存 ======
 # 数据代数：内存树重载或被直接修改时 +1，使所有缓存自动失效
 _DATA_GEN = 0
