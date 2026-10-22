@@ -101,6 +101,9 @@
         }
         .ket-stock-item:hover .ket-stock-x { opacity: 1; }
         .ket-stock-x:hover { background: #fee2e2; border-radius: 3px; }
+        /* 「显示删除」开启后：股票旁的移除「×」也常显，方便连续删除 */
+        .concept-level-table.ket-table.ket-show-del .ket-stock-x { opacity: .55; }
+        .concept-level-table.ket-table.ket-show-del .ket-stock-x:hover { opacity: 1; }
 
         /* 股票列行内的批量添加按钮 / 输入区 */
         .ket-stock-add {
@@ -219,7 +222,7 @@
                 <span class="cs-title">概念层级总览（<span id="tblCount">0</span> 只股票）</span>
                 <span class="ket-tip">点击概念名右侧的「＋」可在其下新增下一级概念（逐级往下建，最多五级）；点击概念名可重命名</span>
                 <button class="ket-toggle-del" id="toggleDelBtn" type="button"
-                        title="显示 / 隐藏所有概念旁的删除「✕」">显示删除</button>
+                        title="显示 / 隐藏所有删除按钮（概念「✕」与股票「×」）">显示删除</button>
             </div>
 
             <table class="concept-level-table ket-table">
@@ -411,11 +414,13 @@
         // 删除「✕」默认隐藏，点击头部「显示删除」后才出现（避免误删）
         var showDelBtns = false;
         var toggleDelBtn = document.getElementById('toggleDelBtn');
+        var ketTable = document.querySelector('.concept-level-table.ket-table');
 
         function applyDelBtnState() {
             tblBody.querySelectorAll('.ket-btn.is-del').forEach(function (b) {
                 b.hidden = !showDelBtns;
             });
+            if (ketTable) ketTable.classList.toggle('ket-show-del', showDelBtns);
             if (toggleDelBtn) {
                 toggleDelBtn.textContent = showDelBtns ? '隐藏删除' : '显示删除';
                 toggleDelBtn.classList.toggle('is-on', showDelBtns);
@@ -476,6 +481,7 @@
         }
 
         function renderTblError(msg) {
+            pendingAnchor = null;
             tblBody.innerHTML = '';
             var tr0 = el('tr');
             var td0 = el('td', 'ket-err', msg);
@@ -484,16 +490,65 @@
             tblBody.appendChild(tr0);
         }
 
+        // 表格刷新会重建 DOM，若不处理滚动条会被弹回顶部。
+        // 这里在刷新前记下滚动位置，渲染完成后再滚回去（编辑到哪就停在哪）。
+        var pendingScrollY = null;
+        var tableReqSeq = 0;
+
+        function keepScroll() {
+            pendingScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+        }
+
+        // 行锚点：删除股票后该行高度可能变化（后面的内容会往上串），
+        // 记下刷新前这一行在视口中的位置，渲染完成后再把它对齐回原处。
+        var pendingAnchor = null;
+
+        function setRowAnchor(rowIdx) {
+            var tr = tblBody.children[rowIdx];
+            if (!tr) return;
+            pendingAnchor = { idx: rowIdx, top: tr.getBoundingClientRect().top };
+        }
+
+        function applyRowAnchor() {
+            if (!pendingAnchor) return;
+            var a = pendingAnchor;
+            pendingAnchor = null;
+            var tr = tblBody.children[a.idx];
+            if (!tr) return;
+            var delta = tr.getBoundingClientRect().top - a.top;
+            if (Math.abs(delta) > 1) window.scrollBy(0, delta);
+        }
+
+        function restoreScroll() {
+            if (pendingScrollY === null) return;
+            var y = pendingScrollY;
+            pendingScrollY = null;
+            requestAnimationFrame(function () {
+                window.scrollTo(0, y);
+                // 内容高度微调后再校正一次，避免被浏览器钳制
+                requestAnimationFrame(function () {
+                    window.scrollTo(0, y);
+                    applyRowAnchor();
+                });
+            });
+        }
+
         function loadTable() {
-            tblBody.innerHTML = '';
-            var tr = el('tr');
-            var td = el('td', 'ket-empty', '加载中...');
-            td.colSpan = 99;
-            tr.appendChild(td);
-            tblBody.appendChild(tr);
+            var seq = ++tableReqSeq;
+            keepScroll();
+
+            // 只保留旧内容不清空：清空会让页面高度塌陷，滚动条立刻被弹回顶部
+            if (!tblBody.firstChild) {
+                var tr = el('tr');
+                var td = el('td', 'ket-empty', '加载中...');
+                td.colSpan = 99;
+                tr.appendChild(td);
+                tblBody.appendChild(tr);
+            }
 
             apiGet('/api/pageK/edit_table?concept_id=' + EDIT_ID)
                 .then(function (resp) {
+                    if (seq !== tableReqSeq) return;   // 已有更新的请求，丢弃过期结果
                     var j = resp.body || {};
                     if (!j.ok) {
                         renderTblError(j.error || ('HTTP ' + resp.status));
@@ -501,7 +556,10 @@
                     }
                     renderTable(j);
                 })
-                .catch(function (e) { renderTblError('请求失败：' + e); });
+                .catch(function (e) {
+                    if (seq !== tableReqSeq) return;
+                    renderTblError('请求失败：' + e);
+                });
         }
 
         function renderTable(j) {
@@ -528,7 +586,7 @@
                 tblBody.appendChild(tr0);
             }
 
-            rows.forEach(function (row) {
+            rows.forEach(function (row, rowIdx) {
                 var tr = el('tr');
                 var stocks = row.stocks || [];
                 // 占位行：该概念暂时没有挂股票，仍然占一行，方便继续加下级 / 加股票
@@ -572,6 +630,7 @@
                                 .then(function (resp) {
                                     if (resp.body && resp.body.ok) {
                                         toast('已从「' + st.concept_path + '」移除 ' + st.name, true);
+                                        setRowAnchor(rowIdx);   // 刷新后仍停在这一行
                                         loadTable();
                                     } else {
                                         toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
@@ -600,6 +659,7 @@
             });
 
             applyDelBtnState();
+            restoreScroll();
         }
 
         // ===== 概念单元格：重命名 / 新增子级 / 删除 =====
