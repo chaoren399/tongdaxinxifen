@@ -1,0 +1,547 @@
+{# ===== 概念编辑页（页面 K 编辑页）共享片段 ===== #}
+{# 页面 K 编辑页与页面 H「样式 C」通过引入本片段做到 100% 一致。 #}
+{# 依赖服务端注入变量：concept（当前概念，含 id/name/level/path/description/code）、concepts（全量列表，tojson） #}
+<style>
+    /* ===== 页面 K 编辑页：概念层级大表（沿用页面 H 表格风格）===== */
+    .ket-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 10px;
+        padding: 12px 14px 8px;
+    }
+    .ket-tip { font-size: 12px; color: #9ca3af; }
+
+    .ket-toggle-del {
+        margin-left: auto;
+        flex: none;
+        font-size: 12px;
+        line-height: 1;
+        padding: 5px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 4px;
+        background: #fff;
+        color: #4b5563;
+        cursor: pointer;
+    }
+    .ket-toggle-del:hover { background: #f3f4f6; }
+    .ket-toggle-del.is-on {
+        background: #fef2f2;
+        border-color: #fecaca;
+        color: #b91c1c;
+    }
+    .ket-toggle-del.is-on:hover { background: #fee2e2; }
+
+    .concept-level-table.ket-table { table-layout: auto; }
+    .concept-level-table.ket-table tbody tr:hover td { background-color: #f8fafc; }
+    .concept-level-table.ket-table tbody tr:hover td.lvl-col { filter: brightness(0.98); }
+    .ket-empty { text-align: center; color: #9ca3af; padding: 22px 12px !important; }
+    .ket-err { text-align: center; color: #b91c1c; padding: 22px 12px !important; }
+
+    /* 概念单元格：名称 + 悬浮操作 */
+    .ket-cell { display: inline-flex; align-items: center; gap: 4px; }
+    .ket-cell-name {
+        border-bottom: 1px dashed transparent;
+        cursor: text;
+    }
+    .ket-cell-name:hover { border-bottom-color: #93c5fd; color: #1d4ed8; }
+    .ket-cell-acts { display: inline-flex; gap: 2px; margin-left: 2px; }
+    .ket-btn {
+        font-size: 10px;
+        line-height: 1;
+        padding: 1px 3px;
+        border: 1px solid #e5e7eb;
+        border-radius: 3px;
+        background: #fff;
+        color: #9ca3af;
+        cursor: pointer;
+    }
+    .ket-btn:hover { background: #eff6ff; border-color: #93c5fd; color: #2563eb; }
+    .ket-btn.is-del:hover { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+    .ket-input {
+        font-size: 12px;
+        padding: 3px 6px;
+        border: 1px solid #93c5fd;
+        border-radius: 4px;
+        width: 120px;
+        outline: none;
+    }
+    .ket-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+
+    /* 股票 / 操作列：一个概念的多个股票在同一行并列展示 */
+    .concept-level-table.ket-table td.col-stock { white-space: normal; }
+    .ket-stock-item {
+        display: inline-flex;
+        align-items: center;
+        margin: 2px 14px 2px 0;
+        white-space: nowrap;
+    }
+    .ket-stock-item a {
+        color: #111827; text-decoration: none; font-weight: 500;
+    }
+    .ket-stock-item a:hover { color: #2563eb; text-decoration: underline; }
+    /* 移除按钮默认隐藏，悬停该股票时才出现，保证"只显示股票名称"的观感 */
+    .ket-stock-x {
+        margin-left: 4px;
+        padding: 0 3px;
+        border: none;
+        background: transparent;
+        color: #b91c1c;
+        font-size: 13px;
+        line-height: 1;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity .12s;
+    }
+    .ket-stock-item:hover .ket-stock-x { opacity: 1; }
+    .ket-stock-x:hover { background: #fee2e2; border-radius: 3px; }
+    .concept-level-table.ket-table.ket-show-del .ket-stock-x { opacity: .55; }
+    .concept-level-table.ket-table.ket-show-del .ket-stock-x:hover { opacity: 1; }
+
+    /* 股票列行内的批量添加按钮 / 输入区 */
+    .ket-stock-add {
+        margin-left: 4px;
+        padding: 0 5px;
+        border: 1px dashed #93c5fd;
+        border-radius: 4px;
+        background: #fff;
+        color: #2563eb;
+        font-size: 12px;
+        line-height: 18px;
+        cursor: pointer;
+        vertical-align: middle;
+    }
+    .ket-stock-add:hover { background: #eff6ff; border-style: solid; }
+
+    /* ===== 批量添加股票弹窗 ===== */
+    .ket-modal { width: min(520px, calc(100vw - 32px)); }
+    .ket-modal-path {
+        margin: -6px 0 12px;
+        font-size: 12px;
+        color: #6b7280;
+        word-break: break-all;
+    }
+    .ket-modal textarea {
+        width: 100%;
+        box-sizing: border-box;
+        font-size: 13px;
+        line-height: 1.7;
+        padding: 8px 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        outline: none;
+        resize: vertical;
+        font-family: inherit;
+    }
+    .ket-modal textarea:focus {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+    }
+    /* ===== 输入联想（输入「北京」提示库内含北京的股票） ===== */
+    .ket-input-wrap { position: relative; }
+    .ket-suggest {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 100%;
+        margin-top: 4px;
+        max-height: 220px;
+        overflow-y: auto;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16);
+        padding: 4px 0;
+        z-index: 20;
+    }
+    .ket-suggest[hidden] { display: none; }
+    .ket-suggest-item {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        padding: 6px 12px;
+        font-size: 13px;
+        color: #374151;
+        cursor: pointer;
+    }
+    .ket-suggest-item.is-active { background: #eff6ff; }
+    .ket-suggest-item b { color: #2563eb; font-weight: 700; }
+    .ket-suggest-code {
+        font-size: 11px;
+        color: #9ca3af;
+        font-family: "SF Mono", Consolas, Monaco, monospace;
+    }
+    .ket-suggest-tag { margin-left: auto; font-size: 11px; color: #9ca3af; }
+    .ket-suggest-b {
+        margin-left: auto;
+        font-size: 11px;
+        color: #94a3b8;
+        max-width: 40%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .ket-suggest-item.is-owned .ket-suggest-b { margin-left: 0; }
+    /* 选项D：跟在 B 后面（无 B 时自己靠右），颜色更浅以便区分 */
+    .ket-suggest-d {
+        margin-left: auto;
+        font-size: 11px;
+        color: #c2cad6;
+        max-width: 36%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .ket-suggest-b + .ket-suggest-d { margin-left: 8px; }
+    .ket-suggest-item.is-owned { color: #9ca3af; }
+    .ket-suggest-empty { padding: 8px 12px; font-size: 12px; color: #9ca3af; }
+
+    .ket-modal-hint {
+        margin: 8px 0 0;
+        font-size: 12px;
+        color: #9ca3af;
+    }
+    .ket-placeholder { color: #d1d5db; }
+    .concept-level-table.ket-table tr.ket-placeholder-row td { background: #fcfcfd; }
+</style>
+
+<div class="ke-edit-embed">
+    <div class="ke-head">
+        <div class="ke-title">
+            <span class="lvl-badge lvl-{{ concept.level }}">{{ concept.level }}级</span>
+            <h2 id="keName">{{ concept.name }}</h2>
+            <span class="ke-path">{{ concept.path }}</span>
+        </div>
+        <div class="ke-head-actions">
+            <button class="btn-secondary" id="backBtn" type="button">← 返回页面 K</button>
+        </div>
+    </div>
+
+    <!-- ===== 概念层级总览（页面 H 风格大表：概念层级 + 股票，可直接编辑）===== -->
+    <div class="industry-group-card ke-card">
+        <div class="ket-head">
+            <span class="cs-title">概念层级总览（<span id="tblCount">0</span> 只股票）</span>
+            <span class="ket-tip">点击概念名可重命名</span>
+        </div>
+
+        <table class="concept-level-table ket-table">
+            <thead id="tblHead"></thead>
+            <tbody id="tblBody">
+                <tr><td class="ket-empty" colspan="99">加载中...</td></tr>
+            </tbody>
+        </table>
+
+        <datalist id="csStockList" hidden></datalist>
+    </div>
+</div>
+
+<script>
+var CONCEPTS = {{ concepts | tojson }};
+var EDIT_ID = {{ concept.id }};
+var EDIT_NAME = {{ concept.name | tojson }};
+var EDIT_DESC = {{ (concept.description or '') | tojson }};
+var EDIT_CODE = {{ (concept.code or '') | tojson }};
+(function () {
+    // ---- API 封装 ----
+    function api(url, body) {
+        return fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        }).then(function (r) {
+            return r.json().then(function (j) { return { status: r.status, body: j }; });
+        });
+    }
+
+    // GET 请求（用于拉取最新概念树做局部刷新）
+    function apiGet(url) {
+        return fetch(url, { method: 'GET' }).then(function (r) {
+            return r.json().then(function (j) { return { status: r.status, body: j }; });
+        });
+    }
+
+    function toast(msg, ok) {
+        var t = document.createElement('div');
+        t.className = 'pagek-toast ' + (ok ? 'is-ok' : 'is-err');
+        t.textContent = msg;
+        document.body.appendChild(t);
+        setTimeout(function () { t.classList.add('show'); }, 10);
+        setTimeout(function () {
+            t.classList.remove('show');
+            setTimeout(function () { t.remove(); }, 300);
+        }, 2600);
+    }
+
+    // ---- 返回页面 K ----
+    document.getElementById('backBtn').addEventListener('click', function () {
+        window.location.href = '/pageK';
+    });
+
+    // ============ 概念层级总览大表（页面 H 风格）============
+    var MAX_CONCEPT_LEVEL = 5;
+    var tblCount = document.getElementById('tblCount');
+    var tblHead = document.getElementById('tblHead');
+    var tblBody = document.getElementById('tblBody');
+    var csStockList = document.getElementById('csStockList');
+    var allStocksCache = null;
+
+    function el(tag, cls, text) {
+        var n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text !== undefined && text !== null) n.textContent = text;
+        return n;
+    }
+
+    // 收集某概念的所有子孙（保持 CONCEPTS 原有的树形顺序）
+    function collectDescendants(conceptId) {
+        var byParent = {};
+        CONCEPTS.forEach(function (c) {
+            var p = (c.parent_id === null || c.parent_id === undefined)
+                ? 'null' : String(c.parent_id);
+            (byParent[p] = byParent[p] || []).push(c);
+        });
+        var seen = {};
+        var stack = [String(conceptId)];
+        while (stack.length) {
+            var pid = stack.pop();
+            (byParent[pid] || []).forEach(function (c) {
+                if (seen[c.id]) return;
+                seen[c.id] = true;
+                stack.push(String(c.id));
+            });
+        }
+        return CONCEPTS.filter(function (c) { return seen[c.id]; });
+    }
+
+    function findConcept(cid) {
+        var hit = null;
+        CONCEPTS.forEach(function (c) { if (c.id === cid) hit = c; });
+        return hit;
+    }
+
+    // 概念树发生增删后：拉取最新概念，再重建表格
+    function refreshConcepts(cb) {
+        apiGet('/api/pageK/concepts')
+            .then(function (resp) {
+                if (resp.body && resp.body.ok) {
+                    CONCEPTS = resp.body.concepts || CONCEPTS;
+                }
+                if (cb) cb();
+            })
+            .catch(function () { if (cb) cb(); });
+    }
+
+    function renderTblError(msg) {
+        pendingAnchor = null;
+        tblBody.innerHTML = '';
+        var tr0 = el('tr');
+        var td0 = el('td', 'ket-err', msg);
+        td0.colSpan = 99;
+        tr0.appendChild(td0);
+        tblBody.appendChild(tr0);
+    }
+
+    // 表格刷新会重建 DOM，若不处理滚动条会被弹回顶部。
+    // 这里在刷新前记下滚动位置，渲染完成后再滚回去（编辑到哪就停在哪）。
+    var pendingScrollY = null;
+    var tableReqSeq = 0;
+
+    function keepScroll() {
+        pendingScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    }
+
+    // 行锚点：删除股票后该行高度可能变化（后面的内容会往上串），
+    // 记下刷新前这一行在视口中的位置，渲染完成后再把它对齐回原处。
+    var pendingAnchor = null;
+
+    function setRowAnchor(rowIdx) {
+        var tr = tblBody.children[rowIdx];
+        if (!tr) return;
+        pendingAnchor = { idx: rowIdx, top: tr.getBoundingClientRect().top };
+    }
+
+    function applyRowAnchor() {
+        if (!pendingAnchor) return;
+        var a = pendingAnchor;
+        pendingAnchor = null;
+        var tr = tblBody.children[a.idx];
+        if (!tr) return;
+        var delta = tr.getBoundingClientRect().top - a.top;
+        if (Math.abs(delta) > 1) window.scrollBy(0, delta);
+    }
+
+    function restoreScroll() {
+        if (pendingScrollY === null) return;
+        var y = pendingScrollY;
+        pendingScrollY = null;
+        requestAnimationFrame(function () {
+            window.scrollTo(0, y);
+            // 内容高度微调后再校正一次，避免被浏览器钳制
+            requestAnimationFrame(function () {
+                window.scrollTo(0, y);
+                applyRowAnchor();
+            });
+        });
+    }
+
+    function loadTable() {
+        var seq = ++tableReqSeq;
+        keepScroll();
+
+        // 只保留旧内容不清空：清空会让页面高度塌陷，滚动条立刻被弹回顶部
+        if (!tblBody.firstChild) {
+            var tr = el('tr');
+            var td = el('td', 'ket-empty', '加载中...');
+            td.colSpan = 99;
+            tr.appendChild(td);
+            tblBody.appendChild(tr);
+        }
+
+        apiGet('/api/pageK/edit_table?concept_id=' + EDIT_ID)
+            .then(function (resp) {
+                if (seq !== tableReqSeq) return;   // 已有更新的请求，丢弃过期结果
+                var j = resp.body || {};
+                if (!j.ok) {
+                    renderTblError(j.error || ('HTTP ' + resp.status));
+                    return;
+                }
+                renderTable(j);
+            })
+            .catch(function (e) {
+                if (seq !== tableReqSeq) return;
+                renderTblError('请求失败：' + e);
+            });
+    }
+
+    function renderTable(j) {
+        tblCount.textContent = j.stock_count || 0;
+        var depth = j.max_depth || 1;
+        var base = (j.root && j.root.level) || 1;
+
+        // 表头：N 级概念列 + 股票
+        tblHead.innerHTML = '';
+        var hr = el('tr');
+        for (var d = 0; d < depth; d++) {
+            hr.appendChild(el('th', '', (base + d) + ' 级概念'));
+        }
+        hr.appendChild(el('th', '', '股票'));
+        tblHead.appendChild(hr);
+
+        tblBody.innerHTML = '';
+        var rows = j.rows || [];
+        if (!rows.length) {
+            var tr0 = el('tr');
+            var td0 = el('td', 'ket-empty', '该概念下暂无股票');
+            td0.colSpan = depth + 1;
+            tr0.appendChild(td0);
+            tblBody.appendChild(tr0);
+        }
+
+        rows.forEach(function (row, rowIdx) {
+            var tr = el('tr');
+            var stocks = row.stocks || [];
+            // 占位行：该概念暂时没有挂股票，仍然占一行，方便继续加下级 / 加股票
+            if (!stocks.length) {
+                tr.className = 'ket-placeholder-row';
+            }
+
+            (row.cells || []).forEach(function (cell, idx) {
+                if (!cell) return;   // 已被上方行的 rowspan 覆盖
+                var td = el('td', 'lvl-col lvl-col-' + (idx + 1));
+                if (cell.empty || !cell.id) {
+                    // 该行概念路径不足此层级：渲染空格子占位，保证列对齐
+                    td.className += ' lvl-empty';
+                } else {
+                    td.rowSpan = cell.span || 1;
+                    buildConceptCell(td, cell);
+                }
+                tr.appendChild(td);
+            });
+
+            // 股票列：只显示股票名称，一个概念的多个股票在同一行并列展示
+            var tdS = el('td', 'col-stock');
+            if (!stocks.length) {
+                tdS.appendChild(el('span', 'ket-placeholder', '— 暂无股票'));
+            } else {
+                stocks.forEach(function (st) {
+                    var item = el('span', 'ket-stock-item');
+                    var a = el('a', '', st.name);
+                    a.href = '/?q=' + encodeURIComponent(st.name);
+                    a.setAttribute('data-stock', st.name);
+                    item.appendChild(a);
+
+                    tdS.appendChild(item);
+                });
+            }
+
+            tr.appendChild(tdS);
+
+            tblBody.appendChild(tr);
+        });
+
+        restoreScroll();
+    }
+
+    // ===== 概念单元格：重命名 / 新增子级 / 删除 =====
+    function buildConceptCell(td, cell) {
+        td.innerHTML = '';
+        td.title = cell.path || cell.name;
+
+        var wrap = el('span', 'ket-cell');
+        var name = el('span', 'ket-cell-name', cell.name);
+        name.title = '点击重命名「' + (cell.path || cell.name) + '」';
+        name.addEventListener('click', function () { startRename(td, cell); });
+
+        wrap.appendChild(name);
+        td.appendChild(wrap);
+    }
+
+    function startRename(td, cell) {
+        td.innerHTML = '';
+        var input = el('input', 'ket-input');
+        input.type = 'text';
+        input.value = cell.name;
+        input.placeholder = '新名称';
+        var ok = el('button', 'ket-btn', '存');
+        ok.type = 'button';
+        var cancel = el('button', 'ket-btn', '取');
+        cancel.type = 'button';
+
+        function close() { loadTable(); }
+        function save() {
+            var nm = (input.value || '').trim();
+            if (!nm) { toast('分类名称不能为空', false); return; }
+            if (nm === cell.name) { close(); return; }
+            ok.disabled = true;
+            api('/api/pageK/update_concept', { id: cell.id, name: nm, sync_stocks: true })
+                .then(function (resp) {
+                    if (resp.body && resp.body.ok) {
+                        toast('已重命名为「' + nm + '」', true);
+                        // 改名会影响本页标题/路径，整页刷新最稳妥
+                        setTimeout(function () { window.location.reload(); }, 800);
+                    } else {
+                        toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
+                        ok.disabled = false;
+                    }
+                })
+                .catch(function (e) { toast('请求失败：' + e, false); ok.disabled = false; });
+        }
+
+        ok.addEventListener('click', save);
+        cancel.addEventListener('click', close);
+        input.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Enter') { ev.preventDefault(); save(); }
+            if (ev.key === 'Escape') { ev.preventDefault(); close(); }
+        });
+        td.appendChild(input);
+        td.appendChild(ok);
+        td.appendChild(cancel);
+        input.focus();
+        input.select();
+    }
+
+    // ---- 启动 ----
+    loadTable();
+})();
+
+</script>

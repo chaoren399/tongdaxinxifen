@@ -1033,6 +1033,16 @@ def page_h():
             1 for r in flat_rows if len(r["levels"]) == max_depth
         ) or len({tuple(r["levels"]) for r in flat_rows})
 
+    # 样式 C：复用页面 K 编辑页，需要完整概念对象（含 id / level / path 等）及全量概念列表
+    from db import list_concepts as _list_concepts
+    concepts = _list_concepts()
+    pk_concept = None
+    if name:
+        for _c in concepts:
+            if _c["name"] == name:
+                pk_concept = _c
+                break
+
     return render_template(
         "pageH.html",
         concept=concept,
@@ -1042,6 +1052,8 @@ def page_h():
         max_depth=max_depth,
         query_name=name,
         hl=hl,
+        pk_concept=pk_concept,
+        concepts=concepts,
     )
 
 

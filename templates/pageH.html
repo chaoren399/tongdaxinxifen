@@ -203,6 +203,7 @@
             <span class="ph-toggle-label">展示样式</span>
             <button type="button" class="ph-style-btn" data-style="A">样式 A</button>
             <button type="button" class="ph-style-btn active" data-style="B">样式 B</button>
+            <button type="button" class="ph-style-btn" data-style="C">样式 C（编辑）</button>
         </div>
 
         <div class="industry-group-card">
@@ -283,6 +284,20 @@
                 </tbody>
             </table>
         </div>
+
+        <!-- 样式 C：原生嵌入页面 K 编辑页（与 /pageK/edit 完全一致） -->
+        <div id="styleC" style="display:none; margin-top: 12px;">
+            {% if pk_concept %}
+                {% with concept=pk_concept, concepts=concepts %}
+                    {% include 'pageH_styleC.html' %}
+                {% endwith %}
+            {% else %}
+            <div style="padding:40px; text-align:center; color:#9ca3af;">
+                概念「{{ query_name }}」在概念表中未登记，无法展示编辑页。
+            </div>
+            {% endif %}
+        </div>
+
         {% else %}
         <div class="stock-detail-card stock-detail-empty">
             <p class="empty">
@@ -302,6 +317,7 @@
             var btns = document.querySelectorAll('.ph-style-btn');
             var tableA = document.getElementById('tableA');
             var tableB = document.getElementById('tableB');
+            var styleC = document.getElementById('styleC');
             var HAS_HL = {{ 'true' if hl else 'false' }};
 
             // 定位到来源股票：A / B 两种样式各渲染了一份，取当前可见的那份再滚动
@@ -324,6 +340,7 @@
                 });
                 if (tableA) tableA.style.display = style === 'A' ? '' : 'none';
                 if (tableB) tableB.style.display = style === 'B' ? '' : 'none';
+                if (styleC) styleC.style.display = style === 'C' ? '' : 'none';
             }
             btns.forEach(function (b) {
                 b.addEventListener('click', function () {
@@ -333,10 +350,10 @@
                     scrollToHl();
                 });
             });
-            // 恢复上次选择的样式（HTML 初始即样式 B，故只在记住 A 时切换）
+            // 恢复上次选择的样式（HTML 初始即样式 B，故只在记住 A / C 时切换）
             try {
                 var saved = localStorage.getItem('ph_style');
-                if (saved === 'A') applyStyle('A');
+                if (saved === 'A' || saved === 'C') applyStyle(saved);
             } catch (e) {}
             // 等布局完成再滚动，避免定位到错误位置
             requestAnimationFrame(function () {
