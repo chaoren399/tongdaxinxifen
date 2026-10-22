@@ -354,7 +354,9 @@
                 // 概念保持原有的"点击跳转 pageH"超链接行为
                 var a = document.createElement("a");
                 a.className = "stock-detail-concept-chip";
-                a.href = "/pageH?name=" + encodeURIComponent(txt);
+                // hl：来源股票名，页面 H 会高亮并滚动定位到该股票
+                a.href = "/pageH?name=" + encodeURIComponent(txt)
+                    + "&hl=" + encodeURIComponent(it.name || "");
                 a.title = "查看包含「" + txt + "」概念的所有股票";
                 escText(a, txt, keywords);
                 conceptList.appendChild(a);

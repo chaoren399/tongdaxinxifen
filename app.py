@@ -832,9 +832,11 @@ def _concept_match(raw, concept_name):
 def page_h():
     """
     页面 H：按股票概念（概念1~5）展示股票列表。
-    参数：name（概念名称）。
+    参数：name（概念名称）+ hl（可选，来源股票名，用于高亮定位）。
     """
     name = (request.args.get("name") or "").strip()
+    # hl：来自页面 F 股票详情的来源股票名，用于在列表中高亮定位（与页面 G 一致）
+    hl = (request.args.get("hl") or "").strip()
     concept = None
     stocks = []
     tree = {}  # 一级 -> 二级 -> 三级 -> [股票]，用于层级表格展示
@@ -1017,6 +1019,7 @@ def page_h():
         table_b_rows=table_b_rows,
         max_depth=max_depth,
         query_name=name,
+        hl=hl,
     )
 
 

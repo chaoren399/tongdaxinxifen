@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>通达信行业分类 - 页面 H · 概念股票列表</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=52" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=59" />
     <style>
         /* ===== 页面 H：概念层级表格 ===== */
         .industry-head-stats { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
@@ -139,6 +139,33 @@
             font-size: 11px;
             color: #9ca3af;
         }
+
+        /* ===== 来源股票高亮（从股票详情页点击概念跳转过来时） ===== */
+        .industry-head-hl {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #6b7280;
+        }
+        .industry-head-hl b { color: #b45309; }
+
+        /* 样式 A：整行高亮 + 股票名加背景 */
+        .concept-level-table tr.is-hl-row td { background: #fffbeb !important; }
+        .concept-level-table tr.is-hl-row td.lvl-col { filter: brightness(0.99); }
+        .concept-level-table td.col-stock a.ph-hl-name {
+            color: #b45309;
+            font-weight: 700;
+            background: #fde68a;
+            padding: 1px 6px;
+            border-radius: 4px;
+            box-shadow: 0 0 0 2px #fde68a;
+        }
+        /* 样式 B：芯片高亮 */
+        .ph-ket-stock-item.is-hl {
+            border-color: #fbbf24;
+            background: #fef3c7;
+            box-shadow: 0 0 0 2px rgba(251, 191, 36, .35);
+        }
+        .ph-ket-stock-item.is-hl .ph-ket-stock-link { color: #b45309; font-weight: 700; }
     </style>
 </head>
 <body>
@@ -166,6 +193,9 @@
                 <span class="badge badge-branch">末级分支 <b>{{ concept.leafCount }}</b></span>
                 <span class="badge badge-stock">股票 <b>{{ concept.count }}</b></span>
             </div>
+            {% if hl %}
+            <div class="industry-head-hl">已定位来源股票：<b>{{ hl }}</b></div>
+            {% endif %}
         </div>
 
         <!-- 样式切换开关：样式 A（一行一只）/ 样式 B（概念内联芯片） -->
@@ -189,7 +219,7 @@
                 </thead>
                 <tbody>
                     {% for row in table_rows %}
-                    <tr>
+                    <tr{% if hl and row.stock.name == hl %} class="is-hl-row"{% endif %}>
                         {% for cell in row.cells %}
                             {% if cell %}
                             <td class="lvl-col lvl-col-{{ loop.index }}{% if not cell.name %} lvl-empty{% endif %}"
@@ -199,7 +229,8 @@
                             {% endif %}
                         {% endfor %}
                         <td class="col-stock">
-                            <a href="{{ url_for('index', q=row.stock.name) }}"
+                            <a{% if hl and row.stock.name == hl %} class="ph-hl-name"{% endif %}
+                               href="{{ url_for('index', q=row.stock.name) }}"
                                data-stock="{{ row.stock.name }}">{{ row.stock.name }}</a>
                             {% if row.stock.tertiary %}
                             <span class="ch-industry"
@@ -237,7 +268,7 @@
                         {% endfor %}
                         <td class="ph-ket-stock-cell">
                             {% for st in row.stocks %}
-                            <span class="ph-ket-stock-item">
+                            <span class="ph-ket-stock-item{% if hl and st.name == hl %} is-hl{% endif %}">
                                 <a class="ph-ket-stock-link"
                                    href="{{ url_for('index', q=st.name) }}"
                                    data-stock="{{ st.name }}"
@@ -271,6 +302,22 @@
             var btns = document.querySelectorAll('.ph-style-btn');
             var tableA = document.getElementById('tableA');
             var tableB = document.getElementById('tableB');
+            var HAS_HL = {{ 'true' if hl else 'false' }};
+
+            // 定位到来源股票：A / B 两种样式各渲染了一份，取当前可见的那份再滚动
+            function scrollToHl() {
+                if (!HAS_HL) return;
+                var cands = document.querySelectorAll('tr.is-hl-row, .ph-ket-stock-item.is-hl');
+                for (var i = 0; i < cands.length; i++) {
+                    var el = cands[i];
+                    if (el.getClientRects().length === 0) continue;  // 所在表格被隐藏
+                    if (el.scrollIntoView) {
+                        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    }
+                    return;
+                }
+            }
+
             function applyStyle(style) {
                 btns.forEach(function (b) {
                     b.classList.toggle('active', b.getAttribute('data-style') === style);
@@ -283,13 +330,18 @@
                     var style = b.getAttribute('data-style');
                     applyStyle(style);
                     try { localStorage.setItem('ph_style', style); } catch (e) {}
+                    scrollToHl();
                 });
             });
-            // 恢复上次选择的样式
+            // 恢复上次选择的样式（HTML 初始即样式 B，故只在记住 A 时切换）
             try {
                 var saved = localStorage.getItem('ph_style');
-                if (saved === 'B') applyStyle('B');
+                if (saved === 'A') applyStyle('A');
             } catch (e) {}
+            // 等布局完成再滚动，避免定位到错误位置
+            requestAnimationFrame(function () {
+                requestAnimationFrame(scrollToHl);
+            });
         })();
     </script>
 </body>
