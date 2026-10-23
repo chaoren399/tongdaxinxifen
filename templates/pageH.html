@@ -104,42 +104,6 @@
             font-weight: 600;
         }
 
-        /* ===== 样式 B：内联芯片（类似编辑概念页） ===== */
-        .ph-ket-table td.ph-ket-stock-cell {
-            background: #fff;
-            vertical-align: top;
-        }
-        .ph-ket-stock-cell { line-height: 2; }
-        .ph-ket-stock-item {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            margin: 2px 6px 2px 0;
-            padding: 2px 10px;
-            border: 1px solid #e5e7eb;
-            border-radius: 999px;
-            background: #f9fafb;
-            white-space: nowrap;
-        }
-        .ph-ket-stock-item:hover {
-            border-color: #93c5fd;
-            background: #eff6ff;
-        }
-        .ph-ket-stock-link {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            text-decoration: none;
-            color: #111827;
-            font-weight: 500;
-        }
-        .ph-ket-stock-link:hover { color: #2563eb; }
-        .ph-ket-stock-name { font-size: 13px; }
-        .ph-ket-stock-code {
-            font-size: 11px;
-            color: #9ca3af;
-        }
-
         /* ===== 来源股票高亮（从股票详情页点击概念跳转过来时） ===== */
         .industry-head-hl {
             margin-top: 8px;
@@ -159,13 +123,6 @@
             border-radius: 4px;
             box-shadow: 0 0 0 2px #fde68a;
         }
-        /* 样式 B：芯片高亮 */
-        .ph-ket-stock-item.is-hl {
-            border-color: #fbbf24;
-            background: #fef3c7;
-            box-shadow: 0 0 0 2px rgba(251, 191, 36, .35);
-        }
-        .ph-ket-stock-item.is-hl .ph-ket-stock-link { color: #b45309; font-weight: 700; }
     </style>
 </head>
 <body>
@@ -198,17 +155,16 @@
             {% endif %}
         </div>
 
-        <!-- 样式切换开关：样式 A（一行一只）/ 样式 B（概念内联芯片） -->
+        <!-- 样式切换开关：样式 A（一行一只）/ 样式 C（编辑） -->
         <div class="ph-style-toggle">
             <span class="ph-toggle-label">展示样式</span>
-            <button type="button" class="ph-style-btn" data-style="A">样式 A</button>
-            <button type="button" class="ph-style-btn active" data-style="B">样式 B</button>
+            <button type="button" class="ph-style-btn active" data-style="A">样式 A</button>
             <button type="button" class="ph-style-btn" data-style="C">样式 C（编辑）</button>
         </div>
 
         <div class="industry-group-card">
             <!-- 样式 A：一行一只股票 -->
-            <table class="concept-level-table" id="tableA" style="display:none;">
+            <table class="concept-level-table" id="tableA">
                 <thead>
                     <tr>
                         {% for d in range(max_depth) %}
@@ -240,44 +196,6 @@
                         </td>
                         <td class="col-business">
                             {% if row.stock.business %}{{ row.stock.business }}{% else %}<span class="ch-code">—</span>{% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-
-            <!-- 样式 B：同一概念路径下多只股票合并成一行，内联芯片展示（类似编辑概念页） -->
-            <table class="concept-level-table ph-ket-table" id="tableB">
-                <thead>
-                    <tr>
-                        {% for d in range(max_depth) %}
-                        <th>{{ d + 1 }} 级概念</th>
-                        {% endfor %}
-                        <th>股票（{{ concept.count }} 只）</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in table_b_rows %}
-                    <tr>
-                        {% for cell in row.cells %}
-                            {% if cell %}
-                            <td class="lvl-col lvl-col-{{ loop.index }}{% if not cell.name %} lvl-empty{% endif %}"
-                                rowspan="{{ cell.span }}">{{ cell.name }}</td>
-                            {% else %}
-                            {# 已被上方 rowspan 覆盖 #}
-                            {% endif %}
-                        {% endfor %}
-                        <td class="ph-ket-stock-cell">
-                            {% for st in row.stocks %}
-                            <span class="ph-ket-stock-item{% if hl and st.name == hl %} is-hl{% endif %}">
-                                <a class="ph-ket-stock-link"
-                                   href="{{ url_for('index', q=st.name) }}"
-                                   data-stock="{{ st.name }}"
-                                   data-industry="{{ st.primary }}/{{ st.secondary }}/{{ st.tertiary }}">
-                                    <span class="ph-ket-stock-name">{{ st.name }}</span>
-                                </a>
-                            </span>
-                            {% endfor %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -316,14 +234,13 @@
         (function () {
             var btns = document.querySelectorAll('.ph-style-btn');
             var tableA = document.getElementById('tableA');
-            var tableB = document.getElementById('tableB');
             var styleC = document.getElementById('styleC');
             var HAS_HL = {{ 'true' if hl else 'false' }};
 
-            // 定位到来源股票：A / B 两种样式各渲染了一份，取当前可见的那份再滚动
+            // 定位到来源股票：取当前可见的样式 A 中高亮行滚动
             function scrollToHl() {
                 if (!HAS_HL) return;
-                var cands = document.querySelectorAll('tr.is-hl-row, .ph-ket-stock-item.is-hl');
+                var cands = document.querySelectorAll('tr.is-hl-row');
                 for (var i = 0; i < cands.length; i++) {
                     var el = cands[i];
                     if (el.getClientRects().length === 0) continue;  // 所在表格被隐藏
@@ -339,7 +256,6 @@
                     b.classList.toggle('active', b.getAttribute('data-style') === style);
                 });
                 if (tableA) tableA.style.display = style === 'A' ? '' : 'none';
-                if (tableB) tableB.style.display = style === 'B' ? '' : 'none';
                 if (styleC) styleC.style.display = style === 'C' ? '' : 'none';
             }
             btns.forEach(function (b) {
@@ -350,10 +266,10 @@
                     scrollToHl();
                 });
             });
-            // 恢复上次选择的样式（HTML 初始即样式 B，故只在记住 A / C 时切换）
+            // 恢复上次选择的样式（HTML 初始即样式 A，故只在记住 C 时切换）
             try {
                 var saved = localStorage.getItem('ph_style');
-                if (saved === 'A' || saved === 'C') applyStyle(saved);
+                if (saved === 'C') applyStyle(saved);
             } catch (e) {}
             // 等布局完成再滚动，避免定位到错误位置
             requestAnimationFrame(function () {
