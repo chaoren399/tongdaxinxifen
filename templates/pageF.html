@@ -5,7 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>通达信行业分类 - 页面 F · 多股票搜索</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=58" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=60" />
+    <style>
+        /* 首页默认以 120% 缩放打开 */
+        html { zoom: 1.2; }
+        /* 搜索框「输入的文字」加粗加黑并放大（占位提示保持默认灰色与字号） */
+        #batchSearchInput {
+            font-weight: 900;
+            font-size: 18px;
+            color: #000;
+        }
+        #batchSearchInput::placeholder {
+            font-size: 14px;   /* 占位提示保持原字号 */
+        }
+    </style>
 </head>
 <body>
     <header class="topbar topbar-pageF">
@@ -24,15 +37,16 @@
         <div class="batch-search-box">
             <div class="batch-search-row">
                 <div class="pf-search-input-wrap">
-                    <input type="text" id="batchSearchInput" placeholder="输入股票名称/代码/概念/关键词" autocomplete="off" />
+                    <input type="text" id="batchSearchInput" placeholder="输入股票名称/代码/概念/关键词" autocomplete="off" ondblclick="this.select()" />
                     <div class="pf-suggest" id="batchSuggest" hidden></div>
                 </div>
                 <button id="batchSearchBtn" type="button">搜 索</button>
             </div>
-            <div class="search-history-row" id="searchHistoryRow" hidden>
-                <span class="search-history-label">最近搜索：</span>
-                <div class="search-history-chips" id="searchHistoryChips"></div>
-            </div>
+        </div>
+
+        <div class="search-history-row" id="searchHistoryRow" hidden>
+            <span class="search-history-label">最近搜索：</span>
+            <div class="search-history-chips" id="searchHistoryChips"></div>
         </div>
 
         <div id="batchResultList" class="batch-result-list">
