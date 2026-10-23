@@ -18,6 +18,10 @@
         #batchSearchInput::placeholder {
             font-size: 14px;   /* 占位提示保持原字号 */
         }
+        /* zoom 1.2 下修正弹窗最大高度：避免「保存/取消」按钮被推出可视区 */
+        .batch-modal {
+            max-height: calc((100vh - 48px) / 1.2);
+        }
     </style>
 </head>
 <body>
