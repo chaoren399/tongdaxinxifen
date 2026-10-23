@@ -11,6 +11,12 @@
     // 固定高亮词「主营」：命中时加粗 + 加深（黑色）
     var MAIN_BIZ_KEYWORD = "主营";
 
+    // 浏览器标签页标题：默认显示页面标识，搜索 / 点卡片时显示关键词 / 股票名
+    var DEFAULT_TITLE = "F · 多股票搜索";
+    function setTitle(text) {
+        document.title = text || DEFAULT_TITLE;
+    }
+
     function escText(el, text, keywords) {
         // 将 text 填入 el，keywords 命中处用 <mark> 高亮（大小写不敏感）
         if (!text) return;
@@ -247,6 +253,12 @@
     function renderCard(it, keywords) {
         var card = document.createElement("div");
         card.className = "stock-detail-card" + (it.nameHit ? " name-hit" : "");
+
+        // 点击卡片（查看该股票详情）：标签显示股票名；
+        // 搜索关键词优先——搜索框仍有关键词时不覆盖。
+        card.addEventListener("click", function () {
+            if (!input.value.trim()) setTitle(it.name);
+        });
 
         // 命中关键词 / 模糊匹配徽章（右上角，横向排列避免重叠）
         var badges = document.createElement("div");
@@ -1016,7 +1028,10 @@
             body: JSON.stringify({ q: q }),
         })
             .then(function (r) { return r.json(); })
-            .then(render)
+            .then(function (data) {
+                render(data);
+                setTitle(input.value.trim());   // 标签标题跟随搜索关键词
+            })
             .catch(function () {
                 alert("搜索失败，请重试");
             })
@@ -1027,6 +1042,9 @@
     }
 
     btn.addEventListener("click", doSearch);
+    input.addEventListener("input", function () {
+        if (!input.value.trim()) setTitle("");   // 清空搜索框时恢复默认标题
+    });
     input.addEventListener("keydown", function (e) {
         // 忽略输入法组合键
         if (e.isComposing || e.keyCode === 229) return;
