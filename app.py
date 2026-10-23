@@ -1349,6 +1349,35 @@ def page_p():
     return render_template("pageP.html")
 
 
+@app.route("/pageQ")
+def page_q():
+    """页面 Q：三级行业细分，按股票数量降序排列。"""
+    tertiaries = []
+    for primary_name, primary in INDUSTRY_TREE.items():
+        for secondary_name, secondary in primary["secondaries"].items():
+            for tertiary_name, tertiary in secondary["tertiaries"].items():
+                stocks = tertiary["stocks"]
+                tertiaries.append(
+                    {
+                        "primary": primary_name,
+                        "secondary": secondary_name,
+                        "name": tertiary_name,
+                        "code": tertiary.get("code", ""),
+                        "stockCount": len(stocks),
+                        "stocks": [s["name"] for s in stocks],
+                    }
+                )
+    # 按股票数量降序；数量相同则按 一级/二级/三级 名称稳定排序
+    tertiaries.sort(
+        key=lambda t: (-t["stockCount"], t["primary"], t["secondary"], t["name"])
+    )
+    stats = {
+        "tertiary": len(tertiaries),
+        "stocks": sum(t["stockCount"] for t in tertiaries),
+    }
+    return render_template("pageQ.html", tertiaries=tertiaries, stats=stats)
+
+
 @app.route("/pageO")
 def page_o():
     """

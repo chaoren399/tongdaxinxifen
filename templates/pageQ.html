@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>通达信行业分类 - 页面 Q</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=1" />
+    <style>
+        .pageQ-wrap { padding: 0 24px 40px; }
+        .pageQ-head { margin: 18px 0 12px; }
+        .pageQ-head h2 { margin: 0 0 4px; font-size: 20px; }
+        .pageQ-head .sub { color: #6b7280; font-size: 13px; }
+        .pageQ-filter { margin: 10px 0 16px; }
+        .pageQ-filter input {
+            padding: 8px 12px; width: 360px; max-width: 100%;
+            border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;
+        }
+        table.pageQ-table { border-collapse: collapse; width: 100%; font-size: 13px; background: #fff; }
+        table.pageQ-table th, table.pageQ-table td {
+            border: 1px solid #e5e7eb; padding: 6px 12px;
+            text-align: left; vertical-align: top;
+        }
+        table.pageQ-table thead th {
+            background: #f9fafb; color: #374151; font-weight: 600; white-space: nowrap;
+        }
+        table.pageQ-table td.rank { text-align: center; color: #9ca3af; width: 48px; }
+        table.pageQ-table td.cnt {
+            text-align: center; font-weight: 700; color: #1e40af;
+            white-space: nowrap; width: 80px;
+        }
+        .pageQ-name { font-weight: 600; }
+        .pageQ-path { color: #6b7280; font-size: 12px; white-space: nowrap; }
+        .pageQ-stocks { line-height: 1.9; }
+        .pageQ-stock {
+            display: inline-block; margin: 2px 6px 2px 0; padding: 1px 8px;
+            border: 1px solid #e5e7eb; border-radius: 999px; background: #f9fafb;
+            text-decoration: none; color: #111827; font-size: 12px;
+        }
+        .pageQ-stock:hover { border-color: #93c5fd; background: #eff6ff; color: #2563eb; }
+        .pageQ-empty { padding: 30px; text-align: center; color: #9ca3af; }
+        .pageQ-table th.sortable { cursor: pointer; user-select: none; }
+        .pageQ-table th.sortable:hover { color: #2563eb; }
+        .pageQ-table th .sort-ind { color: #9ca3af; font-size: 11px; margin-left: 2px; }
+        .pageQ-table th.sorted-asc .sort-ind,
+        .pageQ-table th.sorted-desc .sort-ind { color: #2563eb; }
+    </style>
+</head>
+<body>
+    <header class="topbar topbar-pageF">
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_d') }}">页面 D</a>
+            <a href="{{ url_for('page_h') }}">页面 H</a>
+            <a href="{{ url_for('page_k') }}">页面 K</a>
+            <a href="{{ url_for('page_l') }}">页面 L</a>
+            <a href="{{ url_for('page_p') }}">页面 P</a>
+            <a class="active" href="{{ url_for('page_q') }}">页面 Q</a>
+        </nav>
+    </header>
+
+    <main class="pageQ-wrap">
+        <div class="pageQ-head">
+            <h2>页面 Q · 三级行业细分</h2>
+            <div class="sub">
+                全部三级行业按股票数量降序排列（共 {{ stats.tertiary }} 个三级行业，{{ stats.stocks }} 条股票归属）
+            </div>
+        </div>
+
+        <div class="pageQ-filter">
+            <input id="qFilter" type="text" placeholder="过滤三级行业名称 / 所属一级、二级行业…" />
+        </div>
+
+        <table class="pageQ-table">
+            <thead>
+                <tr>
+                    <th class="rank">#</th>
+                    <th>三级行业</th>
+                    <th>所属（一级 › 二级）</th>
+                    <th class="cnt sortable sorted-desc" id="cntHead" title="点击切换升 / 降序">股票数<span class="sort-ind">▼</span></th>
+                    <th>股票</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in tertiaries %}
+                <tr data-text="{{ (t.primary ~ ' ' ~ t.secondary ~ ' ' ~ t.name) | lower }}">
+                    <td class="rank">{{ loop.index }}</td>
+                    <td class="pageQ-name">{{ t.name }}</td>
+                    <td class="pageQ-path">{{ t.primary }} › {{ t.secondary }}</td>
+                    <td class="cnt">{{ t.stockCount }}</td>
+                    <td class="pageQ-stocks">
+                        {% for s in t.stocks %}
+                        <a class="pageQ-stock" href="{{ url_for('index', q=s) }}" data-stock="{{ s }}">{{ s }}</a>
+                        {% else %}
+                        <span class="pageQ-path">（无）</span>
+                        {% endfor %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="pageQ-empty">暂无三级行业数据</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </main>
+
+    <script>
+        (function () {
+            var f = document.getElementById('qFilter');
+            var tbody = document.querySelector('.pageQ-table tbody');
+            var cntHead = document.getElementById('cntHead');
+            var sortInd = cntHead ? cntHead.querySelector('.sort-ind') : null;
+            // 排序方向：-1 降序（默认，股票多在前），1 升序
+            var sortDir = -1;
+
+            var rows = Array.prototype.slice.call(
+                tbody.querySelectorAll('tr[data-text]')
+            );
+
+            function applyFilter() {
+                var kw = f ? f.value.trim().toLowerCase() : '';
+                rows.forEach(function (r) {
+                    var hit = !kw || r.getAttribute('data-text').indexOf(kw) !== -1;
+                    r.style.display = hit ? '' : 'none';
+                });
+            }
+
+            function applySort() {
+                var vis = rows.filter(function (r) { return r.style.display !== 'none'; });
+                vis.sort(function (a, b) {
+                    var ca = parseInt(a.querySelector('.cnt').textContent, 10) || 0;
+                    var cb = parseInt(b.querySelector('.cnt').textContent, 10) || 0;
+                    return (ca - cb) * sortDir;
+                });
+                vis.forEach(function (r, i) {
+                    r.querySelector('.rank').textContent = i + 1;
+                    tbody.appendChild(r);
+                });
+                if (cntHead) {
+                    cntHead.classList.toggle('sorted-desc', sortDir === -1);
+                    cntHead.classList.toggle('sorted-asc', sortDir === 1);
+                }
+                if (sortInd) sortInd.textContent = sortDir === -1 ? '▼' : '▲';
+            }
+
+            if (f) f.addEventListener('input', function () { applyFilter(); applySort(); });
+            if (cntHead) cntHead.addEventListener('click', function () {
+                sortDir = -sortDir;
+                applySort();
+            });
+        })();
+    </script>
+</body>
+</html>
