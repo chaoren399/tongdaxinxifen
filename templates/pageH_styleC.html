@@ -80,6 +80,15 @@
         color: #111827; text-decoration: none; font-weight: 500;
     }
     .ket-stock-item a:hover { color: #2563eb; text-decoration: underline; }
+    /* 来源股票高亮（从股票详情页点概念链接带 hl 进入时） */
+    .ket-stock-item.is-hl {
+        border: 1px solid #fbbf24;
+        background: #fef3c7;
+        border-radius: 4px;
+        padding: 0 4px;
+        box-shadow: 0 0 0 2px rgba(251, 191, 36, .35);
+    }
+    .ket-stock-item.is-hl a { color: #b45309; font-weight: 700; }
     /* 移除按钮默认隐藏，悬停该股票时才出现，保证"只显示股票名称"的观感 */
     .ket-stock-x {
         margin-left: 4px;
@@ -241,6 +250,10 @@ var EDIT_ID = {{ concept.id }};
 var EDIT_NAME = {{ concept.name | tojson }};
 var EDIT_DESC = {{ (concept.description or '') | tojson }};
 var EDIT_CODE = {{ (concept.code or '') | tojson }};
+// 来源股票名：从股票详情页点概念链接带 hl 进入时，用于在样式 C 中高亮并定位
+var HL_STOCK = {{ (hl or '') | tojson }};
+// 自动定位只做一次（首次渲染），避免后续编辑刷新时覆盖用户自己的滚动位置
+var hlAutoScrolled = false;
 (function () {
     // ---- API 封装 ----
     function api(url, body) {
@@ -470,6 +483,11 @@ var EDIT_CODE = {{ (concept.code or '') | tojson }};
                     a.setAttribute('data-stock', st.name);
                     item.appendChild(a);
 
+                    // 来源股票高亮（从股票详情页点概念链接带 hl 进入时）
+                    if (HL_STOCK && st.name === HL_STOCK) {
+                        item.classList.add('is-hl');
+                    }
+
                     tdS.appendChild(item);
                 });
             }
@@ -480,6 +498,19 @@ var EDIT_CODE = {{ (concept.code or '') | tojson }};
         });
 
         restoreScroll();
+
+        // 来源股票高亮后，自动滚动定位到该股票（仅首次渲染时，免去手动下滑）
+        if (HL_STOCK && !hlAutoScrolled) {
+            hlAutoScrolled = true;
+            requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                    var hlEl = tblBody.querySelector('.ket-stock-item.is-hl');
+                    if (hlEl && hlEl.scrollIntoView) {
+                        hlEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    }
+                });
+            });
+        }
     }
 
     // ===== 概念单元格：重命名 / 新增子级 / 删除 =====

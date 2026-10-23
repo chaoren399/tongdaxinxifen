@@ -271,6 +271,8 @@
                 var saved = localStorage.getItem('ph_style');
                 if (saved === 'C') applyStyle(saved);
             } catch (e) {}
+            // 带来源股票高亮时，默认显示样式 C（编辑页），并在样式 C 中高亮来源股票
+            if (HAS_HL) applyStyle('C');
             // 等布局完成再滚动，避免定位到错误位置
             requestAnimationFrame(function () {
                 requestAnimationFrame(scrollToHl);
