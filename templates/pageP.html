@@ -18,7 +18,7 @@
             <a href="{{ url_for('page_k') }}">页面 K</a>
             <a href="{{ url_for('page_l') }}">页面 L</a>
             <a class="active" href="{{ url_for('page_p') }}">页面 P</a>
-            <a href="{{ url_for('page_r') }}">页面 R</a>
+            <a href="{{ url_for('page_r') }}" target="_blank" rel="noopener">页面 R</a>
         </nav>
     </header>
 
@@ -74,14 +74,6 @@
                 <div class="pageP-card-body">
                     <p class="pageP-card-title">页面 Q</p>
                     <p class="pageP-card-desc">三级行业细分（按股票数量排序）</p>
-                </div>
-                <div class="pageP-card-arrow">›</div>
-            </a>
-            <a class="pageP-card" href="{{ url_for('page_r') }}">
-                <div class="pageP-card-icon">R</div>
-                <div class="pageP-card-body">
-                    <p class="pageP-card-title">页面 R</p>
-                    <p class="pageP-card-desc">周期图（空白页，待填充）</p>
                 </div>
                 <div class="pageP-card-arrow">›</div>
             </a>
