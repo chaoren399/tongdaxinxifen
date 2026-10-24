@@ -7,12 +7,65 @@
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=35" />
     <style>
-        .pageR-wrap { max-width: 1200px; margin: 0 auto; padding: 24px 16px 40px; }
-        .pageR-head { margin-bottom: 16px; }
-        .pageR-head h2 { margin: 0 0 4px; font-size: 20px; }
+        .pageR-wrap { padding: 0 16px 40px; }
+        .pageR-head { margin: 18px 0 10px; display: flex; align-items: flex-end; gap: 16px; }
+        .pageR-head h2 { margin: 0 0 2px; font-size: 20px; }
         .pageR-head .sub { color: #6b7280; font-size: 13px; }
-        .pageR-body { min-height: 420px; }
-        .pageR-empty { padding: 60px 0; text-align: center; color: #9ca3af; }
+        .pageR-head .spacer { flex: 1; }
+        .pageR-stats { font-size: 13px; color: #374151; }
+        .pageR-btn {
+            border: 1px solid #d1d5db; background: #fff; border-radius: 6px;
+            padding: 5px 12px; font-size: 13px; cursor: pointer; color: #374151;
+        }
+        .pageR-btn:hover { border-color: #93c5fd; color: #2563eb; }
+        .pageR-legend { display: flex; gap: 14px; align-items: center; margin: 0 0 10px; font-size: 12px; color: #6b7280; }
+        .pageR-legend .chip { display: inline-block; width: 14px; height: 14px; border: 1px solid #d1d5db; vertical-align: -3px; margin-right: 4px; }
+        .pageR-legend .chip.red { background: #dc2626; border-color: #dc2626; }
+        .pageR-legend .chip.note { background: #fde68a; border-color: #fcd34d; }
+
+        .pageR-scroll { overflow: auto; max-height: calc(100vh - 190px); border: 1px solid #d1d5db; background: #fff; }
+        table.zq { border-collapse: separate; border-spacing: 0; font-size: 12px; table-layout: fixed; }
+        table.zq th, table.zq td {
+            border-right: 1px solid #e5e7eb;
+            border-bottom: 1px solid #e5e7eb;
+            padding: 2px 3px; height: 20px;
+            overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+        }
+        table.zq col.zq-day-col { width: 68px; }
+        table.zq col.zq-height-col { width: 64px; }
+        table.zq thead th {
+            position: sticky; z-index: 3; background: #f9fafb;
+            text-align: center; font-weight: 600; color: #374151; height: 20px;
+        }
+        table.zq thead tr.zq-week-row th { top: 0; border-bottom: none; }
+        table.zq thead tr.zq-date-row th { top: 23px; color: #111827; }
+        table.zq thead th.zq-week-start { border-left: 2px solid #9ca3af; }
+        table.zq thead th.zq-corner { position: sticky; left: 0; z-index: 5; background: #fde68a; }
+        table.zq th.zq-height, table.zq td.zq-height {
+            position: sticky; left: 0; z-index: 2;
+            background: #fde68a; font-weight: 700; text-align: center; color: #92400e;
+        }
+        table.zq thead th.zq-height { z-index: 4; }
+        table.zq td.zq-week-start { border-left: 2px solid #9ca3af; }
+        table.zq td.zq-red { background: #dc2626; color: #fff; font-weight: 600; }
+        table.zq td.zq-note { color: #374151; }
+        tr.zq-section-divider td, tr.zq-section-divider th.zq-height {
+            border-top: 5px solid #22d3ee;
+        }
+        tr.zq-note-row td { background: #fafafa; color: #6b7280; }
+        table.zq col.zq-add-col { width: 40px; }
+        table.zq th.zq-add { position: sticky; top: 0; z-index: 3; background: #fff; border-bottom: none; }
+        table.zq td.zq-add-cell { background: #fff; border-bottom: none; cursor: default; }
+        #zqAddDayBtn {
+            width: 26px; height: 26px; border: none; border-radius: 6px;
+            background: #dc2626; color: #fff; font-size: 18px; font-weight: 700;
+            line-height: 1; cursor: pointer;
+        }
+        #zqAddDayBtn:hover { background: #b91c1c; }
+        table.zq tbody td[data-day] { cursor: cell; }
+        table.zq tbody td[data-day]:hover { outline: 2px solid #2563eb; outline-offset: -2px; }
+        .pageR-empty { padding: 60px; text-align: center; color: #9ca3af; }
+        .pageR-tip { font-size: 12px; color: #9ca3af; margin-top: 8px; }
     </style>
 </head>
 <body>
@@ -31,13 +84,139 @@
 
     <main class="pageR-wrap">
         <div class="pageR-head">
-            <h2>页面 R · 周期图</h2>
-            <p class="sub">空白页 · 用于周期图相关功能（待填充）</p>
+            <div>
+                <h2>页面 R · 周期图</h2>
+                <p class="sub">早盘竞价高度周期表 · 纵轴高度，横轴交易日（按周分组）</p>
+            </div>
+            <div class="spacer"></div>
+            <span class="pageR-stats">交易日 <b>{{ stats.days }}</b> · 行 <b>{{ stats.rows }}</b></span>
+            <button type="button" class="pageR-btn" id="pageRReimportBtn">重新导入 CSV</button>
         </div>
 
-        <div class="pageR-body">
-            <div class="pageR-empty">暂无内容</div>
+        <div class="pageR-legend">
+            <span><span class="chip red"></span>股票链条（主升/断板/跌停等）</span>
+            <span><span class="chip note"></span>高度（行首列）</span>
+            <span><span class="chip"></span>备注 / 空白</span>
         </div>
+
+        {% if not board.days %}
+            <div class="pageR-empty">暂无数据：请把 CSV 放到 data/zhouqi/早盘竞价记录2.csv 后点击「重新导入 CSV」</div>
+        {% else %}
+        <div class="pageR-scroll">
+            <table class="zq">
+                <colgroup>
+                    <col class="zq-height-col" />
+                    {% for d in board.days %}<col class="zq-day-col" />{% endfor %}
+                    <col class="zq-add-col" />
+                </colgroup>
+                <thead>
+                    <tr class="zq-week-row">
+                        <th class="zq-corner">高度\日期</th>
+                        {% for d in board.days %}
+                        <th {% if loop.index0 == 0 or d.weekNo != board.days[loop.index0 - 1].weekNo %}class="zq-week-start"{% endif %}>周{{ d.weekDay }}</th>
+                        {% endfor %}
+                        <th rowspan="2" class="zq-add">
+                            <button type="button" id="zqAddDayBtn" title="新增一个交易日">＋</button>
+                        </th>
+                    </tr>
+                    <tr class="zq-date-row">
+                        <th class="zq-height"></th>
+                        {% for d in board.days %}
+                        <th {% if loop.index0 == 0 or d.weekNo != board.days[loop.index0 - 1].weekNo %}class="zq-week-start"{% endif %}>{{ d.date }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for section in board.sections %}
+                        {% for row in section.rows %}
+                        <tr class="{% if loop.first %}zq-section-divider{% endif %}{% if row.kind == 'note' %} zq-note-row{% endif %}">
+                            <td class="zq-height">{{ row.height }}</td>
+                            {% for cell in row.cells %}
+                            {% set d = board.days[loop.index0] %}
+                            <td data-row="{{ row.id }}" data-day="{{ d.id }}" data-current="{{ cell.content if cell else '' }}" title="{{ cell.content if cell else '双击编辑' }}"{% if cell %}{% if cell.style == 'red' %} class="zq-red"{% else %} class="zq-note"{% endif %}{% endif %}>{% if cell %}{{ cell.content | e | replace('\n', '<br>') | safe }}{% endif %}</td>
+                            {% endfor %}
+                            <td class="zq-add-cell"></td>
+                        </tr>
+                        {% endfor %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="pageR-tip">数据来源：data/zhouqi/早盘竞价记录2.csv · 行首高度列已固定 · 点「＋」新增交易日，双击格子编辑内容（留空清除）</p>
+        {% endif %}
     </main>
+
+    <script>
+        (function () {
+            var btn = document.getElementById('pageRReimportBtn');
+            if (btn) {
+                btn.addEventListener('click', function () {
+                    if (!confirm('确定重新从 CSV 导入周期图数据？当前导入的数据将被覆盖。')) return;
+                    btn.disabled = true;
+                    btn.textContent = '导入中…';
+                    fetch('{{ url_for("api_pageR_reimport") }}', { method: 'POST' })
+                        .then(function (r) { return r.json(); })
+                        .then(function (data) {
+                            if (data.ok) { location.reload(); }
+                            else { alert('导入失败：' + (data.error || '未知错误')); btn.disabled = false; btn.textContent = '重新导入 CSV'; }
+                        })
+                        .catch(function () { alert('请求失败'); btn.disabled = false; btn.textContent = '重新导入 CSV'; });
+                });
+            }
+
+            // 表尾「＋」：新增一个交易日列
+            var addBtn = document.getElementById('zqAddDayBtn');
+            if (addBtn) {
+                addBtn.addEventListener('click', function () {
+                    addBtn.disabled = true;
+                    fetch('{{ url_for("api_pageR_add_day") }}', { method: 'POST' })
+                        .then(function (r) { return r.json(); })
+                        .then(function (data) {
+                            if (data.ok) { location.reload(); }
+                            else { alert('新增失败：' + (data.error || '未知错误')); addBtn.disabled = false; }
+                        })
+                        .catch(function () { alert('请求失败'); addBtn.disabled = false; });
+                });
+            }
+
+            // 双击格子编辑内容（留空删除），保存后就地更新样式
+            function renderCell(td, content, style) {
+                td.dataset.current = content;
+                td.title = content || '双击编辑';
+                if (content && style === 'red') {
+                    td.className = 'zq-red';
+                } else if (content) {
+                    td.className = 'zq-note';
+                } else {
+                    td.className = '';
+                }
+                var div = document.createElement('div');
+                div.textContent = content;
+                td.innerHTML = div.innerHTML.replace(/\n/g, '<br>');
+            }
+            document.querySelectorAll('table.zq tbody td[data-day]').forEach(function (td) {
+                td.addEventListener('dblclick', function () {
+                    var input = prompt('格子内容（留空清除）：', td.dataset.current || '');
+                    if (input === null) return;
+                    var payload = {
+                        rowId: parseInt(td.dataset.row, 10),
+                        dayId: parseInt(td.dataset.day, 10),
+                        content: input.trim()
+                    };
+                    fetch('{{ url_for("api_pageR_set_cell") }}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    })
+                        .then(function (r) { return r.json(); })
+                        .then(function (data) {
+                            if (data.ok) { renderCell(td, data.content, data.style); }
+                            else { alert('保存失败：' + (data.error || '未知错误')); }
+                        })
+                        .catch(function () { alert('请求失败'); });
+                });
+            });
+        })();
+    </script>
 </body>
 </html>

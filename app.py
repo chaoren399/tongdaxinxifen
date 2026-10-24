@@ -1351,8 +1351,59 @@ def page_p():
 
 @app.route("/pageR")
 def page_r():
-    """页面 R：空白页（用于周期图，待填充）。"""
-    return render_template("pageR.html")
+    """页面 R：周期图（早盘竞价高度表，数据来自 data/zhouqi/早盘竞价记录2.csv）。"""
+    from db import ensure_zq_tables, zq_has_data, import_zq_csv, load_zq_board
+    ensure_zq_tables()
+    if not zq_has_data():
+        try:
+            import_zq_csv()
+        except (FileNotFoundError, ValueError):
+            pass
+    board = load_zq_board()
+    stats = {
+        "days": len(board["days"]),
+        "rows": sum(len(s["rows"]) for s in board["sections"]),
+    }
+    return render_template("pageR.html", board=board, stats=stats)
+
+
+@app.route("/api/pageR/reimport", methods=["POST"])
+def api_pageR_reimport():
+    """重新从 CSV 导入周期图数据（全量重建）。"""
+    from db import import_zq_csv
+    try:
+        result = import_zq_csv()
+        return jsonify({"ok": True, "days": result["days"], "rows": result["rows"]})
+    except (FileNotFoundError, ValueError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/pageR/add_day", methods=["POST"])
+def api_pageR_add_day():
+    """在表格最后新增一个交易日列（自动顺延日期、跳过周末）。"""
+    from db import add_zq_day
+    try:
+        day = add_zq_day()
+        return jsonify({"ok": True, "day": day})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/pageR/cell", methods=["POST"])
+def api_pageR_set_cell():
+    """设置 / 清除某个格子内容（content 为空则清除）。"""
+    from db import set_zq_cell
+    payload = request.get_json(silent=True) or {}
+    row_id = payload.get("rowId")
+    day_id = payload.get("dayId")
+    content = payload.get("content", "")
+    if row_id is None or day_id is None:
+        return jsonify({"ok": False, "error": "缺少 rowId / dayId"}), 400
+    try:
+        result = set_zq_cell(int(row_id), int(day_id), content)
+        return jsonify({"ok": True, **result})
+    except LookupError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 404
 
 
 @app.route("/pageQ")

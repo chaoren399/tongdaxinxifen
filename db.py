@@ -12,6 +12,7 @@ SQLite 数据访问层。
 import csv
 import datetime
 import os
+import re
 import sqlite3
 from collections import OrderedDict
 
@@ -2947,5 +2948,373 @@ def build_concept_edit_table(concept_id, db_path=None):
             "stock_count": len(stock_names),
             "concept_count": len(subtree),
         }
+    finally:
+        conn.close()
+
+
+# ==================== 周期图（页面 R）====================
+# 数据表设计：
+#   zq_days  —— 交易日维度表（一列 = 一个交易日）
+#       date_label 显示日期（如 7/13）；week_no 第几周；week_day 周几(1~5)；sort_order 列顺序
+#   zq_rows  —— 行维度表（一行 = 一个高度层级或备注行）
+#       section 分区（main 主图 / sub 副图）；height_label 行首高度标签（如 10、7-100%、''）；
+#       kind 行类型（'' 高度行 / 'note' 备注行）；row_order 行顺序
+#   zq_cells —— 格子表（一格 = 某行某天的内容）
+#       (row_id, day_id) 唯一；content 格内文本；style 样式（'red' 主升红块 / '' 普通）
+
+ZQ_CSV_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "data", "zhouqi", "早盘竞价记录2.csv",
+)
+
+ZQ_SCHEMA = """
+CREATE TABLE IF NOT EXISTS zq_days (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    date_label TEXT NOT NULL,
+    week_no    INTEGER NOT NULL,
+    week_day   INTEGER NOT NULL,
+    sort_order INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_zq_days_order ON zq_days(sort_order);
+CREATE TABLE IF NOT EXISTS zq_rows (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    section      TEXT NOT NULL DEFAULT 'main',
+    height_label TEXT DEFAULT '',
+    kind         TEXT DEFAULT '',
+    row_order    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_zq_rows_order ON zq_rows(section, row_order);
+CREATE TABLE IF NOT EXISTS zq_cells (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    row_id  INTEGER NOT NULL REFERENCES zq_rows(id) ON DELETE CASCADE,
+    day_id  INTEGER NOT NULL REFERENCES zq_days(id) ON DELETE CASCADE,
+    content TEXT DEFAULT '',
+    style   TEXT DEFAULT '',
+    UNIQUE(row_id, day_id)
+);
+"""
+
+# 备注关键词：命中则不算「主升红块」
+_ZQ_NOTE_PAT = re.compile(
+    r"(情绪|退潮|回暖|冰点|指数|监控|异动|最高|停牌|涨停\d*|跌停\d*|PK|ICU|KTV|第\d+天|，|,)"
+)
+
+
+def _zq_is_stock_text(text):
+    """判断格子文本是否属于「股票链条」内容（渲染为红块）。"""
+    t = (text or "").strip()
+    if not t or len(t) > 12:
+        return False
+    if _ZQ_NOTE_PAT.search(t):
+        return False
+    # 名字+数字：新华传媒11 / 立新能源2 / 凡拓数创1
+    if re.search(r"[\u4e00-\u9fa5A-Za-z]-?\d{1,3}$", t):
+        return True
+    # 名字-状态：新华-跌停 / 爱丽-断 / 爱丽-8%
+    if re.search(r"[\u4e00-\u9fa5A-Za-z]+-(?:断|新高|止跌|反包|被关|开板|弱转强|跌停|\d+%?)$", t):
+        return True
+    # 名字+状态：新华断 / 爱丽反包 / 爱丽被关 / 新华止跌
+    if t.endswith(("断", "新高", "止跌", "反包", "被关", "开板", "弱转强", "跌停")):
+        return True
+    return False
+
+
+def ensure_zq_tables(db_path=None):
+    conn = get_conn(db_path)
+    try:
+        conn.executescript(ZQ_SCHEMA)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _zq_read_csv_rows(csv_path):
+    """读 CSV，自动尝试 utf-8 / gbk 编码，返回二维列表。"""
+    for enc in ("utf-8-sig", "utf-8", "gbk"):
+        try:
+            with open(csv_path, "r", encoding=enc, newline="") as f:
+                return list(csv.reader(f))
+        except UnicodeDecodeError:
+            continue
+    raise ValueError(f"无法识别 CSV 编码：{csv_path}")
+
+
+def import_zq_csv(csv_path=None, db_path=None):
+    """
+    从「早盘竞价记录」CSV 导入周期图数据（全量重建）。
+    CSV 结构：
+        第 1 行：高度\\n日期 + 周标签（周1~周5 循环）
+        第 2 行：对应日期（7/13 ...）
+        之后每行：行首高度标签（10/9/.../1/''）+ 各交易日格子内容
+    """
+    csv_path = csv_path or ZQ_CSV_FILE
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"周期图 CSV 不存在：{csv_path}")
+    raw = _zq_read_csv_rows(csv_path)
+    if len(raw) < 3:
+        raise ValueError("CSV 内容为空或格式不正确")
+
+    ensure_zq_tables(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM zq_cells")
+        cur.execute("DELETE FROM zq_rows")
+        cur.execute("DELETE FROM zq_days")
+
+        # ---- 1. 解析列（交易日）----
+        week_labels = raw[0]
+        date_labels = raw[1]
+        days = []            # [{sort_order, date_label, week_no, week_day}]
+        day_cols = []        # 有日期的 CSV 列索引（与 days 一一对应）
+        week_no = 0
+        prev_week = None
+        for col in range(1, max(len(week_labels), len(date_labels))):
+            week = (week_labels[col] if col < len(week_labels) else "").strip()
+            date = (date_labels[col] if col < len(date_labels) else "").strip()
+            if not date:
+                continue
+            if week and week != prev_week:
+                week_no += 1
+                prev_week = week
+            m = re.search(r"\d+", week)
+            week_day = int(m.group()) if m else 0
+            days.append({
+                "sort_order": len(days) + 1,
+                "date_label": date,
+                "week_no": week_no,
+                "week_day": week_day,
+            })
+            day_cols.append(col)
+
+        day_at_col = {}      # CSV 列索引 -> zq_days.id
+        for col, d in zip(day_cols, days):
+            cur.execute(
+                "INSERT INTO zq_days (id, date_label, week_no, week_day, sort_order) "
+                "VALUES (NULL, ?, ?, ?, ?)",
+                (d["date_label"], d["week_no"], d["week_day"], d["sort_order"]),
+            )
+            day_at_col[col] = cur.lastrowid
+
+        # ---- 2. 解析数据行 ----
+        section = "main"
+        seen_height_one = False
+        row_order = 0
+        for row in raw[2:]:
+            col0 = (row[0] if row else "").strip()
+            cells = []
+            has_content = False
+            for col, day_order in day_at_col.items():
+                text = (row[col] if col < len(row) else "").strip()
+                if text:
+                    has_content = True
+                cells.append((day_order, text))
+
+            if not has_content:
+                continue  # 整行为空，跳过
+
+            # 分区切换：主图走完（出现过高度 1）后再次出现高度 4 → 进入副图
+            if section == "main" and seen_height_one and col0 == "4":
+                section = "sub"
+
+            height_label = col0
+            kind = "" if height_label else "note"
+            if height_label == "1":
+                seen_height_one = True
+
+            row_order += 1
+            cur.execute(
+                "INSERT INTO zq_rows (id, section, height_label, kind, row_order) "
+                "VALUES (NULL, ?, ?, ?, ?)",
+                (section, height_label, kind, row_order),
+            )
+            row_id = cur.lastrowid
+            for day_order, text in cells:
+                if not text:
+                    continue
+                style = "red" if (kind == "" and _zq_is_stock_text(text)) else ""
+                cur.execute(
+                    "INSERT INTO zq_cells (row_id, day_id, content, style) "
+                    "VALUES (?, ?, ?, ?)",
+                    (row_id, day_order, text, style),
+                )
+        conn.commit()
+        return {"days": len(days), "rows": row_order}
+    finally:
+        conn.close()
+
+
+def zq_has_data(db_path=None):
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) AS c FROM zq_days")
+        return cur.fetchone()["c"] > 0
+    finally:
+        conn.close()
+
+
+def load_zq_board(db_path=None):
+    """
+    读取周期图全部数据，供页面 R 渲染。
+    返回 {
+        "days":   [{"sortOrder", "date", "weekNo", "weekDay"}],
+        "sections": [{"name", "rows": [{"id", "height", "kind",
+                     "cells": [None | {"content", "style"} * len(days)]}]}],
+    }
+    """
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, date_label, week_no, week_day, sort_order "
+            "FROM zq_days ORDER BY sort_order"
+        )
+        days = [
+            {
+                "id": r["id"],
+                "sortOrder": r["sort_order"],
+                "date": r["date_label"],
+                "weekNo": r["week_no"],
+                "weekDay": r["week_day"],
+            }
+            for r in cur.fetchall()
+        ]
+        day_ids = [r["id"] for r in cur.execute(
+            "SELECT id FROM zq_days ORDER BY sort_order"
+        ).fetchall()]
+        pos_of = {day_id: i for i, day_id in enumerate(day_ids)}
+
+        cur.execute(
+            "SELECT id, section, height_label, kind, row_order "
+            "FROM zq_rows ORDER BY row_order"
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("SELECT row_id, day_id, content, style FROM zq_cells")
+        cell_map = {}
+        for r in cur.fetchall():
+            cell_map.setdefault(r["row_id"], {})[r["day_id"]] = {
+                "content": r["content"] or "",
+                "style": r["style"] or "",
+            }
+
+        sections = []
+        for row in rows:
+            if not sections or sections[-1]["name"] != row["section"]:
+                sections.append({"name": row["section"], "rows": []})
+            cells = []
+            grid = cell_map.get(row["id"], {})
+            for day_id in day_ids:
+                cells.append(grid.get(day_id))
+            sections[-1]["rows"].append({
+                "id": row["id"],
+                "height": row["height_label"] or "",
+                "kind": row["kind"] or "",
+                "cells": cells,
+            })
+        return {"days": days, "sections": sections}
+    finally:
+        conn.close()
+
+
+def _zq_parse_date_label(date_label, today=None):
+    """把 "10/29" 解析为最接近今天的 datetime.date（自动处理跨年）。"""
+    m = re.match(r"(\d{1,2})/(\d{1,2})$", (date_label or "").strip())
+    if not m:
+        return None
+    today = today or datetime.date.today()
+    month, day = int(m.group(1)), int(m.group(2))
+    candidates = []
+    for year in (today.year - 1, today.year, today.year + 1):
+        try:
+            candidates.append(datetime.date(year, month, day))
+        except ValueError:
+            continue
+    return min(candidates, key=lambda d: abs((d - today).days))
+
+
+def add_zq_day(db_path=None):
+    """
+    在最后新增一个交易日（跳过周末），返回新交易日 {"id","date","weekNo","weekDay","sortOrder"}。
+    """
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, date_label, week_no, sort_order FROM zq_days "
+            "ORDER BY sort_order DESC LIMIT 1"
+        )
+        last = cur.fetchone()
+        if last is None:
+            raise ValueError("暂无交易日数据，请先导入 CSV")
+
+        last_date = _zq_parse_date_label(last["date_label"])
+        if last_date is None:
+            raise ValueError(f"无法解析最后交易日：{last['date_label']}")
+        nxt = last_date
+        while True:
+            nxt += datetime.timedelta(days=1)
+            if nxt.weekday() < 5:  # 跳过周末
+                break
+
+        week_no = last["week_no"]
+        if nxt.isocalendar()[1] != last_date.isocalendar()[1]:
+            week_no += 1  # 跨周
+        cur.execute(
+            "INSERT INTO zq_days (id, date_label, week_no, week_day, sort_order) "
+            "VALUES (NULL, ?, ?, ?, ?)",
+            (f"{nxt.month}/{nxt.day}", week_no, nxt.isoweekday(), last["sort_order"] + 1),
+        )
+        new_id = cur.lastrowid
+        conn.commit()
+        return {
+            "id": new_id,
+            "date": f"{nxt.month}/{nxt.day}",
+            "weekNo": week_no,
+            "weekDay": nxt.isoweekday(),
+            "sortOrder": last["sort_order"] + 1,
+        }
+    finally:
+        conn.close()
+
+
+def set_zq_cell(row_id, day_id, content, db_path=None):
+    """
+    设置 / 清除某个格子内容（content 为空则删除该格）。
+    style 自动按内容判断（备注行始终为普通样式）。
+    """
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT kind FROM zq_rows WHERE id = ?", (row_id,))
+        zrow = cur.fetchone()
+        if zrow is None:
+            raise LookupError(f"未找到行：{row_id}")
+        cur.execute("SELECT id FROM zq_days WHERE id = ?", (day_id,))
+        if cur.fetchone() is None:
+            raise LookupError(f"未找到交易日：{day_id}")
+
+        content = (content or "").strip()
+        if not content:
+            cur.execute(
+                "DELETE FROM zq_cells WHERE row_id = ? AND day_id = ?",
+                (row_id, day_id),
+            )
+            conn.commit()
+            return {"content": "", "style": ""}
+
+        style = "red" if (zrow["kind"] != "note" and _zq_is_stock_text(content)) else ""
+        cur.execute(
+            """
+            INSERT INTO zq_cells (row_id, day_id, content, style)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(row_id, day_id)
+            DO UPDATE SET content = excluded.content, style = excluded.style
+            """,
+            (row_id, day_id, content, style),
+        )
+        conn.commit()
+        return {"content": content, "style": style}
     finally:
         conn.close()
