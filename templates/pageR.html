@@ -64,6 +64,30 @@
         #zqAddDayBtn:hover { background: #b91c1c; }
         table.zq tbody td[data-day] { cursor: cell; }
         table.zq tbody td[data-day]:hover { outline: 2px solid #2563eb; outline-offset: -2px; }
+        table.zq tbody td.zq-selected { box-shadow: inset 0 0 0 2px #2563eb; }
+        table.zq td.zq-green { background: #16a34a; color: #fff; font-weight: 600; }
+        table.zq td.zq-blue { background: #2563eb; color: #fff; font-weight: 600; }
+        table.zq td.zq-yellow { background: #fde047; color: #111827; font-weight: 600; }
+        table.zq td.zq-black { background: #111827; color: #fff; font-weight: 600; }
+        .zq-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+        .zq-toolbar .label { font-size: 13px; color: #6b7280; }
+        .zq-style-btn {
+            border: 1px solid #d1d5db; background: #fff; border-radius: 6px;
+            padding: 4px 12px; font-size: 13px; cursor: pointer; color: #374151;
+        }
+        .zq-style-btn:hover { border-color: #93c5fd; color: #2563eb; }
+        .zq-style-btn[data-style="red"] { background: #dc2626; border-color: #dc2626; color: #fff; }
+        .zq-style-btn[data-style="green"] { background: #16a34a; border-color: #16a34a; color: #fff; }
+        .zq-style-btn[data-style="blue"] { background: #2563eb; border-color: #2563eb; color: #fff; }
+        .zq-style-btn[data-style="yellow"] { background: #fde047; border-color: #fde047; color: #111827; }
+        .zq-style-btn[data-style="black"] { background: #111827; border-color: #111827; color: #fff; }
+        .zq-style-btn[data-style=""] { background: #fff; }
+        textarea.zq-cell-editor {
+            position: fixed; z-index: 50; box-sizing: border-box;
+            border: 2px solid #2563eb; border-radius: 4px; padding: 2px 3px;
+            font-size: 12px; line-height: 1.3; resize: none; outline: none;
+            font-family: inherit; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.15);
+        }
         .pageR-empty { padding: 60px; text-align: center; color: #9ca3af; }
         .pageR-tip { font-size: 12px; color: #9ca3af; margin-top: 8px; }
     </style>
@@ -97,6 +121,17 @@
             <span><span class="chip red"></span>股票链条（主升/断板/跌停等）</span>
             <span><span class="chip note"></span>高度（行首列）</span>
             <span><span class="chip"></span>备注 / 空白</span>
+        </div>
+
+        <div class="zq-toolbar">
+            <span class="label">样式：</span>
+            <button type="button" class="zq-style-btn" data-style="red">红</button>
+            <button type="button" class="zq-style-btn" data-style="green">绿</button>
+            <button type="button" class="zq-style-btn" data-style="blue">蓝</button>
+            <button type="button" class="zq-style-btn" data-style="yellow">黄</button>
+            <button type="button" class="zq-style-btn" data-style="black">黑</button>
+            <button type="button" class="zq-style-btn" data-style="">普通</button>
+            <span class="label">（先框选/点选格子，再点样式套用；双击可编辑文字）</span>
         </div>
 
         {% if not board.days %}
@@ -133,7 +168,7 @@
                             <td class="zq-height">{{ row.height }}</td>
                             {% for cell in row.cells %}
                             {% set d = board.days[loop.index0] %}
-                            <td data-row="{{ row.id }}" data-day="{{ d.id }}" data-current="{{ cell.content if cell else '' }}" title="{{ cell.content if cell else '双击编辑' }}"{% if cell %}{% if cell.style == 'red' %} class="zq-red"{% else %} class="zq-note"{% endif %}{% endif %}>{% if cell %}{{ cell.content | e | replace('\n', '<br>') | safe }}{% endif %}</td>
+                            <td data-row="{{ row.id }}" data-day="{{ d.id }}" data-current="{{ cell.content if cell else '' }}" title="{{ cell.content if cell else '双击编辑' }}"{% if cell %}{% if cell.style %} class="zq-{{ cell.style }}"{% elif cell.content %} class="zq-note"{% endif %}{% endif %}>{% if cell %}{{ cell.content | e | replace('\n', '<br>') | safe }}{% endif %}</td>
                             {% endfor %}
                             <td class="zq-add-cell"></td>
                         </tr>
@@ -148,6 +183,12 @@
 
     <script>
         (function () {
+            // 默认横向滚动到最右侧（展示最新交易日）
+            var scroller = document.querySelector('.pageR-scroll');
+            if (scroller) {
+                scroller.scrollLeft = scroller.scrollWidth;
+            }
+
             var btn = document.getElementById('pageRReimportBtn');
             if (btn) {
                 btn.addEventListener('click', function () {
@@ -179,29 +220,33 @@
                 });
             }
 
-            // 双击格子编辑内容（留空删除），保存后就地更新样式
+            // 双击格子弹出内联编辑器（回车保存 / Shift+Enter 换行 / Esc 取消），保存后落库
             function renderCell(td, content, style) {
                 td.dataset.current = content;
                 td.title = content || '双击编辑';
-                if (content && style === 'red') {
-                    td.className = 'zq-red';
+                td.classList.remove('zq-red', 'zq-green', 'zq-blue', 'zq-yellow', 'zq-note');
+                if (style) {
+                    td.classList.add('zq-' + style);
                 } else if (content) {
-                    td.className = 'zq-note';
-                } else {
-                    td.className = '';
+                    td.classList.add('zq-note');
                 }
                 var div = document.createElement('div');
                 div.textContent = content;
                 td.innerHTML = div.innerHTML.replace(/\n/g, '<br>');
             }
-            document.querySelectorAll('table.zq tbody td[data-day]').forEach(function (td) {
-                td.addEventListener('dblclick', function () {
-                    var input = prompt('格子内容（留空清除）：', td.dataset.current || '');
-                    if (input === null) return;
+
+            var _editor = null;
+            function closeEditor(save) {
+                if (!_editor) return;
+                var ed = _editor;
+                _editor = null;
+                ed.closed = true;
+                if (document.body.contains(ed.ta)) document.body.removeChild(ed.ta);
+                if (save) {
                     var payload = {
-                        rowId: parseInt(td.dataset.row, 10),
-                        dayId: parseInt(td.dataset.day, 10),
-                        content: input.trim()
+                        rowId: parseInt(ed.td.dataset.row, 10),
+                        dayId: parseInt(ed.td.dataset.day, 10),
+                        content: ed.ta.value.trim()
                     };
                     fetch('{{ url_for("api_pageR_set_cell") }}', {
                         method: 'POST',
@@ -210,8 +255,103 @@
                     })
                         .then(function (r) { return r.json(); })
                         .then(function (data) {
-                            if (data.ok) { renderCell(td, data.content, data.style); }
+                            if (data.ok) { renderCell(ed.td, data.content, data.style); }
                             else { alert('保存失败：' + (data.error || '未知错误')); }
+                        })
+                        .catch(function () { alert('请求失败'); });
+                }
+            }
+            function openEditor(td) {
+                if (_editor) closeEditor(true);
+                clearSel();
+                var ta = document.createElement('textarea');
+                ta.className = 'zq-cell-editor';
+                ta.value = td.dataset.current || '';
+                document.body.appendChild(ta);
+                var rect = td.getBoundingClientRect();
+                ta.style.left = rect.left + 'px';
+                ta.style.top = rect.top + 'px';
+                ta.style.width = Math.max(rect.width, 120) + 'px';
+                ta.style.height = Math.max(rect.height, 44) + 'px';
+                ta.focus();
+                ta.select();
+                ta.addEventListener('blur', function () { if (!ed.closed) closeEditor(true); });
+                ta.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); closeEditor(true); }
+                    else if (e.key === 'Escape') { e.preventDefault(); closeEditor(false); }
+                });
+                var ed = { td: td, ta: ta, closed: false };
+                _editor = ed;
+            }
+            document.querySelectorAll('table.zq tbody td[data-day]').forEach(function (td) {
+                td.addEventListener('dblclick', function () { openEditor(td); });
+            });
+
+            // ---- 框选 / 点选格子 + 套用样式 ----
+            var sel = [];
+            function clearSel() {
+                sel.forEach(function (td) { td.classList.remove('zq-selected'); });
+                sel = [];
+            }
+            function addSel(td) {
+                if (sel.indexOf(td) === -1) { sel.push(td); td.classList.add('zq-selected'); }
+            }
+            function riOf(td) {
+                return Array.prototype.indexOf.call(
+                    td.closest('tbody').querySelectorAll('tr'), td.closest('tr'));
+            }
+            function ciOf(td) {
+                return Array.prototype.indexOf.call(
+                    td.closest('tr').querySelectorAll('td[data-day]'), td);
+            }
+            function rangeSel(a, b) {
+                var r1 = Math.min(a.ri, b.ri), r2 = Math.max(a.ri, b.ri);
+                var c1 = Math.min(a.ci, b.ci), c2 = Math.max(a.ci, b.ci);
+                document.querySelectorAll('table.zq tbody td[data-day]').forEach(function (td) {
+                    var ri = riOf(td), ci = ciOf(td);
+                    if (ri >= r1 && ri <= r2 && ci >= c1 && ci <= c2) addSel(td);
+                });
+            }
+            var anchor = null, selecting = false;
+            document.querySelectorAll('table.zq tbody td[data-day]').forEach(function (td) {
+                td.addEventListener('mousedown', function (e) {
+                    e.preventDefault();
+                    clearSel();
+                    anchor = { ri: riOf(td), ci: ciOf(td) };
+                    addSel(td);
+                    selecting = true;
+                });
+                td.addEventListener('mouseenter', function () {
+                    if (selecting) rangeSel(anchor, { ri: riOf(td), ci: ciOf(td) });
+                });
+            });
+            document.addEventListener('mouseup', function () { selecting = false; });
+            var scroller = document.querySelector('.pageR-scroll');
+            if (scroller) {
+                scroller.addEventListener('click', function (e) {
+                    if (e.target === this || e.target.tagName === 'TABLE') clearSel();
+                });
+            }
+            function applyStyleToTd(td, style) {
+                td.classList.remove('zq-red', 'zq-green', 'zq-blue', 'zq-yellow', 'zq-note');
+                if (style) td.classList.add('zq-' + style);
+            }
+            document.querySelectorAll('.zq-style-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    if (!sel.length) { alert('请先选中要设置样式的格子'); return; }
+                    var style = btn.dataset.style;
+                    var cells = sel.map(function (td) {
+                        return { rowId: parseInt(td.dataset.row, 10), dayId: parseInt(td.dataset.day, 10) };
+                    });
+                    fetch('{{ url_for("api_pageR_set_cells_style") }}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cells: cells, style: style })
+                    })
+                        .then(function (r) { return r.json(); })
+                        .then(function (data) {
+                            if (data.ok) { sel.forEach(function (td) { applyStyleToTd(td, style); }); }
+                            else { alert('应用失败：' + (data.error || '未知错误')); }
                         })
                         .catch(function () { alert('请求失败'); });
                 });

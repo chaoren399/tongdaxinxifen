@@ -1406,6 +1406,28 @@ def api_pageR_set_cell():
         return jsonify({"ok": False, "error": str(exc)}), 404
 
 
+@app.route("/api/pageR/cells/style", methods=["POST"])
+def api_pageR_set_cells_style():
+    """批量设置选中格子的样式（不影响内容）。"""
+    from db import set_zq_cells_style
+    payload = request.get_json(silent=True) or {}
+    cells = payload.get("cells") or []
+    style = payload.get("style", "")
+    if not cells:
+        return jsonify({"ok": False, "error": "未选择格子"}), 400
+    items = []
+    for c in cells:
+        if "rowId" in c and "dayId" in c:
+            items.append((int(c["rowId"]), int(c["dayId"])))
+    if not items:
+        return jsonify({"ok": False, "error": "缺少 rowId / dayId"}), 400
+    try:
+        count = set_zq_cells_style(items, style)
+        return jsonify({"ok": True, "count": count})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
 @app.route("/pageQ")
 def page_q():
     """页面 Q：三级行业细分，按股票数量降序排列。"""

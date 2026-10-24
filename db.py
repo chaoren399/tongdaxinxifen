@@ -3318,3 +3318,46 @@ def set_zq_cell(row_id, day_id, content, db_path=None):
         return {"content": content, "style": style}
     finally:
         conn.close()
+
+
+def set_zq_cells_style(items, style, db_path=None):
+    """
+    批量设置一组格子的样式（不影响内容）。
+    items: [(row_id, day_id), ...]；style: 'red'/'green'/'blue'/'yellow'/''（''=普通）。
+    空内容 + 普通样式 -> 删除该格；其余情况保留（或新建）格子并写入样式。
+    """
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        for row_id, day_id in items:
+            cur.execute(
+                "SELECT content FROM zq_cells WHERE row_id = ? AND day_id = ?",
+                (row_id, day_id),
+            )
+            row = cur.fetchone()
+            content = row["content"] if row else ""
+            if not style:
+                if content == "":
+                    cur.execute(
+                        "DELETE FROM zq_cells WHERE row_id = ? AND day_id = ?",
+                        (row_id, day_id),
+                    )
+                else:
+                    cur.execute(
+                        "UPDATE zq_cells SET style = '' WHERE row_id = ? AND day_id = ?",
+                        (row_id, day_id),
+                    )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO zq_cells (row_id, day_id, content, style)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(row_id, day_id)
+                    DO UPDATE SET style = excluded.style, content = excluded.content
+                    """,
+                    (row_id, day_id, content, style),
+                )
+        conn.commit()
+        return len(items)
+    finally:
+        conn.close()
