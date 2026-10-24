@@ -18,7 +18,7 @@ import uuid
 from collections import OrderedDict
 from typing import Any, Dict
 
-from flask import Flask, jsonify, render_template, abort, request, send_from_directory
+from flask import Flask, jsonify, render_template, abort, request, send_from_directory, make_response
 
 from db import (
     CONCEPT_PATH_SEP,
@@ -1364,7 +1364,9 @@ def page_r():
         "days": len(board["days"]),
         "rows": sum(len(s["rows"]) for s in board["sections"]),
     }
-    return render_template("pageR.html", board=board, stats=stats)
+    resp = make_response(render_template("pageR.html", board=board, stats=stats))
+    resp.headers["Cache-Control"] = "no-store"  # 禁止浏览器缓存，样式改动即时生效
+    return resp
 
 
 @app.route("/api/pageR/add_day", methods=["POST"])

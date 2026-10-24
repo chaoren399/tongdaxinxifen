@@ -24,15 +24,15 @@
         .pageR-legend .chip.note { background: #fde68a; border-color: #fcd34d; }
 
         .pageR-scroll { overflow: auto; max-height: calc(100vh - 190px); border: 1px solid #d1d5db; background: #fff; }
-        table.zq { border-collapse: separate; border-spacing: 0; font-size: 12px; table-layout: fixed; }
+        table.zq { border-collapse: separate; border-spacing: 0; font-size: 12px; table-layout: fixed; width: max-content; min-width: 100%; }
         table.zq th, table.zq td {
             border-right: 1px solid #e5e7eb;
             border-bottom: 1px solid #e5e7eb;
             padding: 2px 3px; height: 20px;
             overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
         }
-        table.zq col.zq-day-col { width: 68px; }
-        table.zq col.zq-height-col { width: 64px; }
+        table.zq col.zq-day-col { width: 88px; }
+        table.zq col.zq-height-col { width: 88px; }
         table.zq thead th {
             position: sticky; z-index: 3; background: #f9fafb;
             text-align: center; font-weight: 600; color: #374151; height: 20px;
@@ -54,7 +54,7 @@
         }
         tr.zq-note-row td { background: #fafafa; color: #6b7280; }
         tr.zq-height-end td { border-bottom: 3px solid #8fd3f4; }
-        table.zq col.zq-add-col { width: 40px; }
+        table.zq col.zq-add-col { width: 88px; }
         table.zq th.zq-add { position: sticky; top: 0; z-index: 3; background: #fff; border-bottom: none; }
         table.zq td.zq-add-cell { background: #fff; border-bottom: none; cursor: default; }
         #zqAddDayBtn {
@@ -63,6 +63,7 @@
             line-height: 1; cursor: pointer;
         }
         #zqAddDayBtn:hover { background: #b91c1c; }
+        table.zq tbody td { white-space: pre-line; min-width: 88px; }
         table.zq tbody td[data-day] { cursor: cell; }
         table.zq tbody td[data-day]:hover { outline: 2px solid #2563eb; outline-offset: -2px; }
         table.zq tbody td.zq-selected { box-shadow: inset 0 0 0 2px #2563eb; }
@@ -107,6 +108,7 @@
         </nav>
     </header>
 
+    <!-- pageR layout: v8 fixed-100px -->
     <main class="pageR-wrap">
         <div class="pageR-head">
             <div>
@@ -168,7 +170,7 @@
                             <td class="zq-height">{{ row.height }}</td>
                             {% for cell in row.cells %}
                             {% set d = board.days[loop.index0] %}
-                            <td data-row="{{ row.id }}" data-day="{{ d.id }}" data-current="{{ cell.content if cell else '' }}" title="{{ cell.content if cell else '双击编辑' }}"{% if cell %}{% if cell.style %} class="zq-{{ cell.style }}"{% elif cell.content %} class="zq-note"{% endif %}{% endif %}>{% if cell %}{{ cell.content | e | replace('\n', '<br>') | safe }}{% endif %}</td>
+                            <td data-row="{{ row.id }}" data-day="{{ d.id }}" data-current="{{ cell.content if cell else '' }}" title="{{ cell.content if cell else '双击编辑' }}"{% if cell %}{% if cell.style %} class="zq-{{ cell.style }}"{% elif cell.content %} class="zq-note"{% endif %}{% endif %}>{% if cell %}{{ cell.content | e }}{% endif %}</td>
                             {% endfor %}
                             <td class="zq-add-cell"></td>
                         </tr>
