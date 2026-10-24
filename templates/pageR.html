@@ -23,7 +23,7 @@
         .pageR-legend .chip.red { background: #dc2626; border-color: #dc2626; }
         .pageR-legend .chip.note { background: #fde68a; border-color: #fcd34d; }
 
-        .pageR-scroll { overflow: auto; max-height: calc(100vh - 190px); border: 1px solid #d1d5db; background: #fff; }
+        .pageR-scroll { overflow-x: auto; border: 1px solid #d1d5db; background: #fff; }
         table.zq { border-collapse: separate; border-spacing: 0; font-size: 12px; table-layout: fixed; width: max-content; min-width: 100%; }
         table.zq th, table.zq td {
             border-right: 1px solid #e5e7eb;
@@ -34,11 +34,11 @@
         table.zq col.zq-day-col { width: 88px; }
         table.zq col.zq-height-col { width: 88px; }
         table.zq thead th {
-            position: sticky; z-index: 3; background: #f9fafb;
+            position: static; z-index: 3; background: #f9fafb;
             text-align: center; font-weight: 600; color: #374151; height: 20px;
         }
-        table.zq thead tr.zq-week-row th { top: 0; border-bottom: none; }
-        table.zq thead tr.zq-date-row th { top: 23px; color: #111827; }
+        table.zq thead tr.zq-week-row th { border-bottom: none; }
+        table.zq thead tr.zq-date-row th { color: #111827; }
         table.zq thead th.zq-week-start { border-left: 2px solid #9ca3af; }
         table.zq thead th.zq-corner { position: sticky; left: 0; z-index: 5; background: #fde68a; }
         table.zq th.zq-height, table.zq td.zq-height {
@@ -110,21 +110,6 @@
 
     <!-- pageR layout: v8 fixed-100px -->
     <main class="pageR-wrap">
-        <div class="pageR-head">
-            <div>
-                <h2>页面 R · 周期图</h2>
-                <p class="sub">早盘竞价高度周期表 · 纵轴高度，横轴交易日（按周分组）</p>
-            </div>
-            <div class="spacer"></div>
-            <span class="pageR-stats">交易日 <b>{{ stats.days }}</b> · 行 <b>{{ stats.rows }}</b></span>
-        </div>
-
-        <div class="pageR-legend">
-            <span><span class="chip red"></span>股票链条（主升/断板/跌停等）</span>
-            <span><span class="chip note"></span>高度（行首列）</span>
-            <span><span class="chip"></span>备注 / 空白</span>
-        </div>
-
         <div class="zq-toolbar">
             <span class="label">样式：</span>
             <button type="button" class="zq-style-btn" data-style="red">红</button>
@@ -133,7 +118,7 @@
             <button type="button" class="zq-style-btn" data-style="yellow">黄</button>
             <button type="button" class="zq-style-btn" data-style="black">黑</button>
             <button type="button" class="zq-style-btn" data-style="">普通</button>
-            <span class="label">（先框选/点选格子，再点样式套用；双击可编辑文字）</span>
+            <span class="pageR-stats">交易日 <b>{{ stats.days }}</b></span>
         </div>
 
         {% if not board.days %}
