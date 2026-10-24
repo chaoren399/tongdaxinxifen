@@ -3000,6 +3000,25 @@ _ZQ_NOTE_PAT = re.compile(
 )
 
 
+def _zq_auto_style(text, kind):
+    """根据文本内容自动计算格子样式。
+
+    规则：备注行不参与自动染色；含「跌停」-> 绿；股票链条 -> 红；其余 -> 普通。
+    """
+    if kind != "":
+        return ""
+    t = (text or "").strip()
+    if not t:
+        return ""
+    if "跌停" in t:
+        return "green"
+    if "被关" in t:
+        return "black"
+    if _zq_is_stock_text(t):
+        return "red"
+    return ""
+
+
 def _zq_is_stock_text(text):
     """判断格子文本是否属于「股票链条」内容（渲染为红块）。"""
     t = (text or "").strip()
@@ -3132,7 +3151,7 @@ def import_zq_csv(csv_path=None, db_path=None):
             for day_order, text in cells:
                 if not text:
                     continue
-                style = "red" if (kind == "" and _zq_is_stock_text(text)) else ""
+                style = _zq_auto_style(text, kind)
                 cur.execute(
                     "INSERT INTO zq_cells (row_id, day_id, content, style) "
                     "VALUES (?, ?, ?, ?)",
@@ -3304,7 +3323,17 @@ def set_zq_cell(row_id, day_id, content, db_path=None):
             conn.commit()
             return {"content": "", "style": ""}
 
-        style = "red" if (zrow["kind"] != "note" and _zq_is_stock_text(content)) else ""
+        # 保留用户手动设置的颜色（绿/蓝/黄/黑）；仅自动红/普通按内容重算
+        cur.execute(
+            "SELECT style FROM zq_cells WHERE row_id = ? AND day_id = ?",
+            (row_id, day_id),
+        )
+        exist = cur.fetchone()
+        existing_style = exist["style"] if exist else ""
+        if existing_style in ("red", "green", "blue", "yellow", "black"):
+            style = existing_style
+        else:
+            style = _zq_auto_style(content, zrow["kind"])
         cur.execute(
             """
             INSERT INTO zq_cells (row_id, day_id, content, style)

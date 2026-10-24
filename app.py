@@ -1367,17 +1367,6 @@ def page_r():
     return render_template("pageR.html", board=board, stats=stats)
 
 
-@app.route("/api/pageR/reimport", methods=["POST"])
-def api_pageR_reimport():
-    """重新从 CSV 导入周期图数据（全量重建）。"""
-    from db import import_zq_csv
-    try:
-        result = import_zq_csv()
-        return jsonify({"ok": True, "days": result["days"], "rows": result["rows"]})
-    except (FileNotFoundError, ValueError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-
-
 @app.route("/api/pageR/add_day", methods=["POST"])
 def api_pageR_add_day():
     """在表格最后新增一个交易日列（自动顺延日期、跳过周末）。"""

@@ -114,7 +114,6 @@
             </div>
             <div class="spacer"></div>
             <span class="pageR-stats">交易日 <b>{{ stats.days }}</b> · 行 <b>{{ stats.rows }}</b></span>
-            <button type="button" class="pageR-btn" id="pageRReimportBtn">重新导入 CSV</button>
         </div>
 
         <div class="pageR-legend">
@@ -135,7 +134,7 @@
         </div>
 
         {% if not board.days %}
-            <div class="pageR-empty">暂无数据：请把 CSV 放到 data/zhouqi/早盘竞价记录2.csv 后点击「重新导入 CSV」</div>
+            <div class="pageR-empty">暂无数据：请把 CSV 放到 data/zhouqi/早盘竞价记录2.csv</div>
         {% else %}
         <div class="pageR-scroll">
             <table class="zq">
@@ -187,22 +186,6 @@
             var scroller = document.querySelector('.pageR-scroll');
             if (scroller) {
                 scroller.scrollLeft = scroller.scrollWidth;
-            }
-
-            var btn = document.getElementById('pageRReimportBtn');
-            if (btn) {
-                btn.addEventListener('click', function () {
-                    if (!confirm('确定重新从 CSV 导入周期图数据？当前导入的数据将被覆盖。')) return;
-                    btn.disabled = true;
-                    btn.textContent = '导入中…';
-                    fetch('{{ url_for("api_pageR_reimport") }}', { method: 'POST' })
-                        .then(function (r) { return r.json(); })
-                        .then(function (data) {
-                            if (data.ok) { location.reload(); }
-                            else { alert('导入失败：' + (data.error || '未知错误')); btn.disabled = false; btn.textContent = '重新导入 CSV'; }
-                        })
-                        .catch(function () { alert('请求失败'); btn.disabled = false; btn.textContent = '重新导入 CSV'; });
-                });
             }
 
             // 表尾「＋」：新增一个交易日列
@@ -275,7 +258,7 @@
                 ta.style.height = Math.max(rect.height, 44) + 'px';
                 ta.focus();
                 ta.select();
-                ta.addEventListener('blur', function () { if (!ed.closed) closeEditor(true); });
+                ta.addEventListener('blur', function () { if (!ed.closed) closeEditor(false); });
                 ta.addEventListener('keydown', function (e) {
                     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); closeEditor(true); }
                     else if (e.key === 'Escape') { e.preventDefault(); closeEditor(false); }
@@ -316,6 +299,7 @@
             document.querySelectorAll('table.zq tbody td[data-day]').forEach(function (td) {
                 td.addEventListener('mousedown', function (e) {
                     e.preventDefault();
+                    if (_editor) closeEditor(false);  // 点击其它格子时取消正在进行的编辑
                     clearSel();
                     anchor = { ri: riOf(td), ci: ciOf(td) };
                     addSel(td);
