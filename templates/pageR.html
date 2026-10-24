@@ -53,6 +53,7 @@
             border-top: 5px solid #22d3ee;
         }
         tr.zq-note-row td { background: #fafafa; color: #6b7280; }
+        tr.zq-height-end td { border-bottom: 3px solid #8fd3f4; }
         table.zq col.zq-add-col { width: 40px; }
         table.zq th.zq-add { position: sticky; top: 0; z-index: 3; background: #fff; border-bottom: none; }
         table.zq td.zq-add-cell { background: #fff; border-bottom: none; cursor: default; }
@@ -163,7 +164,7 @@
                 <tbody>
                     {% for section in board.sections %}
                         {% for row in section.rows %}
-                        <tr class="{% if loop.first %}zq-section-divider{% endif %}{% if row.kind == 'note' %} zq-note-row{% endif %}">
+                        <tr class="{% if loop.first %}zq-section-divider{% endif %}{% if row.kind == 'note' %} zq-note-row{% endif %}{% if section.name == 'main' and row.kind != 'note' and row.height == '1' %} zq-height-end{% endif %}">
                             <td class="zq-height">{{ row.height }}</td>
                             {% for cell in row.cells %}
                             {% set d = board.days[loop.index0] %}

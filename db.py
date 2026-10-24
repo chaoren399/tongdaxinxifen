@@ -3138,6 +3138,9 @@ def import_zq_csv(csv_path=None, db_path=None):
 
             height_label = col0
             kind = "" if height_label else "note"
+            if not height_label and row_order == 0 and section == "main":
+                # CSV 首个数据行是高度 11 行，行首标签为空
+                height_label, kind = "11", ""
             if height_label == "1":
                 seen_height_one = True
 
