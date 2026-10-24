@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>R · 周期图</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=35" />
+    <style>
+        .pageR-wrap { max-width: 1200px; margin: 0 auto; padding: 24px 16px 40px; }
+        .pageR-head { margin-bottom: 16px; }
+        .pageR-head h2 { margin: 0 0 4px; font-size: 20px; }
+        .pageR-head .sub { color: #6b7280; font-size: 13px; }
+        .pageR-body { min-height: 420px; }
+        .pageR-empty { padding: 60px 0; text-align: center; color: #9ca3af; }
+    </style>
+</head>
+<body>
+    <header class="topbar topbar-pageF">
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_d') }}">页面 D</a>
+            <a href="{{ url_for('page_k') }}">页面 K</a>
+            <a href="{{ url_for('page_l') }}">页面 L</a>
+            <a href="{{ url_for('page_p') }}">页面 P</a>
+            <a class="active" href="{{ url_for('page_r') }}">页面 R</a>
+        </nav>
+    </header>
+
+    <main class="pageR-wrap">
+        <div class="pageR-head">
+            <h2>页面 R · 周期图</h2>
+            <p class="sub">空白页 · 用于周期图相关功能（待填充）</p>
+        </div>
+
+        <div class="pageR-body">
+            <div class="pageR-empty">暂无内容</div>
+        </div>
+    </main>
+</body>
+</html>

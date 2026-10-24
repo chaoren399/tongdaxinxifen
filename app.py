@@ -1349,6 +1349,12 @@ def page_p():
     return render_template("pageP.html")
 
 
+@app.route("/pageR")
+def page_r():
+    """页面 R：空白页（用于周期图，待填充）。"""
+    return render_template("pageR.html")
+
+
 @app.route("/pageQ")
 def page_q():
     """页面 Q：三级行业细分，按股票数量降序排列。"""
