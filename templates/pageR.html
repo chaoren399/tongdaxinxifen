@@ -170,11 +170,41 @@
 
     <script>
         (function () {
-            // 默认横向滚动到最右侧（展示最新交易日）
+            // 记住浏览位置：刷新后回到原滚动处；首次进入默认到最右侧（最新交易日）
             var scroller = document.querySelector('.pageR-scroll');
-            if (scroller) {
-                scroller.scrollLeft = scroller.scrollWidth;
+            var POS_KEY = 'pageR.scrollPos';
+
+            function restoreScroll() {
+                if (!scroller) return;
+                var saved = null;
+                try { saved = JSON.parse(sessionStorage.getItem(POS_KEY) || 'null'); } catch (e) { saved = null; }
+                if (saved) {
+                    scroller.scrollLeft = saved.left || 0;
+                    window.scrollTo(0, saved.top || 0);
+                } else {
+                    scroller.scrollLeft = scroller.scrollWidth;
+                }
             }
+
+            function rememberScroll() {
+                if (!scroller) return;
+                try {
+                    sessionStorage.setItem(POS_KEY, JSON.stringify({
+                        left: scroller.scrollLeft,
+                        top: window.pageYOffset || document.documentElement.scrollTop || 0
+                    }));
+                } catch (e) { /* 忽略存储不可用 */ }
+            }
+
+            restoreScroll();
+
+            var posTimer = null;
+            function scheduleRemember() {
+                if (posTimer) clearTimeout(posTimer);
+                posTimer = setTimeout(rememberScroll, 150);
+            }
+            scroller.addEventListener('scroll', scheduleRemember);
+            window.addEventListener('scroll', scheduleRemember);
 
             // 表尾「＋」：新增一个交易日列
             var addBtn = document.getElementById('zqAddDayBtn');
