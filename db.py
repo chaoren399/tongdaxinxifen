@@ -3393,3 +3393,110 @@ def set_zq_cells_style(items, style, db_path=None):
         return len(items)
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 页面 S：词语解释（术语词典）
+# ---------------------------------------------------------------------------
+
+TERM_SCHEMA = """
+CREATE TABLE IF NOT EXISTS terms (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    term       TEXT NOT NULL,
+    explain    TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_terms_term ON terms(term);
+"""
+
+
+def ensure_terms_table(db_path=None):
+    """建「词语解释」表。"""
+    conn = get_conn(db_path)
+    try:
+        conn.executescript(TERM_SCHEMA)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_terms(db_path=None):
+    """列出全部词语解释，按词语名称排序。"""
+    ensure_terms_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, term, explain, created_at, updated_at FROM terms ORDER BY term"
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def add_term(term, explain="", db_path=None):
+    """新增一条词语解释，返回新记录 id。"""
+    term = (term or "").strip()
+    explain = (explain or "").strip()
+    if not term:
+        raise ValueError("词语不能为空")
+    ensure_terms_table(db_path)
+    now = _now_datetime_str()
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO terms (term, explain, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?)",
+            (term, explain, now, now),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def update_term(term_id, term=None, explain=None, db_path=None):
+    """更新词语/解释；传 None 表示不修改该字段。"""
+    fields = []
+    values = []
+    if term is not None:
+        term = term.strip()
+        if not term:
+            raise ValueError("词语不能为空")
+        fields.append("term = ?")
+        values.append(term)
+    if explain is not None:
+        fields.append("explain = ?")
+        values.append(explain.strip())
+    if not fields:
+        return False
+    fields.append("updated_at = ?")
+    values.append(_now_datetime_str())
+    values.append(term_id)
+    ensure_terms_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE terms SET %s WHERE id = ?" % ", ".join(fields),
+            tuple(values),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def delete_term(term_id, db_path=None):
+    """删除一条词语解释。"""
+    ensure_terms_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM terms WHERE id = ?", (term_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()

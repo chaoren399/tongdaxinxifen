@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>S · 词语解释</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=35" />
+    <style>
+        .pageS-wrap { padding: 0 16px 40px; max-width: 1100px; }
+        .pageS-form {
+            display: grid; grid-template-columns: 220px 1fr auto; gap: 10px;
+            align-items: start; margin: 16px 0 12px;
+        }
+        .pageS-form input, .pageS-form textarea, .pageS-search {
+            font: inherit; font-size: 13px; padding: 6px 8px;
+            border: 1px solid #d1d5db; border-radius: 6px; outline: none;
+            box-sizing: border-box; width: 100%;
+        }
+        .pageS-form textarea { resize: vertical; min-height: 62px; line-height: 1.5; }
+        .pageS-form input:focus, .pageS-form textarea:focus, .pageS-search:focus {
+            border-color: #2563eb;
+        }
+        .pageS-btn {
+            border: 1px solid #2563eb; background: #2563eb; color: #fff;
+            border-radius: 6px; padding: 6px 16px; font-size: 13px; cursor: pointer;
+        }
+        .pageS-btn:hover { background: #1d4ed8; border-color: #1d4ed8; }
+        .pageS-tools { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+        .pageS-search { max-width: 320px; }
+        .pageS-stats { font-size: 13px; color: #374151; }
+        .term-card {
+            border: 1px solid #e5e7eb; border-radius: 8px; background: #fff;
+            padding: 10px 14px; margin-bottom: 10px;
+        }
+        .term-head { display: flex; align-items: center; gap: 10px; }
+        .term-name { font-size: 15px; font-weight: 700; color: #111827; }
+        .term-ops { margin-left: auto; display: flex; gap: 6px; }
+        .term-ops button {
+            border: 1px solid #d1d5db; background: #fff; border-radius: 5px;
+            padding: 3px 10px; font-size: 12px; cursor: pointer; color: #374151;
+        }
+        .term-ops button:hover { border-color: #93c5fd; color: #2563eb; }
+        .term-ops .del-btn:hover { border-color: #fca5a5; color: #dc2626; }
+        .term-explain {
+            margin-top: 6px; font-size: 13px; line-height: 1.7; color: #374151;
+            white-space: pre-line; word-break: break-word;
+        }
+        .term-edit { display: grid; grid-template-columns: 220px 1fr auto; gap: 10px; align-items: start; }
+        .term-edit input, .term-edit textarea {
+            font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid #d1d5db;
+            border-radius: 6px; outline: none; box-sizing: border-box; width: 100%;
+        }
+        .term-edit textarea { resize: vertical; min-height: 62px; line-height: 1.5; }
+        .pageS-empty { padding: 40px; text-align: center; color: #9ca3af; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <header class="topbar topbar-pageF">
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_d') }}">页面 D</a>
+            <a href="{{ url_for('page_k') }}">页面 K</a>
+            <a href="{{ url_for('page_l') }}">页面 L</a>
+            <a href="{{ url_for('page_p') }}">页面 P</a>
+            <a href="{{ url_for('page_r') }}" target="_blank" rel="noopener">页面 R</a>
+            <a class="active" href="{{ url_for('page_s') }}">页面 S</a>
+        </nav>
+    </header>
+
+    <main class="pageS-wrap">
+        <div class="pageS-form">
+            <input type="text" id="termInput" placeholder="词语，如：端侧AI" maxlength="100" />
+            <textarea id="explainInput" placeholder="解释，可换行（Shift+Enter 换行）"></textarea>
+            <button type="button" class="pageS-btn" id="addBtn">添加</button>
+        </div>
+
+        <div class="pageS-tools">
+            <input type="text" class="pageS-search" id="searchInput" placeholder="搜索词语或解释…" />
+            <span class="pageS-stats">共 <b id="termCount">{{ stats.terms }}</b> 条</span>
+        </div>
+
+        <div id="termList">
+            {% for t in terms %}
+            <div class="term-card" data-id="{{ t.id }}">
+                <div class="term-head">
+                    <span class="term-name">{{ t.term }}</span>
+                    <span class="term-ops">
+                        <button type="button" class="edit-btn">编辑</button>
+                        <button type="button" class="del-btn">删除</button>
+                    </span>
+                </div>
+                <div class="term-explain">{{ t.explain }}</div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="pageS-empty" id="emptyTip"{% if terms %} style="display: none;"{% endif %}>暂无词语，请在上方添加</div>
+    </main>
+
+    <script>
+        (function () {
+            var list = document.getElementById('termList');
+            var termInput = document.getElementById('termInput');
+            var explainInput = document.getElementById('explainInput');
+            var addBtn = document.getElementById('addBtn');
+            var searchInput = document.getElementById('searchInput');
+            var emptyTip = document.getElementById('emptyTip');
+            var termCount = document.getElementById('termCount');
+
+            function post(url, body) {
+                return fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body || {})
+                }).then(function (r) { return r.json(); });
+            }
+
+            // —— 新增 ——
+            addBtn.addEventListener('click', function () {
+                var term = termInput.value.trim();
+                if (!term) { alert('请填写词语'); termInput.focus(); return; }
+                addBtn.disabled = true;
+                post('{{ url_for("api_pageS_add") }}', { term: term, explain: explainInput.value })
+                    .then(function (data) {
+                        if (data.ok) { location.reload(); }
+                        else { alert('添加失败：' + (data.error || '未知错误')); addBtn.disabled = false; }
+                    })
+                    .catch(function () { alert('请求失败'); addBtn.disabled = false; });
+            });
+
+            // 输入框 Enter 直接提交（textarea 用 Shift+Enter 换行，Ctrl+Enter 提交）
+            termInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); addBtn.click(); }
+            });
+            explainInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addBtn.click(); }
+            });
+
+            // —— 搜索（本地过滤）——
+            searchInput.addEventListener('input', function () {
+                var kw = searchInput.value.trim().toLowerCase();
+                var shown = 0;
+                Array.prototype.forEach.call(list.querySelectorAll('.term-card'), function (card) {
+                    if (card.classList.contains('editing')) { card.style.display = ''; shown++; return; }
+                    var text = card.textContent.toLowerCase();
+                    var hit = !kw || text.indexOf(kw) >= 0;
+                    card.style.display = hit ? '' : 'none';
+                    if (hit) shown++;
+                });
+                emptyTip.style.display = shown ? 'none' : '';
+            });
+
+            // —— 列表操作：编辑 / 删除 ——
+            list.addEventListener('click', function (e) {
+                var card = e.target.closest ? e.target.closest('.term-card') : null;
+                if (!card || card.classList.contains('editing')) return;
+                var id = card.getAttribute('data-id');
+
+                if (e.target.classList.contains('edit-btn')) {
+                    startEdit(card);
+                } else if (e.target.classList.contains('del-btn')) {
+                    var name = card.querySelector('.term-name').textContent.trim();
+                    if (!confirm('确定删除词语「' + name + '」？')) return;
+                    post('{{ url_for("api_pageS_delete") }}', { id: id })
+                        .then(function (data) {
+                            if (data.ok) { location.reload(); }
+                            else { alert('删除失败：' + (data.error || '未知错误')); }
+                        })
+                        .catch(function () { alert('请求失败'); });
+                }
+            });
+
+            function startEdit(card) {
+                var id = card.getAttribute('data-id');
+                var oldTerm = card.querySelector('.term-name').textContent.trim();
+                var oldExplain = card.querySelector('.term-explain').textContent;
+                card.classList.add('editing');
+                card.innerHTML =
+                    '<div class="term-edit">' +
+                    '<input type="text" class="edit-term" maxlength="100" />' +
+                    '<textarea class="edit-explain"></textarea>' +
+                    '<span style="display:flex;gap:6px;">' +
+                    '<button type="button" class="save-btn">保存</button>' +
+                    '<button type="button" class="cancel-btn">取消</button>' +
+                    '</span></div>';
+                var tIn = card.querySelector('.edit-term');
+                var eIn = card.querySelector('.edit-explain');
+                tIn.value = oldTerm;
+                eIn.value = oldExplain;
+                tIn.focus();
+
+                card.querySelector('.cancel-btn').addEventListener('click', function () { location.reload(); });
+                tIn.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') { e.preventDefault(); card.querySelector('.save-btn').click(); }
+                    if (e.key === 'Escape') { location.reload(); }
+                });
+                eIn.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); card.querySelector('.save-btn').click(); }
+                });
+                card.querySelector('.save-btn').addEventListener('click', function () {
+                    var term = tIn.value.trim();
+                    if (!term) { alert('请填写词语'); tIn.focus(); return; }
+                    post('{{ url_for("api_pageS_update") }}', { id: id, term: term, explain: eIn.value })
+                        .then(function (data) {
+                            if (data.ok) { location.reload(); }
+                            else { alert('保存失败：' + (data.error || '未知错误')); }
+                        })
+                        .catch(function () { alert('请求失败'); });
+                });
+            }
+        })();
+    </script>
+</body>
+</html>

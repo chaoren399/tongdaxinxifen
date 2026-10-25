@@ -1419,6 +1419,67 @@ def api_pageR_set_cells_style():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
+@app.route("/pageS")
+def page_s():
+    """页面 S：词语解释（术语词典）。"""
+    from db import ensure_terms_table, list_terms
+    ensure_terms_table()
+    terms = list_terms()
+    resp = make_response(
+        render_template("pageS.html", terms=terms, stats={"terms": len(terms)})
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.route("/api/pageS/add", methods=["POST"])
+def api_pageS_add():
+    """新增一条词语解释。"""
+    from db import add_term
+    payload = request.get_json(silent=True) or {}
+    try:
+        term_id = add_term(payload.get("term", ""), payload.get("explain", ""))
+        return jsonify({"ok": True, "id": term_id})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/pageS/update", methods=["POST"])
+def api_pageS_update():
+    """修改词语或解释（传 null / 不传表示不修改该字段）。"""
+    from db import update_term
+    payload = request.get_json(silent=True) or {}
+    try:
+        term_id = int(payload.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 id"}), 400
+    try:
+        ok = update_term(term_id, payload.get("term"), payload.get("explain"))
+        return jsonify({"ok": True, "updated": ok})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/pageS/delete", methods=["POST"])
+def api_pageS_delete():
+    """删除一条词语解释。"""
+    from db import delete_term
+    payload = request.get_json(silent=True) or {}
+    try:
+        term_id = int(payload.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 id"}), 400
+    try:
+        ok = delete_term(term_id)
+        return jsonify({"ok": True, "deleted": ok})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
 @app.route("/pageQ")
 def page_q():
     """页面 Q：三级行业细分，按股票数量降序排列。"""
