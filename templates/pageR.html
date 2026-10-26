@@ -23,7 +23,14 @@
         .pageR-legend .chip.red { background: #dc2626; border-color: #dc2626; }
         .pageR-legend .chip.note { background: #fde68a; border-color: #fcd34d; }
 
-        .pageR-scroll { overflow-x: auto; border: 1px solid #d1d5db; background: #fff; }
+        .pageR-scroll { overflow-x: auto; border: 1px solid #d1d5db; background: #fff; scrollbar-width: none; }
+        .pageR-scroll::-webkit-scrollbar { display: none; }
+        /* 外层固定横向滚动条：固定在视口底部，下滑时始终可见 */
+        #zqHBar {
+            position: fixed; bottom: 0; height: 14px; overflow-x: auto; overflow-y: hidden;
+            background: #f3f4f6; border-top: 1px solid #e5e7eb; z-index: 60; display: none;
+        }
+        #zqHBarInner { height: 1px; }
         table.zq { border-collapse: separate; border-spacing: 0; font-size: 12px; table-layout: fixed; width: max-content; min-width: 100%; }
         table.zq th, table.zq td {
             border-right: 1px solid #e5e7eb;
@@ -169,6 +176,9 @@
         {% endif %}
     </main>
 
+    <!-- 外层固定横向滚动条（与表格滚动同步） -->
+    <div id="zqHBar"><div id="zqHBarInner"></div></div>
+
     <script>
         (function () {
             // 记住浏览位置：刷新后回到原滚动处；首次进入默认到最右侧（最新交易日）
@@ -206,6 +216,35 @@
             }
             scroller.addEventListener('scroll', scheduleRemember);
             window.addEventListener('scroll', scheduleRemember);
+
+            // 外层固定横向滚动条：贴在视口底部，下滑时也始终可见；与表格横向滚动双向同步
+            var bar = document.getElementById('zqHBar');
+            var barInner = document.getElementById('zqHBarInner');
+            var syncing = false;
+
+            function syncBarFromTable() {
+                if (!bar || !scroller) return;
+                if (scroller.scrollWidth - scroller.clientWidth <= 4) { bar.style.display = 'none'; return; }
+                bar.style.display = 'block';
+                // 让外层滚动条与表格左右对齐，保证滚动行程一致
+                var rect = scroller.getBoundingClientRect();
+                bar.style.left = Math.max(0, rect.left) + 'px';
+                bar.style.width = Math.min(rect.width, window.innerWidth) + 'px';
+                barInner.style.width = scroller.scrollWidth + 'px';
+                if (!syncing) { syncing = true; bar.scrollLeft = scroller.scrollLeft; syncing = false; }
+            }
+            function syncTableFromBar() {
+                if (syncing) return;
+                syncing = true;
+                scroller.scrollLeft = bar.scrollLeft;
+                syncing = false;
+            }
+            if (bar) {
+                bar.addEventListener('scroll', syncTableFromBar);
+                window.addEventListener('resize', syncBarFromTable);
+            }
+            scroller.addEventListener('scroll', syncBarFromTable);
+            syncBarFromTable();
 
             // 表尾「＋」：新增一个交易日列
             var addBtn = document.getElementById('zqAddDayBtn');
