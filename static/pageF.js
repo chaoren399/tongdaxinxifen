@@ -1293,7 +1293,7 @@
     }
 
     function loadSearchHistory() {
-        fetch("/api/search_history/recent?limit=10", { method: "GET" })
+        fetch("/api/search_history/recent?limit=20", { method: "GET" })
             .then(function (r) { return r.json(); })
             .then(function (data) { renderSearchHistory(data.items || []); })
             .catch(function () {
