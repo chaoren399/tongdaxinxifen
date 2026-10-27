@@ -2810,10 +2810,69 @@ def build_concept_edit_table(concept_id, db_path=None):
             """
         )
         # {concept_id: [stock dict]}
+        # 解析概念串时按「已知概念名」整体匹配（长名优先），
+        # 避免概念名自身含 '-'（如 5G-T-BOX、T-BOX）被当成顶层分隔符切开、
+        # 导致股票挂错节点 / 表格行错位。
+        known_names = sorted(
+            {row2["name"] for row2 in all_concepts if row2["name"]},
+            key=len,
+            reverse=True,
+        )
+        name_re = (
+            re.compile("|".join(re.escape(n) for n in known_names))
+            if known_names
+            else None
+        )
+        sep_chars = "-，、;；, \t"
+
+        def _parse_concept_paths(raw):
+            """把概念串解析为若干条路径（每条路径 = 概念名列表）。
+
+            规则：'/' 分隔路径层级；'-,，、; ; 空格' 分隔顶层概念；
+            已知概念名（含 '-'）优先整体匹配；匹配只是更长未知词前缀时按普通字符处理。
+            """
+            items, segs, buf = [], [], []
+
+            def flush_seg():
+                if buf:
+                    segs.append("".join(buf).strip())
+                    buf.clear()
+
+            def flush_item():
+                flush_seg()
+                if segs:
+                    items.append(segs[:])
+                segs.clear()
+
+            i, n = 0, len(raw)
+            while i < n:
+                ch = raw[i]
+                if ch == CONCEPT_PATH_SEP:
+                    flush_seg()
+                    i += 1
+                    continue
+                if not buf and name_re is not None:
+                    m = name_re.match(raw, i)
+                    if m:
+                        nxt = raw[m.end()] if m.end() < n else ""
+                        if not nxt or nxt == CONCEPT_PATH_SEP or nxt in sep_chars:
+                            segs.append(m.group(0))
+                            i = m.end()
+                            continue
+                        # 匹配到的名称只是更长未知词的前缀：按普通字符逐字处理
+                if ch in sep_chars:
+                    flush_item()
+                    i += 1
+                    continue
+                buf.append(ch)
+                i += 1
+            flush_item()
+            return items
+
         mounted: Dict[int, list] = {}
         for r in cur.fetchall():
-            for item in _split_concept_raw(r["concept"]):
-                segs = [s.strip() for s in item.split(CONCEPT_PATH_SEP) if s.strip()]
+            for segs in _parse_concept_paths(r["concept"]):
+                segs = [s for s in segs if s]
                 if not segs or segs[0] != root["name"]:
                     continue
                 # 沿子树逐层下钻（找不到对应子概念时挂在当前最深的已匹配节点）
