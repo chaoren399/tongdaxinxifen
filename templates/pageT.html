@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>T · 主营缺失统计</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=35" />
+    <style>
+        .pageT-wrap { padding: 0 16px 40px; max-width: 1100px; }
+        .pageT-cards { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0 14px; }
+        .pageT-card {
+            border: 1px solid #e5e7eb; border-radius: 8px; background: #fff;
+            padding: 10px 18px; min-width: 140px;
+        }
+        .pageT-card .k { font-size: 12px; color: #6b7280; }
+        .pageT-card .v { font-size: 20px; font-weight: 700; color: #111827; margin-top: 2px; }
+        .pageT-card.warn .v { color: #dc2626; }
+        .pageT-card.ok .v { color: #059669; }
+        .pageT-tools { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+        .pageT-tools input, .pageT-tools select {
+            font: inherit; font-size: 13px; padding: 6px 8px;
+            border: 1px solid #d1d5db; border-radius: 6px; outline: none;
+        }
+        .pageT-tools input { width: 260px; }
+        .pageT-tools input:focus, .pageT-tools select:focus { border-color: #2563eb; }
+        .pageT-tools .btn {
+            border: 1px solid #2563eb; background: #2563eb; color: #fff; border-radius: 6px;
+            padding: 6px 14px; font-size: 13px; cursor: pointer; text-decoration: none;
+        }
+        table.missing { border-collapse: collapse; width: 100%; font-size: 13px; background: #fff; }
+        table.missing th, table.missing td {
+            border: 1px solid #e5e7eb; padding: 6px 10px; text-align: left;
+        }
+        table.missing thead th { background: #f9fafb; color: #374151; position: static; }
+        table.missing tbody tr:hover { background: #f3f4f6; }
+        .pageT-empty { padding: 30px; text-align: center; color: #9ca3af; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <header class="topbar topbar-pageF">
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_d') }}">页面 D</a>
+            <a href="{{ url_for('page_k') }}">页面 K</a>
+            <a href="{{ url_for('page_l') }}">页面 L</a>
+            <a href="{{ url_for('page_p') }}">页面 P</a>
+            <a href="{{ url_for('page_r') }}" target="_blank" rel="noopener">页面 R</a>
+            <a href="{{ url_for('page_s') }}">页面 S</a>
+            <a class="active" href="{{ url_for('page_t') }}">页面 T</a>
+        </nav>
+    </header>
+
+    <main class="pageT-wrap">
+        <div class="pageT-cards">
+            <div class="pageT-card"><div class="k">股票总数</div><div class="v">{{ stats.total }}</div></div>
+            <div class="pageT-card ok"><div class="k">已有主营</div><div class="v">{{ stats.have }}</div></div>
+            <div class="pageT-card warn"><div class="k">缺失主营</div><div class="v">{{ stats.missing }}</div></div>
+            <div class="pageT-card"><div class="k">覆盖率</div><div class="v">{{ stats.coverage }}%</div></div>
+            <div class="pageT-card"><div class="k">选项D 已填</div><div class="v">{{ stats.optionDFilled }}</div></div>
+        </div>
+
+        <div class="pageT-tools">
+            <input type="text" id="kw" placeholder="搜索股票名 / 代码 / 行业…" />
+            <select id="limitSel">
+                {% for n in [200, 500, 2000] %}
+                <option value="{{ n }}" {% if n == limit %}selected{% endif %}>显示 {{ n }} 条</option>
+                {% endfor %}
+            </select>
+            <span class="pageT-stats">共缺失 <b>{{ stats.missing }}</b> 只，当前加载 <b>{{ missing|length }}</b> 条</span>
+        </div>
+
+        {% if missing %}
+        <table class="missing">
+            <thead>
+                <tr><th style="width:60px;">#</th><th style="width:160px;">股票</th><th style="width:110px;">代码</th><th style="width:160px;">一级行业</th><th style="width:160px;">三级行业</th><th>选项D（无「主营」字样）</th></tr>
+            </thead>
+            <tbody id="missBody">
+                {% for s in missing %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ s.name }}</td>
+                    <td>{{ s.code or '-' }}</td>
+                    <td>{{ s.primary_name or '-' }}</td>
+                    <td>{{ s.tertiary or '-' }}</td>
+                    <td>{{ s.option_d or '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="pageT-empty" id="emptyTip" style="display: none;">没有匹配的股票</div>
+        {% else %}
+        <div class="pageT-empty">太好了，所有股票都有主营信息</div>
+        {% endif %}
+    </main>
+
+    <script>
+        (function () {
+            var kw = document.getElementById('kw');
+            var body = document.getElementById('missBody');
+            var emptyTip = document.getElementById('emptyTip');
+            var limitSel = document.getElementById('limitSel');
+            if (kw && body) {
+                kw.addEventListener('input', function () {
+                    var text = kw.value.trim().toLowerCase();
+                    var shown = 0;
+                    Array.prototype.forEach.call(body.querySelectorAll('tr'), function (tr) {
+                        var hit = !text || tr.textContent.toLowerCase().indexOf(text) >= 0;
+                        tr.style.display = hit ? '' : 'none';
+                        if (hit) shown++;
+                    });
+                    if (emptyTip) emptyTip.style.display = shown ? 'none' : '';
+                });
+            }
+            if (limitSel) {
+                limitSel.addEventListener('change', function () {
+                    location.search = '?limit=' + limitSel.value;
+                });
+            }
+        })();
+    </script>
+</body>
+</html>

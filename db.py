@@ -3500,3 +3500,57 @@ def delete_term(term_id, db_path=None):
         return cur.rowcount > 0
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 页面 T：主营信息缺失统计
+# ---------------------------------------------------------------------------
+
+# 判定：股票详细信息「选项D」(stocks.option_d) 中含「主营」字样即为「有主营」
+_BIZ_HAS_SQL = "COALESCE(s.option_d, '') LIKE '%主营%'"
+
+
+def get_business_stats(db_path=None):
+    """主营信息统计：总数 / 已有（选项D 含「主营」）/ 缺失 / 覆盖率。"""
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM stocks")
+        total = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM stocks s WHERE " + _BIZ_HAS_SQL)
+        have = cur.fetchone()[0]
+        cur.execute(
+            "SELECT COUNT(*) FROM stocks s "
+            "WHERE TRIM(COALESCE(s.option_d, '')) != ''"
+        )
+        filled = cur.fetchone()[0]
+        return {
+            "total": total,
+            "have": have,
+            "missing": total - have,
+            "optionDFilled": filled,
+            "coverage": round(have * 100.0 / total, 2) if total else 0.0,
+        }
+    finally:
+        conn.close()
+
+
+def list_stocks_missing_business(limit=200, offset=0, db_path=None):
+    """列出「选项D 不含主营字样」的股票（按名称排序），带一级/三级行业与选项D 内容。"""
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        sql = (
+            "SELECT s.id, s.name, s.code, s.option_d, "
+            "(SELECT t.name FROM industries t WHERE t.id = s.tertiary_id) AS tertiary, "
+            "(SELECT p.name FROM industries s2 JOIN industries p ON p.id = s2.parent_id "
+            "     WHERE s2.id = s.tertiary_id) AS primary_name "
+            "FROM stocks s "
+            "WHERE NOT (" + _BIZ_HAS_SQL + ") "
+            "ORDER BY s.name "
+            "LIMIT ? OFFSET ?"
+        )
+        cur.execute(sql, (limit, offset))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
