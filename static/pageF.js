@@ -790,8 +790,11 @@
                 if (e.key === "Escape") {
                     e.preventDefault();
                     close();
-                } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                } else if (e.key === "Enter") {
                     e.preventDefault();
+                    // 在下拉框上回车属于「确认选择」，不触发保存
+                    var tag = (e.target && e.target.tagName || "").toUpperCase();
+                    if (tag === "SELECT") return;
                     save();
                 }
             }
