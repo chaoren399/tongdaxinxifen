@@ -695,14 +695,14 @@
             ];
 
             var optionFields = [
-                { key: "option_a", label: "选项A", value: it.option_a || "", maxlength: 60 },
-                { key: "option_b", label: "选项B", value: it.option_b || "", maxlength: 60 },
-                { key: "option_c", label: "选项C", value: it.option_c || "", maxlength: 60 },
-                { key: "option_d", label: "选项D", value: it.option_d || "", maxlength: 60 },
-                { key: "option_e", label: "选项E", value: it.option_e || "", maxlength: 60 },
-                { key: "option_f", label: "选项F", value: it.option_f || "", maxlength: 60 },
-                { key: "option_g", label: "选项G", value: it.option_g || "", maxlength: 60 },
-                { key: "option_h", label: "选项H", value: it.option_h || "", maxlength: 60 },
+                { key: "option_a", label: "选项A", value: it.option_a || "", maxlength: 500 },
+                { key: "option_b", label: "选项B", value: it.option_b || "", maxlength: 500 },
+                { key: "option_c", label: "选项C", value: it.option_c || "", maxlength: 500 },
+                { key: "option_d", label: "选项D", value: it.option_d || "", maxlength: 500 },
+                { key: "option_e", label: "选项E", value: it.option_e || "", maxlength: 500 },
+                { key: "option_f", label: "选项F", value: it.option_f || "", maxlength: 500 },
+                { key: "option_g", label: "选项G", value: it.option_g || "", maxlength: 500 },
+                { key: "option_h", label: "选项H", value: it.option_h || "", maxlength: 500 },
             ];
 
             function buildRows(list) {
