@@ -1590,6 +1590,18 @@ a.industry-link.concept-chip:hover {
     font-size: 16px;
     word-break: break-word;
 }
+/* 详情文本中出现的其它股票名：超链接样式 */
+.stock-ref-link {
+    color: #1d4ed8;
+    text-decoration: none;
+    border-bottom: 1px dashed #93c5fd;
+    cursor: pointer;
+}
+.stock-ref-link:hover {
+    color: #1e40af;
+    border-bottom-color: #1d4ed8;
+    background: #eff6ff;
+}
 .stock-image-wrap {
     width: 180px;
     height: 180px;

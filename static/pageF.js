@@ -8,6 +8,7 @@
     var historyRow = document.getElementById("searchHistoryRow");
     var historyChips = document.getElementById("searchHistoryChips");
     var lastKeywords = [];
+    var lastData = null;   // 最近一次搜索结果（股票名索引就绪后用于重绘）
     // 固定高亮词「主营」：命中时加粗 + 加深（黑色）
     var MAIN_BIZ_KEYWORD = "主营";
 
@@ -51,6 +52,99 @@
             el.appendChild(mark);
             i = bestIdx + bestKw.length;
         }
+    }
+
+    // ===== 股票名称索引：把详情文本里出现的其它股票名变成超链接 =====
+    var stockIdx = { ready: false, loading: false, map: null, maxLen: 0 };
+    var STOCK_NAME_MIN_LEN = 2;   // 单字名不做匹配，避免误伤
+
+    function loadStockNames() {
+        if (stockIdx.ready || stockIdx.loading) return;
+        stockIdx.loading = true;
+        fetch("/api/pageK/all_stocks")
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                var map = {};
+                var maxLen = 0;
+                ((j && j.stocks) || []).forEach(function (s) {
+                    var n = ((s && s.name) || "").trim();
+                    if (n.length < STOCK_NAME_MIN_LEN) return;
+                    map[n] = true;
+                    if (n.length > maxLen) maxLen = n.length;
+                });
+                stockIdx.map = map;
+                stockIdx.maxLen = maxLen;
+                stockIdx.ready = true;
+                stockIdx.loading = false;
+                if (lastData) render(lastData);   // 名称就绪后重绘，补上链接
+            })
+            .catch(function () { stockIdx.loading = false; });
+    }
+
+    /** 在 text 的第 i 个字符处匹配最长股票名（排除自身），未命中返回 null */
+    function stockNameAt(text, i, selfName) {
+        if (!stockIdx.ready || !stockIdx.map) return null;
+        var max = Math.min(stockIdx.maxLen, text.length - i);
+        for (var len = max; len >= STOCK_NAME_MIN_LEN; len--) {
+            var cand = text.substr(i, len);
+            if (stockIdx.map[cand] === true && cand !== selfName) return cand;
+        }
+        return null;
+    }
+
+    /** 在 lower 的第 i 个字符处匹配最长关键词，未命中返回 null */
+    function keywordAt(lower, i, keywords) {
+        if (!keywords || !keywords.length) return null;
+        var best = null;
+        keywords.forEach(function (kw) {
+            if (kw && lower.substr(i, kw.length) === kw) {
+                if (!best || kw.length > best.length) best = kw;
+            }
+        });
+        return best;
+    }
+
+    /** 富文本：关键词高亮 + 其它股票名超链接（点击跳转首页搜索该股票） */
+    function escTextRich(el, text, keywords, selfName) {
+        if (!text) return;
+        text = String(text);
+        var lower = text.toLowerCase();
+        var plain = "";
+        var i = 0;
+        function flush() {
+            if (plain) {
+                el.appendChild(document.createTextNode(plain));
+                plain = "";
+            }
+        }
+        while (i < text.length) {
+            var name = stockNameAt(text, i, selfName);
+            var kw = keywordAt(lower, i, keywords);
+            // 取更长的匹配；等长时优先股票名
+            if (name && (!kw || name.length >= kw.length)) {
+                flush();
+                var a = document.createElement("a");
+                a.className = "stock-ref-link";
+                a.href = "/?q=" + encodeURIComponent(name);
+                a.title = "搜索股票「" + name + "」";
+                a.textContent = name;
+                el.appendChild(a);
+                i += name.length;
+                continue;
+            }
+            if (kw) {
+                flush();
+                var mark = document.createElement("mark");
+                mark.className = kw === MAIN_BIZ_KEYWORD ? "ssi-hl ssi-hl-main" : "ssi-hl";
+                mark.textContent = text.substr(i, kw.length);
+                el.appendChild(mark);
+                i += kw.length;
+                continue;
+            }
+            plain += text.charAt(i);
+            i += 1;
+        }
+        flush();
     }
 
     function emptyCard(msg) {
@@ -98,7 +192,7 @@
     }
 
     /** 卡片式字段项：左侧蓝色竖条 + 蓝色标签 + 内容（如 A: xxx） */
-    function cardFieldItem(container, label, text, keywords) {
+    function cardFieldItem(container, label, text, keywords, selfName) {
         var row = document.createElement("div");
         row.className = "stock-detail-card-item";
 
@@ -109,7 +203,8 @@
         var value = document.createElement("span");
         value.className = "stock-detail-card-value";
         value.title = text || "";
-        escText(value, text, keywords);
+        // 文本中出现的其它股票名 → 超链接
+        escTextRich(value, text, keywords, selfName);
 
         row.appendChild(left);
         row.appendChild(value);
@@ -401,7 +496,7 @@
         OPTION_FIELDS.forEach(function (f) {
             var v = (it[f.key] || "").trim();
             if (!v) return; // 空值不显示该选项
-            cardFieldItem(optionsBox, f.label, v, keywords);
+            cardFieldItem(optionsBox, f.label, v, keywords, it.name);
         });
         col2.appendChild(optionsBox);
 
@@ -522,7 +617,9 @@
                 var line = document.createElement("span");
                 line.className = "stock-detail-concept-biz";
                 line.title = path;
-                line.textContent = path + "：" + biz.business;
+                line.appendChild(document.createTextNode(path + "："));
+                // 业务描述里出现的其它股票名 → 超链接
+                escTextRich(line, biz.business, null, it.name);
                 var editBtn = document.createElement("button");
                 editBtn.type = "button";
                 editBtn.className = "stock-detail-biz-edit";
@@ -1000,6 +1097,7 @@
     }
 
     function render(data) {
+        lastData = data;
         // 搜索关键词 + 固定高亮词「主营」：只要文本里出现「主营」就高亮
         lastKeywords = (data.keywords || []).slice();
         if (lastKeywords.indexOf(MAIN_BIZ_KEYWORD) < 0) {
@@ -1313,6 +1411,8 @@
 
     // 初始加载一次历史
     loadSearchHistory();
+    // 后台加载股票名索引（用于把详情里的其它股票名变成超链接）
+    loadStockNames();
     // 没有 ?q= 时，回填最近一次搜索并自动搜索
     if (!initQ || !initQ.trim()) {
         bootstrapFromLastSearch();
