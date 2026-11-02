@@ -3481,13 +3481,17 @@ def ensure_terms_table(db_path=None):
 
 
 def list_terms(db_path=None):
-    """列出全部词语解释，按词语名称排序。"""
+    """列出全部词语解释，按添加顺序倒序（最新添加的排最前）。
+
+    排序键：created_at 倒序，同一时间新增的多条再按 id 倒序，保证顺序稳定。
+    """
     ensure_terms_table(db_path)
     conn = get_conn(db_path)
     try:
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, term, explain, created_at, updated_at FROM terms ORDER BY term"
+            "SELECT id, term, explain, created_at, updated_at FROM terms "
+            "ORDER BY COALESCE(created_at, '') DESC, id DESC"
         )
         return [dict(r) for r in cur.fetchall()]
     finally:

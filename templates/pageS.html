@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>S · 词语解释</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=35" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=64" />
     <style>
         .pageS-wrap { padding: 0 16px 40px; max-width: 1100px; }
         .pageS-form {
@@ -53,6 +53,38 @@
         }
         .term-edit textarea { resize: vertical; min-height: 62px; line-height: 1.5; }
         .pageS-empty { padding: 40px; text-align: center; color: #9ca3af; font-size: 13px; }
+        .term-card { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+        .term-card:hover { border-color: #93c5fd; box-shadow: 0 1px 6px rgba(37, 99, 235, .10); }
+        .term-card.editing { cursor: default; }
+        /* 放大查看弹窗 */
+        .term-view-mask {
+            position: fixed; inset: 0; background: rgba(17, 24, 39, .45);
+            display: flex; align-items: center; justify-content: center;
+            padding: 24px; z-index: 100;
+        }
+        .term-view-mask[hidden] { display: none; }
+        .term-view {
+            background: #fff; border-radius: 10px; width: 100%; max-width: 760px;
+            max-height: 80vh; display: flex; flex-direction: column;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, .22); overflow: hidden;
+        }
+        .term-view-head {
+            display: flex; align-items: center; gap: 12px;
+            padding: 16px 20px; border-bottom: 1px solid #e5e7eb;
+        }
+        .term-view-title { font-size: 24px; font-weight: 700; color: #111827; word-break: break-word; }
+        .term-view-close {
+            margin-left: auto; flex: none; width: 30px; height: 30px; line-height: 1;
+            font-size: 20px; color: #6b7280; background: #fff;
+            border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer;
+        }
+        .term-view-close:hover { color: #dc2626; border-color: #fca5a5; }
+        .term-view-body {
+            padding: 20px 24px 24px; overflow: auto;
+            font-size: 19px; line-height: 1.9; color: #1f2937;
+            white-space: pre-line; word-break: break-word;
+        }
+        .term-view-empty { color: #9ca3af; font-size: 15px; }
     </style>
 </head>
 <body>
@@ -100,6 +132,17 @@
 
         <div class="pageS-empty" id="emptyTip"{% if terms %} style="display: none;"{% endif %}>暂无词语，请在上方添加</div>
     </main>
+
+    <!-- 点击条目后放大显示的弹窗 -->
+    <div class="term-view-mask" id="viewMask" hidden>
+        <div class="term-view" role="dialog" aria-modal="true" aria-labelledby="viewTitle">
+            <div class="term-view-head">
+                <div class="term-view-title" id="viewTitle"></div>
+                <button type="button" class="term-view-close" id="viewClose" title="关闭（Esc）">×</button>
+            </div>
+            <div class="term-view-body" id="viewBody"></div>
+        </div>
+    </div>
 
     <script>
         (function () {
@@ -154,7 +197,30 @@
                 emptyTip.style.display = shown ? 'none' : '';
             });
 
-            // —— 列表操作：编辑 / 删除 ——
+            // —— 放大查看弹窗 ——
+            var viewMask = document.getElementById('viewMask');
+            var viewTitle = document.getElementById('viewTitle');
+            var viewBody = document.getElementById('viewBody');
+
+            function openView(name, explain) {
+                viewTitle.textContent = name || '';
+                viewBody.textContent = explain || '';
+                if (!explain) {
+                    viewBody.innerHTML = '<span class="term-view-empty">（暂无解释）</span>';
+                }
+                viewMask.hidden = false;
+            }
+            function closeView() { viewMask.hidden = true; }
+
+            document.getElementById('viewClose').addEventListener('click', closeView);
+            viewMask.addEventListener('click', function (e) {
+                if (e.target === viewMask) closeView();   // 点遮罩关闭
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && !viewMask.hidden) closeView();
+            });
+
+            // —— 列表操作：编辑 / 删除 / 点条目放大查看 ——
             list.addEventListener('click', function (e) {
                 var card = e.target.closest ? e.target.closest('.term-card') : null;
                 if (!card || card.classList.contains('editing')) return;
@@ -171,6 +237,14 @@
                             else { alert('删除失败：' + (data.error || '未知错误')); }
                         })
                         .catch(function () { alert('请求失败'); });
+                } else {
+                    // 点条目任意处（非按钮、且不是在选取文字）→ 放大显示
+                    var sel = window.getSelection && window.getSelection();
+                    if (sel && String(sel).length) return;
+                    openView(
+                        (card.querySelector('.term-name') || {}).textContent || '',
+                        (card.querySelector('.term-explain') || {}).textContent || ''
+                    );
                 }
             });
 
