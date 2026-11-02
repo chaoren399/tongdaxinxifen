@@ -47,6 +47,8 @@
         table.zq thead tr.zq-week-row th { border-bottom: none; }
         table.zq thead tr.zq-date-row th { color: #111827; }
         table.zq thead th.zq-week-start { border-left: 2px solid #9ca3af; }
+        /* 周一表头（周标签行 + 日期行）：加深背景突出显示，仅表头、不影响正文格子 */
+        table.zq thead th.zq-mon { background: #d1d5db; }
         table.zq thead th.zq-corner { position: sticky; left: 0; z-index: 5; background: #fde68a; }
         table.zq th.zq-height, table.zq td.zq-height {
             position: sticky; left: 0; z-index: 2;
@@ -144,7 +146,7 @@
                     <tr class="zq-week-row">
                         <th class="zq-corner">高度\日期</th>
                         {% for d in board.days %}
-                        <th {% if loop.index0 == 0 or d.weekNo != board.days[loop.index0 - 1].weekNo %}class="zq-week-start"{% endif %}>周{{ d.weekDay }}</th>
+                        <th {% if d.weekDay == 1 %}class="zq-week-start zq-mon"{% elif loop.index0 == 0 or d.weekNo != board.days[loop.index0 - 1].weekNo %}class="zq-week-start"{% endif %}>周{{ d.weekDay }}</th>
                         {% endfor %}
                         <th rowspan="2" class="zq-add">
                             <button type="button" id="zqAddDayBtn" title="新增一个交易日">＋</button>
@@ -153,7 +155,7 @@
                     <tr class="zq-date-row">
                         <th class="zq-height"></th>
                         {% for d in board.days %}
-                        <th {% if loop.index0 == 0 or d.weekNo != board.days[loop.index0 - 1].weekNo %}class="zq-week-start"{% endif %}>{{ d.date }}</th>
+                        <th {% if d.weekDay == 1 %}class="zq-week-start zq-mon"{% elif loop.index0 == 0 or d.weekNo != board.days[loop.index0 - 1].weekNo %}class="zq-week-start"{% endif %}>{{ d.date }}</th>
                         {% endfor %}
                     </tr>
                 </thead>
