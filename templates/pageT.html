@@ -34,7 +34,22 @@
         }
         table.missing thead th { background: #f9fafb; color: #374151; position: static; }
         table.missing tbody tr:hover { background: #f3f4f6; }
+        /* 股票名超链接（新标签页打开） */
+        .mis-stock-link { color: #2563eb; text-decoration: none; font-weight: 600; }
+        .mis-stock-link:hover { color: #1d4ed8; text-decoration: underline; }
         .pageT-empty { padding: 30px; text-align: center; color: #9ca3af; font-size: 13px; }
+        /* 分页器 */
+        .pageT-pager { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+        .pageT-pager .btn {
+            border: 1px solid #2563eb; background: #2563eb; color: #fff; border-radius: 6px;
+            padding: 6px 14px; font-size: 13px; cursor: pointer; text-decoration: none;
+        }
+        .pageT-pager .btn:hover { background: #1d4ed8; border-color: #1d4ed8; }
+        .pageT-pager .btn.disabled {
+            border-color: #e5e7eb; background: #f9fafb; color: #c0c4cc; cursor: default;
+        }
+        .pageT-pager .btn.disabled:hover { background: #f9fafb; border-color: #e5e7eb; }
+        .pageT-pageinfo { font-size: 13px; color: #374151; }
     </style>
 </head>
 <body>
@@ -69,7 +84,7 @@
                 <option value="{{ n }}" {% if n == limit %}selected{% endif %}>显示 {{ n }} 条</option>
                 {% endfor %}
             </select>
-            <span class="pageT-stats">共缺失 <b>{{ stats.missing }}</b> 只，当前加载 <b>{{ missing|length }}</b> 条</span>
+            <span class="pageT-stats">共缺失 <b>{{ stats.missing }}</b> 只，第 <b>{{ page }}</b>/<b>{{ total_pages }}</b> 页，本页 <b>{{ missing|length }}</b> 条</span>
         </div>
 
         {% if missing %}
@@ -80,8 +95,8 @@
             <tbody id="missBody">
                 {% for s in missing %}
                 <tr>
-                    <td>{{ loop.index }}</td>
-                    <td>{{ s.name }}</td>
+                    <td>{{ offset + loop.index }}</td>
+                    <td><a class="mis-stock-link" href="{{ url_for('index', q=s.name) }}" target="_blank" rel="noopener" title="在新标签页中查看「{{ s.name }}」">{{ s.name }}</a></td>
                     <td>{{ s.code or '-' }}</td>
                     <td>{{ s.primary_name or '-' }}</td>
                     <td>{{ s.tertiary or '-' }}</td>
@@ -91,6 +106,21 @@
             </tbody>
         </table>
         <div class="pageT-empty" id="emptyTip" style="display: none;">没有匹配的股票</div>
+
+        <!-- 分页：上一页 / 下一页 -->
+        <div class="pageT-pager">
+            {% if page > 1 %}
+            <a class="btn" href="?limit={{ limit }}&page={{ page - 1 }}">‹ 上一页</a>
+            {% else %}
+            <span class="btn disabled">‹ 上一页</span>
+            {% endif %}
+            <span class="pageT-pageinfo">第 {{ page }} / {{ total_pages }} 页</span>
+            {% if page < total_pages %}
+            <a class="btn" href="?limit={{ limit }}&page={{ page + 1 }}">下一页 ›</a>
+            {% else %}
+            <span class="btn disabled">下一页 ›</span>
+            {% endif %}
+        </div>
         {% else %}
         <div class="pageT-empty">太好了，所有股票都有主营信息</div>
         {% endif %}

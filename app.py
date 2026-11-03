@@ -1482,16 +1482,33 @@ def api_pageS_delete():
 
 @app.route("/pageT")
 def page_t():
-    """页面 T：主营信息缺失统计。"""
+    """页面 T：主营信息缺失统计（支持分页）。"""
     from db import get_business_stats, list_stocks_missing_business
     stats = get_business_stats()
     try:
         limit = min(max(int(request.args.get("limit", 200)), 1), 5000)
     except (TypeError, ValueError):
         limit = 200
-    missing = list_stocks_missing_business(limit=limit)
+    # 分页：page 从 1 开始，越界自动收敛到首/尾页
+    total = int(stats.get("missing") or 0)
+    total_pages = max(1, (total + limit - 1) // limit)
+    try:
+        page = int(request.args.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+    page = min(max(page, 1), total_pages)
+    offset = (page - 1) * limit
+    missing = list_stocks_missing_business(limit=limit, offset=offset)
     resp = make_response(
-        render_template("pageT.html", stats=stats, missing=missing, limit=limit)
+        render_template(
+            "pageT.html",
+            stats=stats,
+            missing=missing,
+            limit=limit,
+            page=page,
+            total_pages=total_pages,
+            offset=offset,
+        )
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp

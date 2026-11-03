@@ -17,6 +17,12 @@
         .data-table-d .stock-row .stock-name { white-space: nowrap; }
         .data-table-d .stock-link { text-decoration: none; color: inherit; }
         .data-table-d .stock-link:hover { color: #2563eb; }
+        /* 点过的股票：颜色加深（深蓝加粗 + 浅底），便于区分 */
+        .data-table-d .stock-link.is-clicked {
+            color: #1e3a8a; font-weight: 700;
+            background: #e0e7ff; border-radius: 3px;
+        }
+        .data-table-d .stock-link.is-clicked:hover { color: #1d4ed8; }
         .data-table-d .stock-code { display: none; }
     </style>
 </head>
@@ -92,7 +98,7 @@
                                                 {% for st in t.stocks %}
                                                 <li class="stock-row" data-name="{{ st.name }}" data-code="{{ st.code }}">
                                                     {% if st.code %}
-                                                    <a class="stock-link" href="{{ url_for('index', q=st.name) }}" data-stock="{{ st.name }}">
+                                                    <a class="stock-link" href="{{ url_for('index', q=st.name) }}" data-stock="{{ st.name }}" target="_blank" rel="noopener">
                                                         <span class="stock-name">{{ st.name }}</span>
                                                     </a>
                                                     {% else %}
@@ -127,5 +133,31 @@
 
     <script src="{{ url_for('static', filename='pageB.js') }}"></script>
     <script src="{{ url_for('static', filename='stock_tip.js') }}?v=1"></script>
+    <script>
+        /* 记录页面 D 中点击过的股票：颜色加深，持久保存（localStorage） */
+        (function () {
+            var KEY = 'pageD_clicked_stocks';
+            var clicked = {};
+            try {
+                clicked = JSON.parse(localStorage.getItem(KEY) || '{}') || {};
+            } catch (e) {
+                clicked = {};
+            }
+            function save() {
+                try { localStorage.setItem(KEY, JSON.stringify(clicked)); } catch (e) { /* 忽略 */ }
+            }
+            var links = document.querySelectorAll('.data-table-d a.stock-link');
+            Array.prototype.forEach.call(links, function (a) {
+                var name = a.getAttribute('data-stock') || '';
+                if (!name) return;
+                if (clicked[name]) a.classList.add('is-clicked');
+                a.addEventListener('click', function () {
+                    clicked[name] = 1;
+                    a.classList.add('is-clicked');
+                    save();
+                });
+            });
+        })();
+    </script>
 </body>
 </html>
