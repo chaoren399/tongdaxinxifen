@@ -466,8 +466,8 @@
             if (ev.target.classList.contains('ct-name-link')) {
                 openView(tr.getAttribute('data-title'), rowContent(tr));
             } else if (ev.target.classList.contains('btn-edit')) {
-                // 与页面 K 一致：编辑跳转到独立编辑页 /pageU/edit/<id>
-                window.location.href = '/pageU/edit/' + id;
+                // 编辑：浏览器新开一个标签页打开独立编辑页
+                window.open('/pageU/edit/' + id, '_blank');
             } else if (ev.target.classList.contains('btn-del')) {
                 deleteReview(id, tr.getAttribute('data-title'));
             }

@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=66" />
     <style>
         /* 页面 U 编辑页：层级大表（1 级 / 2 级 … + 要点），交互对齐页面 K 编辑页 */
+        /* 顶部无导航栏，去掉 .container 的上边距，避免页面顶部留白 */
+        body.page-u .container { margin-top: 0; }
         .ue-tbl-head {
             display: flex;
             flex-wrap: wrap;
@@ -284,22 +286,6 @@
     </style>
 </head>
 <body class="page-u">
-    <header class="topbar topbar-pageF">
-        <nav class="topnav">
-            <a href="{{ url_for('index') }}">首页</a>
-            <a href="{{ url_for('page_a') }}">页面 A</a>
-            <a href="{{ url_for('page_b') }}">页面 B</a>
-            <a href="{{ url_for('page_d') }}">页面 D</a>
-            <a href="{{ url_for('page_k') }}">页面 K</a>
-            <a href="{{ url_for('page_l') }}">页面 L</a>
-            <a href="{{ url_for('page_p') }}">页面 P</a>
-            <a href="{{ url_for('page_r') }}" target="_blank" rel="noopener">页面 R</a>
-            <a href="{{ url_for('page_s') }}">页面 S</a>
-            <a href="{{ url_for('page_t') }}">页面 T</a>
-            <a class="active" href="{{ url_for('page_u') }}">页面 U</a>
-        </nav>
-    </header>
-
     <main class="container">
         <div class="ke-head">
             <div class="ke-title">
@@ -318,13 +304,7 @@
         <!-- ===== 复盘层级（一级 → 二级 → …，条目可内联新增/改名/删除） ===== -->
         <div class="industry-group-card ke-card">
             <div class="ue-tbl-head">
-                <span class="cs-title">复盘层级总览（<span id="tblCount">0</span> 条）</span>
-                <span class="ue-tip">
-                    点击条目名可改名，点「＋」新增下一级条目（最多五级），点「✕」删除条目及其下级；
-                    末级条目可在「要点」列点「编辑」增删改要点。
-                </span>
                 <span class="ue-head-btns">
-                    <button class="ue-btn-sm is-primary" id="addRootBtn" type="button">＋ 新增一级条目</button>
                     <button class="ue-btn-sm" id="toggleDelBtn" type="button"
                             title="显示 / 隐藏所有删除按钮">显示删除</button>
                     <button class="ue-btn-sm is-on" id="togglePlusBtn" type="button"
@@ -426,10 +406,8 @@
     (function () {
         var tblHead = document.getElementById('tblHead');
         var tblBody = document.getElementById('tblBody');
-        var tblCount = document.getElementById('tblCount');
         var toggleDelBtn = document.getElementById('toggleDelBtn');
         var togglePlusBtn = document.getElementById('togglePlusBtn');
-        var addRootBtn = document.getElementById('addRootBtn');
 
         var showDelBtns = false;
         var showPlusBtns = false;
@@ -539,7 +517,6 @@
 
         function renderTree(j) {
             maxLevel = Math.max(2, j.max_level || 1);
-            tblCount.textContent = j.item_count || 0;
 
             // 表头：1 级复盘 / 2 级复盘 / … / 要点
             tblHead.innerHTML = '';
@@ -554,7 +531,7 @@
             var rows = j.rows || [];
             if (!rows.length) {
                 var tr0 = el('tr');
-                var td0 = el('td', 'ue-empty', '暂无条目，点击右上角「＋ 新增一级条目」开始');
+                var td0 = el('td', 'ue-empty', '暂无条目');
                 td0.colSpan = maxLevel + 1;
                 tr0.appendChild(td0);
                 tblBody.appendChild(tr0);
@@ -763,56 +740,6 @@
             td.appendChild(cancel);
             input.focus();
         }
-
-        // ---- 新增一级条目（在表格顶部插入输入行）----
-        addRootBtn.addEventListener('click', function () {
-            if (tblBody.querySelector('tr.ue-add-row')) return;   // 已有输入行
-            var tr = el('tr', 'ue-add-row');
-            var td = el('td', 'lvl-col lvl-col-1');
-            td.colSpan = maxLevel + 1;
-
-            var input = el('input', 'ue-inline-input');
-            input.type = 'text';
-            input.placeholder = '一级条目名称，如：大盘情绪';
-            var ok = el('button', 'ue-mini', '加');
-            ok.type = 'button';
-            var cancel = el('button', 'ue-mini', '取');
-            cancel.type = 'button';
-
-            function close() {
-                if (tr.parentNode) tr.parentNode.removeChild(tr);
-            }
-            function save() {
-                var nm = (input.value || '').trim();
-                if (!nm) { toast('请输入条目名称', false); input.focus(); return; }
-                ok.disabled = true;
-                api('/api/pageU/item/add', { review_id: REVIEW_ID, parent_id: null, title: nm })
-                    .then(function (resp) {
-                        if (resp.body && resp.body.ok) {
-                            toast('已新增一级条目「' + nm + '」', true);
-                            loadTree();
-                        } else {
-                            toast((resp.body && resp.body.error) || ('HTTP ' + resp.status), false);
-                            ok.disabled = false;
-                        }
-                    })
-                    .catch(function (e) { toast('请求失败：' + e, false); ok.disabled = false; });
-            }
-
-            ok.addEventListener('click', save);
-            cancel.addEventListener('click', close);
-            input.addEventListener('keydown', function (ev) {
-                if (ev.key === 'Enter') { ev.preventDefault(); save(); }
-                if (ev.key === 'Escape') { ev.preventDefault(); close(); }
-            });
-
-            td.appendChild(input);
-            td.appendChild(ok);
-            td.appendChild(cancel);
-            tr.appendChild(td);
-            tblBody.insertBefore(tr, tblBody.firstChild);
-            input.focus();
-        });
 
         // ---- 编辑要点（弹窗内整体维护：增 / 删 / 改）----
         var pointModal = document.getElementById('pointModal');
