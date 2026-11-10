@@ -3598,6 +3598,60 @@ def get_business_stats(db_path=None):
         conn.close()
 
 
+def list_stocks_with_images(limit=200, offset=0, db_path=None):
+    """列出详情页有图片的股票（按名称排序），带行业路径与图片张数。"""
+    ensure_stock_images_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        sql = (
+            "SELECT s.id, s.name, s.code, "
+            "(SELECT COUNT(*) FROM stock_images si WHERE si.stock_id = s.id) AS image_count, "
+            "(SELECT t.name FROM industries t WHERE t.id = s.tertiary_id) AS tertiary, "
+            "(SELECT p.name FROM industries s2 JOIN industries p ON p.id = s2.parent_id "
+            "     WHERE s2.id = s.tertiary_id) AS primary_name "
+            "FROM stocks s "
+            "WHERE EXISTS (SELECT 1 FROM stock_images si2 WHERE si2.stock_id = s.id) "
+            "ORDER BY (primary_name IS NULL), primary_name, s.name "
+            "LIMIT ? OFFSET ?"
+        )
+        cur.execute(sql, (limit, offset))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def count_stocks_with_images(db_path=None):
+    """统计详情页有图片的股票数量（stock_images 中出现过的股票数）。"""
+    ensure_stock_images_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(DISTINCT stock_id) FROM stock_images")
+        return int(cur.fetchone()[0])
+    finally:
+        conn.close()
+
+
+def count_stock_images_by_ids(stock_ids, db_path=None):
+    """按股票 id 批量统计图片数，返回 {stock_id: 图片张数}。"""
+    if not stock_ids:
+        return {}
+    ensure_stock_images_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        marks = ",".join("?" * len(stock_ids))
+        cur.execute(
+            "SELECT stock_id, COUNT(*) AS cnt FROM stock_images "
+            "WHERE stock_id IN (%s) GROUP BY stock_id" % marks,
+            list(stock_ids),
+        )
+        return {r["stock_id"]: int(r["cnt"]) for r in cur.fetchall()}
+    finally:
+        conn.close()
+
+
 def list_stocks_missing_business(limit=200, offset=0, db_path=None):
     """列出「选项D 不含主营字样」的股票（按名称排序），带一级/三级行业与选项D 内容。"""
     conn = get_conn(db_path)
@@ -3610,7 +3664,7 @@ def list_stocks_missing_business(limit=200, offset=0, db_path=None):
             "     WHERE s2.id = s.tertiary_id) AS primary_name "
             "FROM stocks s "
             "WHERE NOT (" + _BIZ_HAS_SQL + ") "
-            "ORDER BY s.name "
+            "ORDER BY (primary_name IS NULL), primary_name, s.name "
             "LIMIT ? OFFSET ?"
         )
         cur.execute(sql, (limit, offset))

@@ -17,6 +17,13 @@
         .pageT-card .v { font-size: 20px; font-weight: 700; color: #111827; margin-top: 2px; }
         .pageT-card.warn .v { color: #dc2626; }
         .pageT-card.ok .v { color: #059669; }
+        /* 详情页图片列 */
+        .img-yes {
+            display: inline-block; min-width: 34px; text-align: center;
+            padding: 1px 8px; border-radius: 10px; font-weight: 700; font-size: 12px;
+            color: #065f46; background: #d1fae5;
+        }
+        .img-no { color: #c0c4cc; }
         .pageT-tools { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
         .pageT-tools input, .pageT-tools select {
             font: inherit; font-size: 13px; padding: 6px 8px;
@@ -27,6 +34,10 @@
         .pageT-tools .btn {
             border: 1px solid #2563eb; background: #2563eb; color: #fff; border-radius: 6px;
             padding: 6px 14px; font-size: 13px; cursor: pointer; text-decoration: none;
+        }
+        /* 视图切换：当前视图高亮 */
+        .pageT-tools .btn.is-current {
+            background: #eef2ff; border-color: #93c5fd; color: #1d4ed8; cursor: default;
         }
         table.missing { border-collapse: collapse; width: 100%; font-size: 13px; background: #fff; }
         table.missing th, table.missing td {
@@ -76,22 +87,34 @@
             <div class="pageT-card warn"><div class="k">缺失主营</div><div class="v">{{ stats.missing }}</div></div>
             <div class="pageT-card"><div class="k">覆盖率</div><div class="v">{{ stats.coverage }}%</div></div>
             <div class="pageT-card"><div class="k">选项D 已填</div><div class="v">{{ stats.optionDFilled }}</div></div>
+            <div class="pageT-card ok"><div class="k">详情页有图片</div><div class="v">{{ stats.withImages }}</div></div>
+            <div class="pageT-card warn"><div class="k">详情页无图片</div><div class="v">{{ stats.withoutImages }}</div></div>
         </div>
 
         <div class="pageT-tools">
+            <a class="btn {% if view != 'images' %}is-current{% endif %}" href="?limit={{ limit }}">缺失主营</a>
+            <a class="btn {% if view == 'images' %}is-current{% endif %}" href="?view=images&limit={{ limit }}">有详情图</a>
             <input type="text" id="kw" placeholder="搜索股票名 / 代码 / 行业…" />
             <select id="limitSel">
                 {% for n in [200, 500, 2000] %}
                 <option value="{{ n }}" {% if n == limit %}selected{% endif %}>显示 {{ n }} 条</option>
                 {% endfor %}
             </select>
+            {% if view == 'images' %}
+            <span class="pageT-stats">共有详情图 <b>{{ stats.withImages }}</b> 只，第 <b>{{ page }}</b>/<b>{{ total_pages }}</b> 页，本页 <b>{{ missing|length }}</b> 条</span>
+            {% else %}
             <span class="pageT-stats">共缺失 <b>{{ stats.missing }}</b> 只，第 <b>{{ page }}</b>/<b>{{ total_pages }}</b> 页，本页 <b>{{ missing|length }}</b> 条</span>
+            {% endif %}
         </div>
 
         {% if missing %}
         <table class="missing">
             <thead>
-                <tr><th style="width:60px;">#</th><th style="width:160px;">股票</th><th style="width:110px;">代码</th><th style="width:160px;">一级行业</th><th style="width:160px;">三级行业</th><th>选项D（无「主营」字样）</th></tr>
+                {% if view == 'images' %}
+                <tr><th style="width:60px;">#</th><th style="width:160px;">股票</th><th style="width:110px;">代码</th><th style="width:160px;">一级行业</th><th style="width:160px;">三级行业</th><th>详情图张数</th></tr>
+                {% else %}
+                <tr><th style="width:60px;">#</th><th style="width:160px;">股票</th><th style="width:110px;">代码</th><th style="width:160px;">一级行业</th><th style="width:160px;">三级行业</th><th style="width:70px;">详情图</th><th>选项D（无「主营」字样）</th></tr>
+                {% endif %}
             </thead>
             <tbody id="missBody">
                 {% for s in missing %}
@@ -101,7 +124,12 @@
                     <td>{{ s.code or '-' }}</td>
                     <td>{{ s.primary_name or '-' }}</td>
                     <td>{{ s.tertiary or '-' }}</td>
+                    {% if view == 'images' %}
+                    <td><span class="img-yes" title="详情页已有 {{ s.image_count }} 张图片">{{ s.image_count }} 张</span></td>
+                    {% else %}
+                    <td>{% if s.image_count %}<span class="img-yes" title="详情页已有 {{ s.image_count }} 张图片">{{ s.image_count }} 张</span>{% else %}<span class="img-no">无</span>{% endif %}</td>
                     <td>{{ s.option_d or '' }}</td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>
@@ -111,19 +139,19 @@
         <!-- 分页：上一页 / 下一页 -->
         <div class="pageT-pager">
             {% if page > 1 %}
-            <a class="btn" href="?limit={{ limit }}&page={{ page - 1 }}">‹ 上一页</a>
+            <a class="btn" href="?view={{ view }}&limit={{ limit }}&page={{ page - 1 }}">‹ 上一页</a>
             {% else %}
             <span class="btn disabled">‹ 上一页</span>
             {% endif %}
             <span class="pageT-pageinfo">第 {{ page }} / {{ total_pages }} 页</span>
             {% if page < total_pages %}
-            <a class="btn" href="?limit={{ limit }}&page={{ page + 1 }}">下一页 ›</a>
+            <a class="btn" href="?view={{ view }}&limit={{ limit }}&page={{ page + 1 }}">下一页 ›</a>
             {% else %}
             <span class="btn disabled">下一页 ›</span>
             {% endif %}
         </div>
         {% else %}
-        <div class="pageT-empty">太好了，所有股票都有主营信息</div>
+        <div class="pageT-empty">{% if view == 'images' %}还没有任何股票上传过详情图{% else %}太好了，所有股票都有主营信息{% endif %}</div>
         {% endif %}
     </main>
 
@@ -147,7 +175,9 @@
             }
             if (limitSel) {
                 limitSel.addEventListener('change', function () {
-                    location.search = '?limit=' + limitSel.value;
+                    var params = new URLSearchParams(location.search);
+                    params.set('limit', limitSel.value);
+                    location.search = params.toString();
                 });
             }
         })();

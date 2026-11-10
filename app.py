@@ -1486,15 +1486,32 @@ def api_pageS_delete():
 
 @app.route("/pageT")
 def page_t():
-    """页面 T：主营信息缺失统计（支持分页）。"""
-    from db import get_business_stats, list_stocks_missing_business
+    """页面 T：主营信息缺失统计（支持分页），并统计股票详情页是否有图片。
+
+    视图切换：默认展示「缺失主营」的股票；?view=images 展示「有详情图」的股票。
+    """
+    from db import (
+        count_stock_images_by_ids,
+        count_stocks_with_images,
+        get_business_stats,
+        list_stocks_missing_business,
+        list_stocks_with_images,
+    )
     stats = get_business_stats()
+    # 详情页图片统计：有图片的股票数 / 无图片的股票数
+    with_images = count_stocks_with_images()
+    stats["withImages"] = with_images
+    stats["withoutImages"] = int(stats.get("total") or 0) - with_images
+    view = "images" if request.args.get("view") == "images" else "missing"
     try:
         limit = min(max(int(request.args.get("limit", 200)), 1), 5000)
     except (TypeError, ValueError):
         limit = 200
     # 分页：page 从 1 开始，越界自动收敛到首/尾页
-    total = int(stats.get("missing") or 0)
+    if view == "images":
+        total = int(stats.get("withImages") or 0)
+    else:
+        total = int(stats.get("missing") or 0)
     total_pages = max(1, (total + limit - 1) // limit)
     try:
         page = int(request.args.get("page", 1))
@@ -1502,12 +1519,22 @@ def page_t():
         page = 1
     page = min(max(page, 1), total_pages)
     offset = (page - 1) * limit
-    missing = list_stocks_missing_business(limit=limit, offset=offset)
+    if view == "images":
+        missing = list_stocks_with_images(limit=limit, offset=offset)
+    else:
+        missing = list_stocks_missing_business(limit=limit, offset=offset)
+        # 每行注入详情页图片数，供列表展示「是否有图片」
+        image_counts = count_stock_images_by_ids(
+            [r["id"] for r in missing if r.get("id")]
+        )
+        for row in missing:
+            row["image_count"] = image_counts.get(row.get("id"), 0)
     resp = make_response(
         render_template(
             "pageT.html",
             stats=stats,
             missing=missing,
+            view=view,
             limit=limit,
             page=page,
             total_pages=total_pages,
