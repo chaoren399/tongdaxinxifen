@@ -164,7 +164,10 @@
             padding: 10px;
             border: 1px dashed #e5e7eb;
             border-radius: 12px;
+            transition: border-color 0.12s;
         }
+        .ue-blank-b1:hover,
+        .ue-blank-b2:hover { border-color: #93c5fd; }
         .ue-b-head {
             display: flex;
             align-items: center;
@@ -173,22 +176,42 @@
         }
         .ue-img-list {
             display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            align-content: flex-start;
+            flex-direction: column;
+            gap: 10px;
         }
-        .ue-img-item { position: relative; }
+        .ue-img-item { position: relative; width: 100%; }
         .ue-img-item img {
             display: block;
-            width: 132px;
-            height: 92px;
-            object-fit: cover;
+            width: 100%;
+            height: auto;
             border: 1px solid #e5e7eb;
             border-radius: 6px;
             cursor: zoom-in;
             background: #f9fafb;
         }
         .ue-img-item img:hover { border-color: #93c5fd; }
+        /* 点击放大：脱离文档流居中展示，再点击（或点遮罩 / Esc）复原 */
+        .ue-img-item img.ue-img-zoomed {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: auto;
+            height: auto;
+            max-width: 92vw;
+            max-height: 92vh;
+            z-index: 1100;
+            cursor: zoom-out;
+            border-radius: 8px;
+            box-shadow: 0 24px 64px rgba(15, 23, 42, 0.4);
+        }
+        .ue-zoom-mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.5);
+            z-index: 1050;
+            cursor: zoom-out;
+        }
         .ue-img-x {
             position: absolute;
             top: -6px;
@@ -322,25 +345,24 @@
             <div class="ue-blank-b1">
                 <div class="ue-b-head">
                     <span class="cs-title">B1 图片</span>
-                    <button class="ue-btn-sm is-primary ue-upload-btn" data-slot="B1"
-                            type="button">＋ 上传图片</button>
+                    <button class="ue-btn-sm ue-img-edit-btn" data-slot="B1" type="button"
+                            title="进入 / 退出编辑：显示图片删除按钮">编辑</button>
                 </div>
                 <div class="ue-img-list" id="imgListB1">
-                    <span class="ue-img-empty">暂无图片，点击右上「＋ 上传图片」</span>
+                    <span class="ue-img-empty">暂无图片；截图后鼠标悬停本区按 Ctrl+V 粘贴</span>
                 </div>
             </div>
             <div class="ue-blank-b2">
                 <div class="ue-b-head">
                     <span class="cs-title">B2 图片</span>
-                    <button class="ue-btn-sm is-primary ue-upload-btn" data-slot="B2"
-                            type="button">＋ 上传图片</button>
+                    <button class="ue-btn-sm ue-img-edit-btn" data-slot="B2" type="button"
+                            title="进入 / 退出编辑：显示图片删除按钮">编辑</button>
                 </div>
                 <div class="ue-img-list" id="imgListB2">
-                    <span class="ue-img-empty">暂无图片，点击右上「＋ 上传图片」</span>
+                    <span class="ue-img-empty">暂无图片；截图后鼠标悬停本区按 Ctrl+V 粘贴</span>
                 </div>
             </div>
         </div>
-        <input type="file" id="imgFileInput" accept="image/*" multiple hidden />
 
         <!-- ===== 复盘正文 ===== -->
         <div class="industry-group-card ke-card">
@@ -411,6 +433,7 @@
 
         var showDelBtns = false;
         var showPlusBtns = false;
+        var imgEditSlots = { B1: false, B2: false };   // B 区各自的编辑状态（显示图片删除按钮）
         var maxLevel = 2;          // 至少展示「1 级复盘 / 2 级复盘」两列
         var reqSeq = 0;
 
@@ -450,13 +473,18 @@
         }
 
         // ---- 显示 / 隐藏删除、＋ 和要点编辑按钮 ----
+        function applyImgDelState() {
+            // 图片删除按钮：全局「显示删除」开启，或所在 B 区处于编辑状态时显示
+            document.querySelectorAll('.ue-img-x').forEach(function (b) {
+                b.hidden = !(showDelBtns || imgEditSlots[b.getAttribute('data-slot')]);
+            });
+        }
+
         function applyBtnState() {
             tblBody.querySelectorAll('.ue-mini.is-del, .ue-point-x').forEach(function (b) {
                 b.hidden = !showDelBtns;
             });
-            document.querySelectorAll('.ue-img-x').forEach(function (b) {
-                b.hidden = !showDelBtns;
-            });
+            applyImgDelState();
             tblBody.querySelectorAll('.ue-mini.is-add, .ue-point-edit').forEach(function (b) {
                 b.hidden = !showPlusBtns;
             });
@@ -858,12 +886,10 @@
         });
 
         // ---- B1 / B2 图片区 ----
-        var imgFileInput = document.getElementById('imgFileInput');
         var imgLists = {
             B1: document.getElementById('imgListB1'),
             B2: document.getElementById('imgListB2')
         };
-        var pendingSlot = null;
 
         function loadImages() {
             apiGet('/api/pageU/images?review_id=' + REVIEW_ID)
@@ -875,14 +901,23 @@
                 .catch(function (e) { toast('图片加载失败：' + e, false); });
         }
 
+        function unzoomImage() {
+            var zoomed = document.querySelector('img.ue-img-zoomed');
+            if (zoomed) zoomed.classList.remove('ue-img-zoomed');
+            var mask = document.getElementById('ueZoomMask');
+            if (mask) mask.remove();
+        }
+
         function renderBImages(grouped) {
+            unzoomImage();
             ['B1', 'B2'].forEach(function (slot) {
                 var list = imgLists[slot];
                 if (!list) return;
                 list.innerHTML = '';
                 var items = grouped[slot] || [];
                 if (!items.length) {
-                    list.appendChild(el('span', 'ue-img-empty', '暂无图片，点击右上「＋ 上传图片」'));
+                    list.appendChild(el('span', 'ue-img-empty',
+                        '暂无图片；截图后鼠标悬停本区按 Ctrl+V 粘贴'));
                     return;
                 }
                 items.forEach(function (img) {
@@ -890,13 +925,23 @@
                     var node = document.createElement('img');
                     node.src = img.url;
                     node.alt = img.original_name || '';
-                    node.title = (img.original_name || '') + '（点击查看原图）';
+                    node.title = (img.original_name || '') + '（点击放大 / 复原）';
                     node.addEventListener('click', function () {
-                        window.open(img.url, '_blank');
+                        if (node.classList.contains('ue-img-zoomed')) {
+                            unzoomImage();
+                            return;
+                        }
+                        unzoomImage();
+                        node.classList.add('ue-img-zoomed');
+                        var mask = el('div', 'ue-zoom-mask');
+                        mask.id = 'ueZoomMask';
+                        mask.addEventListener('click', unzoomImage);
+                        document.body.appendChild(mask);
                     });
                     var x = el('button', 'ue-img-x', '×');
                     x.type = 'button';
-                    x.hidden = !showDelBtns;
+                    x.setAttribute('data-slot', slot);
+                    x.hidden = !(showDelBtns || imgEditSlots[slot]);
                     x.title = '删除该图片';
                     x.addEventListener('click', function () {
                         if (!window.confirm('确定删除这张图片？文件会一并删除。')) return;
@@ -921,19 +966,22 @@
             applyBtnState();
         }
 
-        document.querySelectorAll('.ue-upload-btn').forEach(function (btn) {
+        // B 区「编辑」：进入后该区图片显示删除按钮，再点「完成」退出
+        document.querySelectorAll('.ue-img-edit-btn').forEach(function (btn) {
             btn.addEventListener('click', function () {
-                pendingSlot = btn.getAttribute('data-slot');
-                imgFileInput.value = '';
-                imgFileInput.click();
+                var slot = btn.getAttribute('data-slot');
+                imgEditSlots[slot] = !imgEditSlots[slot];
+                btn.textContent = imgEditSlots[slot] ? '完成' : '编辑';
+                btn.classList.toggle('is-on', imgEditSlots[slot]);
+                applyImgDelState();
             });
         });
 
-        imgFileInput.addEventListener('change', function () {
-            var slot = pendingSlot || 'B1';
-            var files = Array.prototype.slice.call(imgFileInput.files || []);
+        // 统一上传入口：Ctrl+V 粘贴时使用
+        function uploadFiles(slot, files) {
             if (!files.length) return;
             var list = imgLists[slot];
+            if (!list) return;
             var tip = el('span', 'ue-uploading', '上传中 ' + files.length + ' 张...');
             list.appendChild(tip);
             var done = 0, okCount = 0;
@@ -941,7 +989,7 @@
                 var fd = new FormData();
                 fd.append('review_id', REVIEW_ID);
                 fd.append('slot', slot);
-                fd.append('file', file);
+                fd.append('file', file, file.name || ('paste-' + Date.now() + '.png'));
                 fetch('/api/pageU/image/upload', { method: 'POST', body: fd })
                     .then(function (r) { return r.json(); })
                     .then(function (j) {
@@ -953,11 +1001,52 @@
                         done += 1;
                         if (done === files.length) {
                             tip.remove();
-                            if (okCount) toast('已上传 ' + okCount + ' 张图片', true);
+                            if (okCount) toast('已上传 ' + okCount + ' 张图片到 ' + slot, true);
                             loadImages();
                         }
                     });
             });
+        }
+
+        // ---- Ctrl+V 粘贴图片：鼠标悬停在哪个 B 区就上传到哪个区 ----
+        var hoverSlot = null;
+
+        function pasteImagesFromEvent(ev) {
+            var items = ev.clipboardData && ev.clipboardData.files;
+            if (!items || !items.length) return [];
+            var files = [];
+            for (var i = 0; i < items.length; i++) {
+                if (items[i].type && items[i].type.indexOf('image/') === 0) {
+                    files.push(items[i]);
+                }
+            }
+            return files;
+        }
+
+        [['B1', document.querySelector('.ue-blank-b1')],
+         ['B2', document.querySelector('.ue-blank-b2')]].forEach(function (pair) {
+            var slot = pair[0], zone = pair[1];
+            if (!zone) return;
+            zone.addEventListener('mouseenter', function () { hoverSlot = slot; });
+            zone.addEventListener('mouseleave', function () {
+                if (hoverSlot === slot) hoverSlot = null;
+            });
+        });
+
+        document.addEventListener('paste', function (ev) {
+            if (!hoverSlot) return;
+            // 焦点在输入框 / 文本域时不拦截，保证正常粘贴文本
+            var t = ev.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+            var files = pasteImagesFromEvent(ev);
+            if (!files.length) return;
+            ev.preventDefault();
+            uploadFiles(hoverSlot, files);
+        });
+
+        // Esc 退出图片放大
+        document.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Escape') unzoomImage();
         });
 
         // ---- 复盘正文：字数 / 还原 / 保存 ----
