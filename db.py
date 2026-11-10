@@ -3768,13 +3768,325 @@ def update_daily_review(review_id, review_date=None, content=None, db_path=None)
 
 
 def delete_daily_review(review_id, db_path=None):
-    """删除一条复盘。"""
+    """删除一条复盘（连同该复盘的层级条目与要点）。"""
     ensure_daily_reviews_table(db_path)
+    ensure_review_tree_tables(db_path)
     conn = get_conn(db_path)
     try:
         cur = conn.cursor()
+        cur.execute("SELECT id FROM review_items WHERE review_id = ?", (review_id,))
+        item_ids = [r["id"] for r in cur.fetchall()]
+        if item_ids:
+            marks = ",".join("?" * len(item_ids))
+            cur.execute(
+                "DELETE FROM review_points WHERE item_id IN (%s)" % marks, item_ids
+            )
+            cur.execute(
+                "DELETE FROM review_items WHERE review_id = ?", (review_id,)
+            )
         cur.execute("DELETE FROM daily_reviews WHERE id = ?", (review_id,))
         conn.commit()
         return cur.rowcount > 0
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 页面 U：复盘层级条目（一级 / 二级 …）+ 要点
+# 结构和交互对齐页面 K 的概念层级表，但用的是独立表：
+#   review_items  每一条复盘自己的层级树
+#   review_points 末级条目下的多条要点（对应页面 K 概念下的股票）
+# ---------------------------------------------------------------------------
+
+MAX_REVIEW_ITEM_LEVEL = 5
+
+REVIEW_TREE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS review_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    review_id   INTEGER NOT NULL,
+    parent_id   INTEGER,
+    level       INTEGER NOT NULL DEFAULT 1,
+    title       TEXT NOT NULL DEFAULT '',
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_review_items_review ON review_items(review_id);
+CREATE TABLE IF NOT EXISTS review_points (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id     INTEGER NOT NULL,
+    content     TEXT NOT NULL DEFAULT '',
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_review_points_item ON review_points(item_id);
+"""
+
+
+def ensure_review_tree_tables(db_path=None):
+    """建复盘层级条目 / 要点表。"""
+    conn = get_conn(db_path)
+    try:
+        conn.executescript(REVIEW_TREE_SCHEMA)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_review_items(review_id, db_path=None):
+    """列出某条复盘的全部层级条目（按先序顺序返回扁平列表）。"""
+    ensure_review_tree_tables(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, review_id, parent_id, level, title, sort_order "
+            "FROM review_items WHERE review_id = ? "
+            "ORDER BY level, sort_order, id",
+            (review_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def add_review_item(review_id, title, parent_id=None, db_path=None):
+    """在指定复盘下新增条目；parent_id 为空表示一级条目。返回新 id。"""
+    title = (title or "").strip()
+    if not title:
+        raise ValueError("条目名称不能为空")
+    ensure_daily_reviews_table(db_path)
+    ensure_review_tree_tables(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM daily_reviews WHERE id = ?", (review_id,))
+        if cur.fetchone() is None:
+            raise ValueError("复盘记录不存在")
+
+        level = 1
+        if parent_id is not None:
+            cur.execute(
+                "SELECT review_id, level FROM review_items WHERE id = ?", (parent_id,)
+            )
+            parent = cur.fetchone()
+            if parent is None:
+                raise ValueError("上级条目不存在")
+            if int(parent["review_id"]) != int(review_id):
+                raise ValueError("上级条目不属于该复盘")
+            level = int(parent["level"]) + 1
+        if level > MAX_REVIEW_ITEM_LEVEL:
+            raise ValueError("最多只支持 %d 级条目" % MAX_REVIEW_ITEM_LEVEL)
+
+        cur.execute(
+            "SELECT COALESCE(MAX(sort_order), 0) FROM review_items "
+            "WHERE review_id = ? AND IFNULL(parent_id, 0) = IFNULL(?, 0)",
+            (review_id, parent_id),
+        )
+        order = int(cur.fetchone()[0]) + 1
+        now = _now_datetime_str()
+        cur.execute(
+            "INSERT INTO review_items "
+            "(review_id, parent_id, level, title, sort_order, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (review_id, parent_id, level, title, order, now, now),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def rename_review_item(item_id, title, db_path=None):
+    """给条目改名。"""
+    title = (title or "").strip()
+    if not title:
+        raise ValueError("条目名称不能为空")
+    ensure_review_tree_tables(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE review_items SET title = ?, updated_at = ? WHERE id = ?",
+            (title, _now_datetime_str(), item_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def delete_review_item(item_id, db_path=None):
+    """删除条目及其所有下级条目、要点，返回删除的条目数量。"""
+    ensure_review_tree_tables(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        ids = [int(item_id)]
+        idx = 0
+        while idx < len(ids):
+            cur.execute(
+                "SELECT id FROM review_items WHERE parent_id = ?", (ids[idx],)
+            )
+            ids.extend(r["id"] for r in cur.fetchall())
+            idx += 1
+        marks = ",".join("?" * len(ids))
+        cur.execute("DELETE FROM review_points WHERE item_id IN (%s)" % marks, ids)
+        cur.execute("DELETE FROM review_items WHERE id IN (%s)" % marks, ids)
+        conn.commit()
+        return len(ids)
+    finally:
+        conn.close()
+
+
+def list_review_points(item_ids, db_path=None):
+    """按条目 id 批量取要点，返回 {item_id: [要点...]}。"""
+    if not item_ids:
+        return {}
+    ensure_review_tree_tables(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        marks = ",".join("?" * len(item_ids))
+        cur.execute(
+            "SELECT id, item_id, content, sort_order FROM review_points "
+            "WHERE item_id IN (%s) ORDER BY sort_order, id" % marks,
+            list(item_ids),
+        )
+        result = {}
+        for row in cur.fetchall():
+            result.setdefault(row["item_id"], []).append(dict(row))
+        return result
+    finally:
+        conn.close()
+
+
+def list_review_top_titles(review_ids, db_path=None):
+    """批量取每条复盘的一级条目名称（用于列表摘要兜底），返回 {review_id: [名称...]}。"""
+    if not review_ids:
+        return {}
+    ensure_review_tree_tables(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        marks = ",".join("?" * len(review_ids))
+        cur.execute(
+            "SELECT review_id, title FROM review_items "
+            "WHERE review_id IN (%s) AND parent_id IS NULL "
+            "ORDER BY review_id, sort_order, id" % marks,
+            list(review_ids),
+        )
+        result = {}
+        for row in cur.fetchall():
+            result.setdefault(row["review_id"], []).append(row["title"])
+        return result
+    finally:
+        conn.close()
+
+
+def add_review_points(item_id, contents, db_path=None):
+    """给末级条目批量追加要点（contents 可为字符串列表），返回新增数量。"""
+    if isinstance(contents, str):
+        contents = [contents]
+    clean = [str(c).strip() for c in (contents or []) if str(c).strip()]
+    if not clean:
+        raise ValueError("请输入要点内容")
+    ensure_review_tree_tables(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM review_items WHERE id = ?", (item_id,))
+        if cur.fetchone() is None:
+            raise ValueError("条目不存在")
+        cur.execute(
+            "SELECT COALESCE(MAX(sort_order), 0) FROM review_points WHERE item_id = ?",
+            (item_id,),
+        )
+        order = int(cur.fetchone()[0])
+        now = _now_datetime_str()
+        for text in clean:
+            order += 1
+            cur.execute(
+                "INSERT INTO review_points "
+                "(item_id, content, sort_order, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (item_id, text, order, now, now),
+            )
+        conn.commit()
+        return len(clean)
+    finally:
+        conn.close()
+
+
+def delete_review_point(point_id, db_path=None):
+    """删除一条要点。"""
+    ensure_review_tree_tables(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM review_points WHERE id = ?", (point_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def build_review_rows(items, points_by_item):
+    """把扁平条目列表拼成「层级大表」的行数据（与页面 K 的表格结构一致）。
+
+    返回 (rows, max_level)：
+      rows[i] = {
+        "cells": [ {id,title,level,span} | None, ... ],   # 下标 0 对应 1 级
+        "leaf":  {id,title,level},                        # 该行末级条目
+        "points": [ {id,content}, ... ],                  # 末级条目的要点
+      }
+    span > 1 表示该单元格 rowspan 合并；None 表示该行此层被上方合并覆盖。
+    """
+    by_parent = {}
+    for item in items:
+        by_parent.setdefault(item.get("parent_id"), []).append(item)
+    for group in by_parent.values():
+        group.sort(key=lambda x: (x.get("sort_order") or 0, x["id"]))
+
+    rows = []
+
+    def walk(node, level):
+        start = len(rows)
+        kids = by_parent.get(node["id"], [])
+        if kids:
+            for kid in kids:
+                walk(kid, level + 1)
+        else:
+            rows.append({"cells": {}, "leaf": node, "level": level})
+        span = len(rows) - start
+        # 只在子树首行放置单元格；其余行被该 rowspan 覆盖，保持为空，
+        # 否则渲染时会出现重复的父级单元格，导致整行列错位
+        rows[start]["cells"][level] = {
+            "id": node["id"],
+            "title": node.get("title") or "",
+            "level": level,
+            "span": span,
+            "has_children": bool(kids),
+        }
+
+    for root in by_parent.get(None, []):
+        walk(root, 1)
+
+    max_level = max([int(i.get("level") or 1) for i in items], default=1)
+    result = []
+    for row in rows:
+        cells = [row["cells"].get(lv) for lv in range(1, max_level + 1)]
+        leaf = row["leaf"]
+        result.append(
+            {
+                "cells": cells,
+                "leaf": {
+                    "id": leaf["id"],
+                    "title": leaf.get("title") or "",
+                    "level": int(leaf.get("level") or 1),
+                },
+                "points": points_by_item.get(leaf["id"], []),
+            }
+        )
+    return result, max_level

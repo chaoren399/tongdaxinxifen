@@ -2762,6 +2762,28 @@ def api_page_k_remove_stock_from_concept():
     return jsonify({"ok": True, "new_concept": new_val, "changed": changed})
 
 
+def _format_review_item(item):
+    """给一条复盘补上展示字段：标题 / 星期 / 字数 / 摘要。"""
+    import datetime as _dt
+
+    weekday_cn = "一二三四五六日"
+    raw = (item.get("review_date") or "").strip()
+    try:
+        day = _dt.date.fromisoformat(raw)
+    except ValueError:
+        item["title"] = raw + "复盘"
+        item["weekday"] = ""
+    else:
+        # 标题形如：2026年11月10日复盘
+        item["title"] = "%d年%d月%d日复盘" % (day.year, day.month, day.day)
+        item["weekday"] = "周" + weekday_cn[day.weekday()]
+    content = item.get("content") or ""
+    item["char_count"] = len(re.sub(r"\s+", "", content))
+    first_line = next((ln.strip() for ln in content.splitlines() if ln.strip()), "")
+    item["summary"] = first_line[:80]
+    return item
+
+
 @app.route("/pageU")
 def page_u():
     """页面 U：每日复盘（按日期倒序列表，支持新增/编辑/删除/查看）。"""
@@ -2771,30 +2793,16 @@ def page_u():
         ensure_daily_reviews_table,
         get_daily_review_stats,
         list_daily_reviews,
+        list_review_top_titles,
     )
 
     ensure_daily_reviews_table()
-    reviews = list_daily_reviews()
-    weekday_cn = "一二三四五六日"
-
+    reviews = [_format_review_item(r) for r in list_daily_reviews()]
+    # 正文为空的复盘，用一级条目名称兜底做摘要
+    titles = list_review_top_titles([r["id"] for r in reviews])
     for item in reviews:
-        raw = (item.get("review_date") or "").strip()
-        try:
-            day = _dt.date.fromisoformat(raw)
-        except ValueError:
-            item["title"] = raw + "复盘"
-            item["weekday"] = ""
-        else:
-            # 标题形如：2026年11月10日复盘
-            item["title"] = "%d年%d月%d日复盘" % (day.year, day.month, day.day)
-            item["weekday"] = "周" + weekday_cn[day.weekday()]
-        content = item.get("content") or ""
-        item["char_count"] = len(re.sub(r"\s+", "", content))
-        first_line = next(
-            (ln.strip() for ln in content.splitlines() if ln.strip()), ""
-        )
-        item["summary"] = first_line[:80]
-
+        if not item["summary"]:
+            item["summary"] = "、".join(titles.get(item["id"], [])[:3])
     stats = get_daily_review_stats()
     resp = make_response(
         render_template(
@@ -2806,6 +2814,152 @@ def page_u():
     )
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+@app.route("/pageU/edit/<int:rid>")
+def page_u_edit(rid):
+    """页面 U 的复盘条目编辑专用页（对应页面 K 的 /pageK/edit/<id>）。
+
+    复盘数据存在独立表 daily_reviews 中，只读写这一张表，不涉及概念/股票表。
+    """
+    from db import ensure_daily_reviews_table, get_daily_review
+
+    ensure_daily_reviews_table()
+    review = get_daily_review(rid)
+    if review is None:
+        abort(404)
+    _format_review_item(review)
+    resp = make_response(render_template("pageUEdit.html", review=review))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.route("/api/pageU/tree")
+def api_pageU_tree():
+    """取某条复盘的层级条目大表数据（一级/二级…+ 要点），结构对齐页面 K。"""
+    from db import (
+        build_review_rows,
+        ensure_daily_reviews_table,
+        ensure_review_tree_tables,
+        get_daily_review,
+        list_review_items,
+        list_review_points,
+    )
+
+    try:
+        review_id = int(request.args.get("review_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 review_id"}), 400
+    ensure_daily_reviews_table()
+    ensure_review_tree_tables()
+    if get_daily_review(review_id) is None:
+        return jsonify({"ok": False, "error": "复盘记录不存在"}), 404
+    items = list_review_items(review_id)
+    points = list_review_points([i["id"] for i in items])
+    rows, max_level = build_review_rows(items, points)
+    return jsonify(
+        {
+            "ok": True,
+            "rows": rows,
+            "max_level": max_level,
+            "item_count": len(items),
+            "point_count": sum(len(v) for v in points.values()),
+        }
+    )
+
+
+@app.route("/api/pageU/item/add", methods=["POST"])
+def api_pageU_item_add():
+    """新增复盘条目：{"review_id": 1, "parent_id": null, "title": "大盘"}"""
+    from db import add_review_item
+    payload = request.get_json(silent=True) or {}
+    try:
+        review_id = int(payload.get("review_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 review_id"}), 400
+    parent_id = payload.get("parent_id")
+    if parent_id in ("", None):
+        parent_id = None
+    else:
+        try:
+            parent_id = int(parent_id)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "上级条目 id 无效"}), 400
+    try:
+        item_id = add_review_item(review_id, payload.get("title", ""), parent_id)
+        return jsonify({"ok": True, "id": item_id})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/pageU/item/rename", methods=["POST"])
+def api_pageU_item_rename():
+    """条目改名：{"id": 1, "title": "新名称"}"""
+    from db import rename_review_item
+    payload = request.get_json(silent=True) or {}
+    try:
+        item_id = int(payload.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 id"}), 400
+    try:
+        ok = rename_review_item(item_id, payload.get("title", ""))
+        return jsonify({"ok": True, "updated": ok})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/pageU/item/delete", methods=["POST"])
+def api_pageU_item_delete():
+    """删除条目及其下级：{"id": 1}"""
+    from db import delete_review_item
+    payload = request.get_json(silent=True) or {}
+    try:
+        item_id = int(payload.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 id"}), 400
+    try:
+        removed = delete_review_item(item_id)
+        return jsonify({"ok": True, "removed": removed})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/pageU/point/add", methods=["POST"])
+def api_pageU_point_add():
+    """给末级条目批量加点：{"item_id": 3, "contents": ["…", "…"]}"""
+    from db import add_review_points
+    payload = request.get_json(silent=True) or {}
+    try:
+        item_id = int(payload.get("item_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 item_id"}), 400
+    try:
+        added = add_review_points(item_id, payload.get("contents") or [])
+        return jsonify({"ok": True, "added": added})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/pageU/point/delete", methods=["POST"])
+def api_pageU_point_delete():
+    """删除一条要点：{"id": 1}"""
+    from db import delete_review_point
+    payload = request.get_json(silent=True) or {}
+    try:
+        point_id = int(payload.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 id"}), 400
+    try:
+        ok = delete_review_point(point_id)
+        return jsonify({"ok": True, "deleted": ok})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 
 @app.route("/api/pageU/add", methods=["POST"])
