@@ -40,6 +40,10 @@ os.makedirs(STOCK_IMAGES_DIR, exist_ok=True)
 app.config["STOCK_IMAGES_DIR"] = STOCK_IMAGES_DIR
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+# 复盘配图（页面 U）：data/fupan_images/<年>/<月>/，按上传日期自动归档
+FUPAN_IMAGES_DIR = os.path.join(os.path.dirname(DB_FILE), "fupan_images")
+os.makedirs(FUPAN_IMAGES_DIR, exist_ok=True)
+app.config["FUPAN_IMAGES_DIR"] = FUPAN_IMAGES_DIR
 # 单只股票最多可保存的图片张数
 MAX_IMAGES_PER_STOCK = 20
 
@@ -2946,6 +2950,118 @@ def api_pageU_point_add():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
+@app.route("/fupan_images/<path:subpath>")
+def fupan_image_file(subpath):
+    """访问复盘配图：/fupan_images/2026/11/xxxx.png"""
+    return send_from_directory(app.config["FUPAN_IMAGES_DIR"], subpath)
+
+
+def _remove_fupan_file(rel_path):
+    """按相对路径删除 data/fupan_images/ 下的图片文件（防目录穿越）。"""
+    if not rel_path:
+        return
+    root = os.path.normpath(app.config["FUPAN_IMAGES_DIR"])
+    full = os.path.normpath(
+        os.path.join(root, str(rel_path).replace("/", os.sep))
+    )
+    if not full.startswith(root + os.sep):
+        return
+    if os.path.exists(full):
+        try:
+            os.remove(full)
+        except OSError:
+            pass
+
+
+@app.route("/api/pageU/images")
+def api_pageU_images():
+    """取某条复盘的配图列表，按 B1 / B2 分组。"""
+    from db import list_review_images
+    try:
+        review_id = int(request.args.get("review_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 review_id"}), 400
+    grouped = {"B1": [], "B2": []}
+    for img in list_review_images(review_id):
+        grouped.setdefault(img["slot"], []).append(
+            {
+                "id": img["id"],
+                "url": "/fupan_images/" + img["file_path"],
+                "original_name": img["original_name"],
+                "created_at": img["created_at"],
+            }
+        )
+    return jsonify({"ok": True, "images": grouped})
+
+
+@app.route("/api/pageU/image/upload", methods=["POST"])
+def api_pageU_image_upload():
+    """上传复盘配图：form 字段 review_id / slot(B1|B2) / file（可多个文件循环调用）。
+
+    文件按当天日期自动存入 data/fupan_images/<年>/<月>/。
+    """
+    import datetime as _dt
+
+    from db import add_review_image, get_daily_review
+    try:
+        review_id = int(request.form.get("review_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 review_id"}), 400
+    slot = request.form.get("slot", "B1")
+    if slot not in ("B1", "B2"):
+        return jsonify({"ok": False, "error": "图片位置无效"}), 400
+    f = request.files.get("file")
+    if f is None or not f.filename:
+        return jsonify({"ok": False, "error": "请选择图片文件"}), 400
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in ALLOWED_IMAGE_EXTS:
+        return jsonify({"ok": False, "error": "仅支持 png/jpg/jpeg/gif/webp/bmp"}), 400
+    if get_daily_review(review_id) is None:
+        return jsonify({"ok": False, "error": "复盘记录不存在"}), 404
+
+    now = _dt.date.today()
+    rel_dir = "%04d/%02d" % (now.year, now.month)
+    abs_dir = os.path.join(FUPAN_IMAGES_DIR, str(now.year), "%02d" % now.month)
+    os.makedirs(abs_dir, exist_ok=True)
+    filename = uuid.uuid4().hex[:16] + ext
+    f.save(os.path.join(abs_dir, filename))
+
+    try:
+        img_id = add_review_image(
+            review_id, slot, rel_dir + "/" + filename, f.filename
+        )
+    except ValueError as exc:
+        _remove_fupan_file(rel_dir + "/" + filename)
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify(
+        {
+            "ok": True,
+            "id": img_id,
+            "slot": slot,
+            "url": "/fupan_images/" + rel_dir + "/" + filename,
+        }
+    )
+
+
+@app.route("/api/pageU/image/delete", methods=["POST"])
+def api_pageU_image_delete():
+    """删除一张配图（记录与文件一起删除）：{"id": 1}"""
+    from db import delete_review_image
+    payload = request.get_json(silent=True) or {}
+    try:
+        image_id = int(payload.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 id"}), 400
+    try:
+        rel_path = delete_review_image(image_id)
+        if rel_path is None:
+            return jsonify({"ok": False, "error": "图片不存在"}), 404
+        _remove_fupan_file(rel_path)
+        return jsonify({"ok": True, "deleted": True})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
 @app.route("/api/pageU/point/replace", methods=["POST"])
 def api_pageU_point_replace():
     """整体替换某条目的要点列表：{"item_id": 3, "contents": ["…", "…"]}
@@ -3021,15 +3137,18 @@ def api_pageU_update():
 
 @app.route("/api/pageU/delete", methods=["POST"])
 def api_pageU_delete():
-    """删除一条每日复盘。"""
-    from db import delete_daily_review
+    """删除一条每日复盘（连同层级条目、要点与配图文件）。"""
+    from db import delete_daily_review, list_review_image_paths
     payload = request.get_json(silent=True) or {}
     try:
         review_id = int(payload.get("id"))
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "缺少 id"}), 400
     try:
+        image_paths = list_review_image_paths(review_id)
         ok = delete_daily_review(review_id)
+        for rel_path in image_paths:
+            _remove_fupan_file(rel_path)
         return jsonify({"ok": True, "deleted": ok})
     except Exception as exc:  # noqa: BLE001
         return jsonify({"ok": False, "error": str(exc)}), 500

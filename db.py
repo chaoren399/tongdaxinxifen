@@ -3768,9 +3768,13 @@ def update_daily_review(review_id, review_date=None, content=None, db_path=None)
 
 
 def delete_daily_review(review_id, db_path=None):
-    """删除一条复盘（连同该复盘的层级条目与要点）。"""
+    """删除一条复盘（连同该复盘的层级条目、要点与配图记录）。
+
+    配图文件由调用方依据 list_review_image_paths 自行清理。
+    """
     ensure_daily_reviews_table(db_path)
     ensure_review_tree_tables(db_path)
+    ensure_review_images_table(db_path)
     conn = get_conn(db_path)
     try:
         cur = conn.cursor()
@@ -3784,6 +3788,7 @@ def delete_daily_review(review_id, db_path=None):
             cur.execute(
                 "DELETE FROM review_items WHERE review_id = ?", (review_id,)
             )
+        cur.execute("DELETE FROM review_images WHERE review_id = ?", (review_id,))
         cur.execute("DELETE FROM daily_reviews WHERE id = ?", (review_id,))
         conn.commit()
         return cur.rowcount > 0
@@ -4118,3 +4123,107 @@ def build_review_rows(items, points_by_item):
             }
         )
     return result, max_level
+
+
+# ---------------------------------------------------------------------------
+# 页面 U：复盘配图（B1 / B2 图片区）
+# 图片文件按上传日期存放在 data/fupan_images/<年>/<月>/ 目录，
+# 数据库只记录相对路径（如 2026/11/xxxx.png）。
+# ---------------------------------------------------------------------------
+
+FUPAN_IMAGE_ROOT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "data", "fupan_images"
+)
+
+REVIEW_IMAGE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS review_images (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    review_id     INTEGER NOT NULL,
+    slot          TEXT NOT NULL DEFAULT 'B1',
+    file_path     TEXT NOT NULL,
+    original_name TEXT NOT NULL DEFAULT '',
+    sort_order    INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_review_images_review ON review_images(review_id);
+"""
+
+
+def ensure_review_images_table(db_path=None):
+    """建复盘配图表。"""
+    conn = get_conn(db_path)
+    try:
+        conn.executescript(REVIEW_IMAGE_SCHEMA)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def add_review_image(review_id, slot, file_path, original_name="", db_path=None):
+    """登记一张复盘配图（slot 为 B1 / B2），返回新记录 id。"""
+    if slot not in ("B1", "B2"):
+        raise ValueError("图片位置无效（应为 B1 或 B2）")
+    ensure_daily_reviews_table(db_path)
+    ensure_review_images_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM daily_reviews WHERE id = ?", (review_id,))
+        if cur.fetchone() is None:
+            raise ValueError("复盘记录不存在")
+        cur.execute(
+            "SELECT COALESCE(MAX(sort_order), 0) FROM review_images "
+            "WHERE review_id = ? AND slot = ?",
+            (review_id, slot),
+        )
+        order = int(cur.fetchone()[0]) + 1
+        cur.execute(
+            "INSERT INTO review_images "
+            "(review_id, slot, file_path, original_name, sort_order, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (review_id, slot, file_path, (original_name or "")[:200], order,
+             _now_datetime_str()),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def list_review_images(review_id, db_path=None):
+    """列出某条复盘的全部配图（按 slot 与顺序）。"""
+    ensure_review_images_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, review_id, slot, file_path, original_name, created_at "
+            "FROM review_images WHERE review_id = ? "
+            "ORDER BY slot, sort_order, id",
+            (review_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def list_review_image_paths(review_id, db_path=None):
+    """取某条复盘全部配图的相对路径（删除复盘时清理文件用）。"""
+    return [img["file_path"] for img in list_review_images(review_id, db_path)]
+
+
+def delete_review_image(image_id, db_path=None):
+    """删除一条配图记录，返回其相对路径（文件由调用方删除）。"""
+    ensure_review_images_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT file_path FROM review_images WHERE id = ?", (image_id,))
+        row = cur.fetchone()
+        if row is None:
+            return None
+        cur.execute("DELETE FROM review_images WHERE id = ?", (image_id,))
+        conn.commit()
+        return row["file_path"]
+    finally:
+        conn.close()
