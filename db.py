@@ -3617,3 +3617,164 @@ def list_stocks_missing_business(limit=200, offset=0, db_path=None):
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 页面 U：每日复盘
+# ---------------------------------------------------------------------------
+
+REVIEW_SCHEMA = """
+CREATE TABLE IF NOT EXISTS daily_reviews (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    review_date TEXT NOT NULL UNIQUE,          -- 交易日，统一存 YYYY-MM-DD
+    content     TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_daily_reviews_date ON daily_reviews(review_date);
+"""
+
+_REVIEW_DATE_RE = re.compile(r"^(\d{4})\D{0,3}(\d{1,2})\D{0,3}(\d{1,2})\D{0,3}$")
+
+
+def normalize_review_date(value):
+    """把 2026-11-10 / 2026年11月10日 / 2026/11/10 统一成 2026-11-10。"""
+    text = (value or "").strip()
+    matched = _REVIEW_DATE_RE.match(text)
+    if not matched:
+        raise ValueError("日期格式应为 2026-11-10 或 2026年11月10日")
+    year, month, day = (int(x) for x in matched.groups())
+    try:
+        return datetime.date(year, month, day).isoformat()
+    except ValueError as exc:
+        raise ValueError("无效日期：%s" % text) from exc
+
+
+def ensure_daily_reviews_table(db_path=None):
+    """建「每日复盘」表。"""
+    conn = get_conn(db_path)
+    try:
+        conn.executescript(REVIEW_SCHEMA)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_daily_reviews(db_path=None):
+    """列出全部复盘，按复盘日期倒序（最新的一天在最前）。"""
+    ensure_daily_reviews_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, review_date, content, created_at, updated_at "
+            "FROM daily_reviews ORDER BY review_date DESC, id DESC"
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_daily_review(review_id, db_path=None):
+    """按 id 取单条复盘，不存在返回 None。"""
+    ensure_daily_reviews_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, review_date, content, created_at, updated_at "
+            "FROM daily_reviews WHERE id = ?",
+            (review_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_daily_review_stats(db_path=None):
+    """复盘统计：总数 / 本月数量 / 最近复盘日期。"""
+    ensure_daily_reviews_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM daily_reviews")
+        total = cur.fetchone()[0]
+        month_prefix = datetime.date.today().strftime("%Y-%m")
+        cur.execute(
+            "SELECT COUNT(*) FROM daily_reviews WHERE review_date LIKE ?",
+            (month_prefix + "-%",),
+        )
+        this_month = cur.fetchone()[0]
+        cur.execute("SELECT MAX(review_date) FROM daily_reviews")
+        latest = cur.fetchone()[0] or ""
+        return {"total": total, "month": this_month, "latest": latest}
+    finally:
+        conn.close()
+
+
+def add_daily_review(review_date, content="", db_path=None):
+    """新增一条复盘（同一天只允许一条），返回新记录 id。"""
+    day = normalize_review_date(review_date)
+    ensure_daily_reviews_table(db_path)
+    now = _now_datetime_str()
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "INSERT INTO daily_reviews (review_date, content, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?)",
+                (day, (content or "").strip(), now, now),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise ValueError("「%s」已有复盘记录，请直接编辑原记录" % day) from exc
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def update_daily_review(review_id, review_date=None, content=None, db_path=None):
+    """修改复盘的日期/内容；传 None 表示不修改该字段。"""
+    fields = []
+    values = []
+    if review_date is not None:
+        fields.append("review_date = ?")
+        values.append(normalize_review_date(review_date))
+    if content is not None:
+        fields.append("content = ?")
+        values.append(content.strip())
+    if not fields:
+        return False
+    fields.append("updated_at = ?")
+    values.append(_now_datetime_str())
+    values.append(review_id)
+    ensure_daily_reviews_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "UPDATE daily_reviews SET %s WHERE id = ?" % ", ".join(fields),
+                tuple(values),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise ValueError("目标日期已有复盘记录") from exc
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def delete_daily_review(review_id, db_path=None):
+    """删除一条复盘。"""
+    ensure_daily_reviews_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM daily_reviews WHERE id = ?", (review_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()

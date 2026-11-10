@@ -2762,6 +2762,104 @@ def api_page_k_remove_stock_from_concept():
     return jsonify({"ok": True, "new_concept": new_val, "changed": changed})
 
 
+@app.route("/pageU")
+def page_u():
+    """页面 U：每日复盘（按日期倒序列表，支持新增/编辑/删除/查看）。"""
+    import datetime as _dt
+
+    from db import (
+        ensure_daily_reviews_table,
+        get_daily_review_stats,
+        list_daily_reviews,
+    )
+
+    ensure_daily_reviews_table()
+    reviews = list_daily_reviews()
+    weekday_cn = "一二三四五六日"
+
+    for item in reviews:
+        raw = (item.get("review_date") or "").strip()
+        try:
+            day = _dt.date.fromisoformat(raw)
+        except ValueError:
+            item["title"] = raw + "复盘"
+            item["weekday"] = ""
+        else:
+            # 标题形如：2026年11月10日复盘
+            item["title"] = "%d年%d月%d日复盘" % (day.year, day.month, day.day)
+            item["weekday"] = "周" + weekday_cn[day.weekday()]
+        content = item.get("content") or ""
+        item["char_count"] = len(re.sub(r"\s+", "", content))
+        first_line = next(
+            (ln.strip() for ln in content.splitlines() if ln.strip()), ""
+        )
+        item["summary"] = first_line[:80]
+
+    stats = get_daily_review_stats()
+    resp = make_response(
+        render_template(
+            "pageU.html",
+            reviews=reviews,
+            stats=stats,
+            today=_dt.date.today().isoformat(),
+        )
+    )
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.route("/api/pageU/add", methods=["POST"])
+def api_pageU_add():
+    """新增一条每日复盘。"""
+    from db import add_daily_review
+    payload = request.get_json(silent=True) or {}
+    try:
+        review_id = add_daily_review(
+            payload.get("date", ""), payload.get("content", "")
+        )
+        return jsonify({"ok": True, "id": review_id})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/pageU/update", methods=["POST"])
+def api_pageU_update():
+    """修改每日复盘的日期或内容。"""
+    from db import update_daily_review
+    payload = request.get_json(silent=True) or {}
+    try:
+        review_id = int(payload.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 id"}), 400
+    try:
+        ok = update_daily_review(
+            review_id, payload.get("date"), payload.get("content")
+        )
+        return jsonify({"ok": True, "updated": ok})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/pageU/delete", methods=["POST"])
+def api_pageU_delete():
+    """删除一条每日复盘。"""
+    from db import delete_daily_review
+    payload = request.get_json(silent=True) or {}
+    try:
+        review_id = int(payload.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 id"}), 400
+    try:
+        ok = delete_daily_review(review_id)
+        return jsonify({"ok": True, "deleted": ok})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
 if __name__ == "__main__":
     import os as _os
     port = int(_os.environ.get("PORT", "5050"))
