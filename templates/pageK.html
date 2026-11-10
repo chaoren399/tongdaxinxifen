@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>K · 概念表编辑（{{concepts|length}} 个概念）</title>
+    <title>概念 · 概念表编辑（{{concepts|length}} 个概念）</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=50" />
 </head>
@@ -14,7 +14,7 @@
             <a href="{{ url_for('page_a') }}">页面 A</a>
             <a href="{{ url_for('page_b') }}">页面 B</a>
             <a href="{{ url_for('page_d') }}">页面 D</a>
-            <a class="active" href="{{ url_for('page_k') }}">页面 K</a>
+            <a class="active" href="{{ url_for('page_k') }}">概念</a>
             <a href="{{ url_for('page_l') }}">页面 L</a>
             <a href="{{ url_for('page_p') }}">页面 P</a>
             <a href="{{ url_for('page_r') }}" target="_blank" rel="noopener">周期</a>
@@ -336,7 +336,7 @@
             var name = document.getElementById('addName').value.trim();
             var desc = document.getElementById('addDesc').value.trim();
             if (!name) return;
-            // 页面 K 只新增一级概念；子级到编辑页中维护
+            // 概念页只新增一级概念；子级到编辑页中维护
             var body = { name: name, description: desc, parent_id: null };
             var btn = addForm.querySelector('button[type="submit"]');
             btn.disabled = true;

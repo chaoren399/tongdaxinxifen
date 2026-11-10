@@ -1,8 +1,8 @@
-{# ===== 概念编辑页（页面 K 编辑页）共享片段 ===== #}
-{# 页面 K 编辑页与页面 H「样式 C」通过引入本片段做到 100% 一致。 #}
+{# ===== 概念编辑页共享片段 ===== #}
+{# 概念编辑页与页面 H「样式 C」通过引入本片段做到 100% 一致。 #}
 {# 依赖服务端注入变量：concept（当前概念，含 id/name/level/path/description/code）、concepts（全量列表，tojson） #}
 <style>
-    /* ===== 页面 K 编辑页：概念层级大表（沿用页面 H 表格风格）===== */
+    /* ===== 概念编辑页：概念层级大表（沿用页面 H 表格风格）===== */
     .ket-head {
         display: flex;
         flex-wrap: wrap;
@@ -222,7 +222,7 @@
             <span class="ke-path">{{ concept.path }}</span>
         </div>
         <div class="ke-head-actions">
-            <button class="btn-secondary" id="backBtn" type="button">← 返回页面 K</button>
+            <button class="btn-secondary" id="backBtn" type="button">← 返回概念</button>
         </div>
     </div>
 
@@ -285,7 +285,7 @@ var hlAutoScrolled = false;
         }, 2600);
     }
 
-    // ---- 返回页面 K ----
+    // ---- 返回概念页 ----
     document.getElementById('backBtn').addEventListener('click', function () {
         window.location.href = '/pageK';
     });

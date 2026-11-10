@@ -132,7 +132,7 @@
             <a href="{{ url_for('page_a') }}">页面 A</a>
             <a href="{{ url_for('page_b') }}">页面 B</a>
             <a href="{{ url_for('page_d') }}">页面 D</a>
-            <a href="{{ url_for('page_k') }}">页面 K</a>
+            <a href="{{ url_for('page_k') }}">概念</a>
             <a href="{{ url_for('page_l') }}">页面 L</a>
             <a href="{{ url_for('page_p') }}">页面 P</a>
             <a href="{{ url_for('page_r') }}" target="_blank" rel="noopener">周期</a>
@@ -207,7 +207,7 @@
             </table>
         </div>
 
-        <!-- 样式 C：原生嵌入页面 K 编辑页（与 /pageK/edit 完全一致） -->
+        <!-- 样式 C：原生嵌入概念编辑页（与 /pageK/edit 完全一致） -->
         <div id="styleC" style="display:none; margin-top: 12px;">
             {% if pk_concept %}
                 {% with concept=pk_concept, concepts=concepts %}
