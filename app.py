@@ -2946,6 +2946,27 @@ def api_pageU_point_add():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
+@app.route("/api/pageU/point/replace", methods=["POST"])
+def api_pageU_point_replace():
+    """整体替换某条目的要点列表：{"item_id": 3, "contents": ["…", "…"]}
+
+    contents 为空表示清空该条目的全部要点。
+    """
+    from db import replace_review_points
+    payload = request.get_json(silent=True) or {}
+    try:
+        item_id = int(payload.get("item_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 item_id"}), 400
+    try:
+        count = replace_review_points(item_id, payload.get("contents") or [])
+        return jsonify({"ok": True, "count": count})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
 @app.route("/api/pageU/point/delete", methods=["POST"])
 def api_pageU_point_delete():
     """删除一条要点：{"id": 1}"""

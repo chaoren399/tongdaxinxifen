@@ -4019,6 +4019,34 @@ def add_review_points(item_id, contents, db_path=None):
         conn.close()
 
 
+def replace_review_points(item_id, contents, db_path=None):
+    """整体替换某条目的要点列表（按传入顺序重建），返回新要点数量。
+
+    contents 为空列表表示清空该条目的全部要点。
+    """
+    clean = [str(c).strip() for c in (contents or []) if str(c).strip()]
+    ensure_review_tree_tables(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM review_items WHERE id = ?", (item_id,))
+        if cur.fetchone() is None:
+            raise ValueError("条目不存在")
+        now = _now_datetime_str()
+        cur.execute("DELETE FROM review_points WHERE item_id = ?", (item_id,))
+        for order, text in enumerate(clean, 1):
+            cur.execute(
+                "INSERT INTO review_points "
+                "(item_id, content, sort_order, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (item_id, text, order, now, now),
+            )
+        conn.commit()
+        return len(clean)
+    finally:
+        conn.close()
+
+
 def delete_review_point(point_id, db_path=None):
     """删除一条要点。"""
     ensure_review_tree_tables(db_path)

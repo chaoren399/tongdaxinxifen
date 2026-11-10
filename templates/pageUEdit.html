@@ -103,19 +103,29 @@
         }
         .ue-point:hover .ue-point-x { opacity: 1; }
         .concept-level-table.ue-table.ue-show-del .ue-point-x { opacity: .55; }
-        .ue-point-add {
+        .ue-point-edit {
             margin-left: 4px;
-            padding: 0 5px;
-            border: 1px dashed #93c5fd;
-            border-radius: 4px;
+            width: 20px;
+            height: 20px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
             background: #fff;
-            color: #2563eb;
-            font-size: 12px;
-            line-height: 18px;
+            color: #9ca3af;
             cursor: pointer;
             vertical-align: middle;
+            transition: all 0.12s;
         }
-        .ue-point-add:hover { background: #eff6ff; border-style: solid; }
+        .ue-point-edit:hover {
+            background: #eff6ff;
+            border-color: #93c5fd;
+            color: #2563eb;
+        }
+        .ue-point-edit svg { display: block; }
+        .ue-point-edit[hidden] { display: none; }
         .ue-placeholder { color: #d1d5db; }
 
         /* 复盘正文 / 记录信息 */
@@ -140,6 +150,21 @@
             box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
         }
         .ue-textarea { resize: vertical; min-height: 240px; line-height: 1.8; }
+        /* B 区：复盘正文上方的预留空白，分左右 B1 / B2 两块 */
+        .ue-blank-b {
+            height: 140px;
+            display: flex;
+            gap: 12px;
+        }
+        .ue-blank-b1,
+        .ue-blank-b2 {
+            flex: 1;
+            min-width: 0;
+            /* 以下虚线框仅为占位提示，放入实际内容后可删除 */
+            border: 1px dashed #e5e7eb;
+            border-radius: 12px;
+        }
+        .ue-blank-b1 { margin-right: 0; }
         .ue-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
         .ue-count { font-size: 12px; color: #9ca3af; }
         .ue-toolbar .ue-actions { margin-left: auto; display: flex; gap: 10px; }
@@ -227,12 +252,14 @@
                 <span class="cs-title">复盘层级总览（<span id="tblCount">0</span> 条）</span>
                 <span class="ue-tip">
                     点击条目名可改名，点「＋」新增下一级条目（最多五级），点「✕」删除条目及其下级；
-                    末级条目可在「要点」列添加多条要点。
+                    末级条目可在「要点」列点「编辑」增删改要点。
                 </span>
                 <span class="ue-head-btns">
                     <button class="ue-btn-sm is-primary" id="addRootBtn" type="button">＋ 新增一级条目</button>
                     <button class="ue-btn-sm" id="toggleDelBtn" type="button"
                             title="显示 / 隐藏所有删除按钮">显示删除</button>
+                    <button class="ue-btn-sm is-on" id="togglePlusBtn" type="button"
+                            title="显示 / 隐藏条目「＋」和要点「编辑」按钮">显示＋</button>
                 </span>
             </div>
 
@@ -242,6 +269,12 @@
                     <tr><td class="ue-empty" colspan="99">加载中...</td></tr>
                 </tbody>
             </table>
+        </div>
+
+        <!-- ===== B 区（预留空白，左 B1 / 右 B2） ===== -->
+        <div class="ue-blank-b">
+            <div class="ue-blank-b1"></div>
+            <div class="ue-blank-b2"></div>
         </div>
 
         <!-- ===== 复盘正文 ===== -->
@@ -283,16 +316,16 @@
         </div>
     </main>
 
-    <!-- ===== 批量添加要点弹窗 ===== -->
+    <!-- ===== 编辑要点弹窗 ===== -->
     <div class="modal-mask" id="pointModal" hidden>
         <div class="modal-box ue-modal">
-            <h3>添加要点</h3>
+            <h3>编辑要点</h3>
             <p class="ue-tip" id="pointModalPath"></p>
             <textarea id="pointModalInput" rows="6" placeholder="缩量反弹，成交额 8000 亿&#10;机器人方向出现分歧&#10;明日关注低位首板"></textarea>
-            <p class="ue-modal-tip">每行一条要点，也可用逗号 / 顿号 / 分号分隔；Ctrl + Enter 提交</p>
+            <p class="ue-modal-tip">每行一条要点；新增一行即追加要点，删除或修改某行后保存即生效；清空全部行会删除该条目的所有要点。Ctrl + Enter 保存</p>
             <div class="modal-actions">
                 <button class="btn-secondary" id="pointModalCancel" type="button">取消</button>
-                <button class="btn-danger" id="pointModalOk" type="button">添加</button>
+                <button class="btn-primary" id="pointModalOk" type="button">保存</button>
             </div>
         </div>
     </div>
@@ -308,9 +341,11 @@
         var tblBody = document.getElementById('tblBody');
         var tblCount = document.getElementById('tblCount');
         var toggleDelBtn = document.getElementById('toggleDelBtn');
+        var togglePlusBtn = document.getElementById('togglePlusBtn');
         var addRootBtn = document.getElementById('addRootBtn');
 
         var showDelBtns = false;
+        var showPlusBtns = false;
         var maxLevel = 2;          // 至少展示「1 级复盘 / 2 级复盘」两列
         var reqSeq = 0;
 
@@ -349,19 +384,29 @@
             }, 2600);
         }
 
-        // ---- 显示 / 隐藏删除按钮 ----
-        function applyDelState() {
-            tblBody.querySelectorAll('.ue-mini.is-del').forEach(function (b) {
+        // ---- 显示 / 隐藏删除、＋ 和要点编辑按钮 ----
+        function applyBtnState() {
+            tblBody.querySelectorAll('.ue-mini.is-del, .ue-point-x').forEach(function (b) {
                 b.hidden = !showDelBtns;
+            });
+            tblBody.querySelectorAll('.ue-mini.is-add, .ue-point-edit').forEach(function (b) {
+                b.hidden = !showPlusBtns;
             });
             document.querySelector('.ue-table').classList.toggle('ue-show-del', showDelBtns);
             toggleDelBtn.textContent = showDelBtns ? '隐藏删除' : '显示删除';
             toggleDelBtn.classList.toggle('is-on', showDelBtns);
+            togglePlusBtn.textContent = showPlusBtns ? '隐藏＋' : '显示＋';
+            togglePlusBtn.classList.toggle('is-on', !showPlusBtns);
         }
 
         toggleDelBtn.addEventListener('click', function () {
             showDelBtns = !showDelBtns;
-            applyDelState();
+            applyBtnState();
+        });
+
+        togglePlusBtn.addEventListener('click', function () {
+            showPlusBtns = !showPlusBtns;
+            applyBtnState();
         });
 
         // ---- 加载 / 渲染层级表 ----
@@ -417,7 +462,7 @@
                 td0.colSpan = maxLevel + 1;
                 tr0.appendChild(td0);
                 tblBody.appendChild(tr0);
-                applyDelState();
+                applyBtnState();
                 return;
             }
 
@@ -441,7 +486,7 @@
                 tblBody.appendChild(tr);
             });
 
-            applyDelState();
+            applyBtnState();
         }
 
         function buildLevelTd(cell, level) {
@@ -456,7 +501,7 @@
 
             var acts = el('span', 'ue-cell-acts');
 
-            var addBtn = el('button', 'ue-mini', '＋');
+            var addBtn = el('button', 'ue-mini is-add', '＋');
             addBtn.type = 'button';
             addBtn.disabled = level >= MAX_LEVEL;
             addBtn.title = level >= MAX_LEVEL
@@ -505,6 +550,7 @@
                     var x = el('button', 'ue-point-x', '×');
                     x.type = 'button';
                     x.title = '删除该要点';
+                    x.hidden = !showDelBtns;
                     x.addEventListener('click', function () {
                         if (!confirm('确定删除这条要点？\n\n' + p.content)) return;
                         x.disabled = true;
@@ -525,11 +571,15 @@
                 });
             }
 
-            var plus = el('button', 'ue-point-add', '＋');
-            plus.type = 'button';
-            plus.title = '给「' + (row.leaf.title || '') + '」添加要点';
-            plus.addEventListener('click', function () { openPointModal(row.leaf); });
-            td.appendChild(plus);
+            var editBtn = el('button', 'ue-point-edit');
+            editBtn.type = 'button';
+            editBtn.title = '编辑「' + (row.leaf.title || '') + '」的要点（可增 / 删 / 改）';
+            editBtn.innerHTML =
+                '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+                + ' stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">'
+                + '<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>';
+            editBtn.addEventListener('click', function () { openPointModal(row.leaf, points); });
+            td.appendChild(editBtn);
             return td;
         }
 
@@ -668,17 +718,21 @@
             input.focus();
         });
 
-        // ---- 批量添加要点 ----
+        // ---- 编辑要点（弹窗内整体维护：增 / 删 / 改）----
         var pointModal = document.getElementById('pointModal');
         var pointModalInput = document.getElementById('pointModalInput');
         var pointModalPath = document.getElementById('pointModalPath');
         var pointModalOk = document.getElementById('pointModalOk');
-        var pointTarget = null;
+        var pointTarget = null;   // { item: 条目, original: [原要点文本] }
 
-        function openPointModal(leaf) {
-            pointTarget = leaf;
-            pointModalPath.textContent = '将添加到条目：「' + (leaf.title || '') + '」';
-            pointModalInput.value = '';
+        function openPointModal(leaf, points) {
+            pointTarget = {
+                item: leaf,
+                original: (points || []).map(function (p) { return p.content; })
+            };
+            pointModalPath.textContent = '正在编辑条目：「' + (leaf.title || '') + '」的要点（现有 '
+                + pointTarget.original.length + ' 条）';
+            pointModalInput.value = pointTarget.original.join('\n');
             pointModalOk.disabled = false;
             pointModal.hidden = false;
             pointModalInput.focus();
@@ -692,16 +746,21 @@
         function submitPointModal() {
             if (!pointTarget) return;
             var raw = (pointModalInput.value || '').trim();
-            if (!raw) { toast('请输入要点内容', false); return; }
-            var list = raw.split(/[,，、;；\n\r\t]+/)
+            var list = raw.split(/[\n\r]+/)
                 .map(function (s) { return s.trim(); })
                 .filter(Boolean);
-            if (!list.length) { toast('请输入要点内容', false); return; }
+            var original = pointTarget.original;
+            var unchanged = list.length === original.length
+                && list.every(function (v, i) { return v === original[i]; });
+            if (unchanged) { closePointModal(); return; }
+            if (!list.length && original.length) {
+                if (!window.confirm('确定清空「' + pointTarget.item.title + '」的全部要点？')) return;
+            }
             pointModalOk.disabled = true;
-            api('/api/pageU/point/add', { item_id: pointTarget.id, contents: list })
+            api('/api/pageU/point/replace', { item_id: pointTarget.item.id, contents: list })
                 .then(function (resp) {
                     if (resp.body && resp.body.ok) {
-                        toast('已添加 ' + resp.body.added + ' 条要点', true);
+                        toast('已保存 ' + resp.body.count + ' 条要点', true);
                         closePointModal();
                         loadTree();
                     } else {
