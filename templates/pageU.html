@@ -130,8 +130,29 @@
 
     <main class="container">
         <div class="pk2-layout">
-            <!-- ===== 左侧：复盘统计 / 查询复盘 / 新增复盘 ===== -->
+            <!-- ===== 左侧：新增复盘 / 复盘统计 / 查询复盘 ===== -->
             <aside class="pk2-side">
+                <section class="pk2-card add-concept-panel">
+                    <div class="add-concept-head">
+                        <h3>新增复盘</h3>
+                        <p class="add-concept-tip">每天一条复盘，同一天重复新增会提示；已有记录请用右侧「编辑」修改。</p>
+                    </div>
+                    <form id="addForm" class="rv-form" autocomplete="off">
+                        <div class="field">
+                            <label for="addDate">复盘日期 <span class="req">*</span></label>
+                            <input id="addDate" class="rv-input" type="date" value="{{ today }}" required />
+                        </div>
+                        <div class="field">
+                            <label for="addContent">复盘内容</label>
+                            <textarea id="addContent" class="rv-textarea"
+                                      placeholder="大盘 / 情绪 / 主线题材 / 个股操作 / 明日计划…"></textarea>
+                        </div>
+                        <div class="field">
+                            <button type="submit" class="rv-submit">新增复盘</button>
+                        </div>
+                    </form>
+                </section>
+
                 <section class="pk2-card">
                     <h2 class="pk2-card-title">复盘统计</h2>
                     <div class="stat-row">
@@ -155,27 +176,6 @@
                     <input id="reviewSearch" class="rv-search" type="search"
                            placeholder="搜索日期 / 复盘内容..." />
                     <p class="pk2-tip">按复盘标题、星期或正文内容实时过滤右侧列表。</p>
-                </section>
-
-                <section class="pk2-card add-concept-panel">
-                    <div class="add-concept-head">
-                        <h3>新增复盘</h3>
-                        <p class="add-concept-tip">每天一条复盘，同一天重复新增会提示；已有记录请用右侧「编辑」修改。</p>
-                    </div>
-                    <form id="addForm" class="rv-form" autocomplete="off">
-                        <div class="field">
-                            <label for="addDate">复盘日期 <span class="req">*</span></label>
-                            <input id="addDate" class="rv-input" type="date" value="{{ today }}" required />
-                        </div>
-                        <div class="field">
-                            <label for="addContent">复盘内容</label>
-                            <textarea id="addContent" class="rv-textarea"
-                                      placeholder="大盘 / 情绪 / 主线题材 / 个股操作 / 明日计划…"></textarea>
-                        </div>
-                        <div class="field">
-                            <button type="submit" class="rv-submit">新增复盘</button>
-                        </div>
-                    </form>
                 </section>
             </aside>
 
