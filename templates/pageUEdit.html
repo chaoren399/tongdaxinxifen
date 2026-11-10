@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>U · 编辑「{{ review.title }}」</title>
+    <title>复盘 · 编辑「{{ review.title }}」</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=66" />
     <style>
-        /* 页面 U 编辑页：层级大表（1 级 / 2 级 … + 要点），交互对齐页面 K 编辑页 */
+        /* 复盘编辑页：层级大表（1 级 / 2 级 … + 要点），交互对齐页面 K 编辑页 */
         /* 顶部无导航栏，去掉 .container 的上边距，避免页面顶部留白 */
         body.page-u .container { margin-top: 0; }
         .ue-tbl-head {
@@ -297,7 +297,7 @@
                 </span>
             </div>
             <div class="ke-head-actions">
-                <button class="btn-secondary" id="backBtn" type="button">← 返回页面 U</button>
+                <button class="btn-secondary" id="backBtn" type="button">← 返回复盘</button>
             </div>
         </div>
 

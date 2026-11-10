@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>U · 每日复盘（{{ reviews|length }} 篇）</title>
+    <title>复盘 · 每日复盘（{{ reviews|length }} 篇）</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=66" />
     <style>
-        /* 页面 U：每日复盘（沿用页面 K 的左右分栏骨架） */
+        /* 复盘页：每日复盘（沿用页面 K 的左右分栏骨架） */
         .page-u .ct-name-link {
             color: #2563eb;
             text-decoration: none;
@@ -124,7 +124,7 @@
             <a href="{{ url_for('page_r') }}" target="_blank" rel="noopener">页面 R</a>
             <a href="{{ url_for('page_s') }}">页面 S</a>
             <a href="{{ url_for('page_t') }}">页面 T</a>
-            <a class="active" href="{{ url_for('page_u') }}">页面 U</a>
+            <a class="active" href="{{ url_for('page_u') }}">复盘</a>
         </nav>
     </header>
 
