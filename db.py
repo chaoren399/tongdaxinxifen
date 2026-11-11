@@ -2547,8 +2547,8 @@ def add_stock_image(tertiary_id, stock_name, filename, db_path=None):
         next_order = cur.fetchone()["next_order"]
         conn.execute(
             "INSERT INTO stock_images (stock_id, filename, sort_order, created_at) "
-            "VALUES (?, ?, ?, '')",
-            (stock_id, filename, next_order),
+            "VALUES (?, ?, ?, ?)",
+            (stock_id, filename, next_order, _now_datetime_str()),
         )
         _record_modification_in_conn(conn, stock_id)
         images = _list_images_conn(conn, stock_id)

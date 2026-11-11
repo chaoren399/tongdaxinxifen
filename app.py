@@ -1955,8 +1955,16 @@ def api_upload_stock_image():
         return jsonify({"ok": False, "error": "未找到该股票"}), 404
     stock_id = row["id"]
 
+    # 文件按当天日期归档到 data/stock_images/<年>/<月>/，DB 存相对路径
+    import datetime as _dt_up
+
+    _now = _dt_up.date.today()
+    rel_dir = "%04d/%02d" % (_now.year, _now.month)
+    abs_dir = os.path.join(STOCK_IMAGES_DIR, "%04d" % _now.year, "%02d" % _now.month)
+    os.makedirs(abs_dir, exist_ok=True)
     new_filename = f"{stock_id}_{uuid.uuid4().hex[:10]}{ext}"
-    new_abs = os.path.join(STOCK_IMAGES_DIR, new_filename)
+    rel_path = rel_dir + "/" + new_filename
+    new_abs = os.path.join(abs_dir, new_filename)
 
     # 保存新文件
     try:
@@ -1966,7 +1974,7 @@ def api_upload_stock_image():
 
     # 写 DB（追加一条图片记录）
     try:
-        images = add_stock_image(tid, name, new_filename)
+        images = add_stock_image(tid, name, rel_path)
     except LookupError as e:
         _safe_remove(new_abs)
         return jsonify({"ok": False, "error": str(e)}), 404
@@ -1995,6 +2003,99 @@ def _safe_remove(abs_path):
             os.remove(abs_path)
     except OSError:
         pass
+
+
+def _stock_image_abs(rel_path):
+    """把相对路径转为 stock_images 目录下的绝对路径（防目录穿越），非法返回 None。"""
+    rel = str(rel_path or "").replace("\\", "/").lstrip("/")
+    if not rel or any(p in ("", ".", "..") for p in rel.split("/")):
+        return None
+    return os.path.join(STOCK_IMAGES_DIR, *rel.split("/"))
+
+
+def _migrate_stock_image_dirs():
+    """
+    把旧的平铺图片（data/stock_images/xxx.png）迁移到 <年>/<月>/ 子目录，
+    并把 DB 中 filename 更新为相对路径（如 2026/11/xxx.png）。幂等，可重复执行。
+
+    日期来源：优先 stock_images.created_at，其次文件修改时间。
+    """
+    import datetime as _dt_mig
+
+    from db import get_conn
+
+    # 先扫描子目录，建立「文件名 -> 已归档相对路径」映射：
+    # 用于处理「文件已归档但 DB 记录仍是平铺名」的历史遗留情况
+    archived = {}
+    for dirpath, _dirnames, filenames in os.walk(STOCK_IMAGES_DIR):
+        rel_dir = os.path.relpath(dirpath, STOCK_IMAGES_DIR).replace("\\", "/")
+        if rel_dir == ".":
+            continue  # 跳过根目录（尚未归档的平铺文件不算已归档）
+        for fn in filenames:
+            archived.setdefault(fn, rel_dir + "/" + fn)
+
+    moved = 0
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, filename, created_at FROM stock_images")
+        rows = cur.fetchall()
+        for r in rows:
+            fn = (r["filename"] or "").strip()
+            if not fn or "/" in fn:
+                continue  # 已是新格式或空
+            new_rel = None
+            old_abs = os.path.join(STOCK_IMAGES_DIR, fn)
+            if fn in archived and os.path.exists(
+                os.path.join(STOCK_IMAGES_DIR, *archived[fn].split("/"))
+            ):
+                # 文件已在子目录（历史遗留），直接对齐 DB 记录
+                new_rel = archived[fn]
+            elif os.path.exists(old_abs):
+                # 日期：优先 created_at（YYYY-MM-DD ...），否则文件修改时间
+                mt = re.match(r"^(\d{4})-(\d{2})", (r["created_at"] or "").strip())
+                if mt:
+                    y, m = int(mt.group(1)), int(mt.group(2))
+                else:
+                    ts = _dt_mig.datetime.fromtimestamp(os.stat(old_abs).st_mtime)
+                    y, m = ts.year, ts.month
+                new_rel = "%04d/%02d/%s" % (y, m, fn)
+                dest_dir = os.path.join(STOCK_IMAGES_DIR, "%04d" % y, "%02d" % m)
+                os.makedirs(dest_dir, exist_ok=True)
+                dest = os.path.join(dest_dir, fn)
+                if not os.path.exists(dest):
+                    os.rename(old_abs, dest)
+            else:
+                continue  # 磁盘上找不到该文件，保持原样
+            cur.execute(
+                "UPDATE stock_images SET filename = ? WHERE id = ?",
+                (new_rel, r["id"]),
+            )
+            moved += 1
+        conn.commit()
+    finally:
+        conn.close()
+
+    # DB 无记录、散落在目录根的旧文件：按文件修改时间归档
+    try:
+        for fn in os.listdir(STOCK_IMAGES_DIR):
+            full = os.path.join(STOCK_IMAGES_DIR, fn)
+            if not os.path.isfile(full):
+                continue
+            ts = _dt_mig.datetime.fromtimestamp(os.stat(full).st_mtime)
+            dest_dir = os.path.join(
+                STOCK_IMAGES_DIR, "%04d" % ts.year, "%02d" % ts.month
+            )
+            os.makedirs(dest_dir, exist_ok=True)
+            os.rename(full, os.path.join(dest_dir, fn))
+            moved += 1
+    except OSError:
+        pass
+    return moved
+
+
+# 启动期迁移：把旧平铺股票图片按上传/修改日期归档到 <年>/<月>/ 子目录（幂等）
+_migrate_stock_image_dirs()
 
 
 @app.route("/api/stock/delete_image", methods=["POST"])
@@ -2028,9 +2129,9 @@ def api_delete_stock_image():
 
     # 待删除的物理文件（basename 防止路径穿越）
     if filename:
-        to_remove = [os.path.basename(filename)]
+        to_remove = [filename]
     else:
-        to_remove = [os.path.basename(fn) for fn in (target.get("images") or [])]
+        to_remove = [fn for fn in (target.get("images") or [])]
 
     try:
         images = delete_stock_image(tid, name, filename)
@@ -2040,7 +2141,9 @@ def api_delete_stock_image():
         return jsonify({"ok": False, "error": f"数据库写入失败: {e}"}), 500
 
     for fn in to_remove:
-        _safe_remove(os.path.join(STOCK_IMAGES_DIR, fn))
+        _abs = _stock_image_abs(fn)
+        if _abs:
+            _safe_remove(_abs)
 
     target["images"] = images
     target["image_path"] = images[0] if images else ""
@@ -2050,11 +2153,11 @@ def api_delete_stock_image():
 
 @app.route("/stock_images/<path:filename>")
 def serve_stock_image(filename):
-    """提供股票图片的静态访问。"""
-    safe_name = os.path.basename(filename)
-    if safe_name != filename or "/" in filename or "\\" in filename:
+    """提供股票图片的静态访问，支持 <年>/<月>/<文件> 相对路径。"""
+    rel = filename.replace("\\", "/").lstrip("/")
+    if not rel or any(p in ("", ".", "..") for p in rel.split("/")):
         return jsonify({"ok": False, "error": "非法文件名"}), 400
-    return send_from_directory(STOCK_IMAGES_DIR, safe_name)
+    return send_from_directory(STOCK_IMAGES_DIR, rel)
 
 
 @app.route("/api/stock/update_concepts", methods=["POST"])
