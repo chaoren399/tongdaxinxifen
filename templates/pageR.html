@@ -101,6 +101,29 @@
         }
         .pageR-empty { padding: 60px; text-align: center; color: #9ca3af; }
         .pageR-tip { font-size: 12px; color: #9ca3af; margin-top: 8px; }
+        /* 水平画线：点「＋ 画线」新增，按住线上任意处上下拖动；双击或点 × 删除 */
+        .zq-hline {
+            position: fixed; left: 0; right: 0; height: 14px; margin-top: -7px;
+            cursor: ns-resize; z-index: 55;
+        }
+        .zq-hline .zq-hline-bar {
+            position: absolute; left: 0; right: 0; top: 6px; height: 2px;
+            background: #dc2626; pointer-events: none;
+        }
+        .zq-hline .zq-hline-tag {
+            position: absolute; left: 96px; top: 0;
+            font-size: 11px; line-height: 14px; padding: 0 6px; border-radius: 3px;
+            background: rgba(220, 38, 38, 0.92); color: #fff; user-select: none;
+            pointer-events: none;
+        }
+        .zq-hline .zq-hline-x {
+            position: absolute; left: 76px; top: -1px; width: 16px; height: 16px;
+            padding: 0; border: 1px solid #fca5a5; border-radius: 50%;
+            background: #fff; color: #b91c1c; font-size: 11px; line-height: 13px;
+            text-align: center; cursor: pointer; display: none;
+        }
+        .zq-hline:hover .zq-hline-x { display: block; }
+        .zq-hline .zq-hline-x:hover { background: #fef2f2; }
     </style>
 </head>
 <body>
@@ -123,6 +146,8 @@
     <!-- pageR layout: v8 fixed-100px -->
     <main class="pageR-wrap">
         <div class="zq-toolbar">
+            <button type="button" id="zqAddLineBtn" class="zq-style-btn"
+                    title="添加一条水平红线（默认在 70% 高度），按住可上下拖动；不影响其他操作">＋ 画线</button>
             <span class="label">样式：</span>
             <button type="button" class="zq-style-btn" data-style="red">红</button>
             <button type="button" class="zq-style-btn" data-style="green">绿</button>
@@ -402,6 +427,78 @@
                         .catch(function () { alert('请求失败'); });
                 });
             });
+            // ---- 水平画线：点击按钮新增红色横线，按住上下拖动；位置存 localStorage，刷新恢复 ----
+            var LINE_KEY = 'pageR.hlines';
+            var addLineBtn = document.getElementById('zqAddLineBtn');
+
+            function loadHlines() {
+                try {
+                    var arr = JSON.parse(localStorage.getItem(LINE_KEY) || '[]');
+                    return Array.isArray(arr) ? arr.filter(function (v) { return typeof v === 'number'; }) : [];
+                } catch (e) { return []; }
+            }
+
+            function saveHlines() {
+                var list = [];
+                document.querySelectorAll('.zq-hline').forEach(function (ln) {
+                    var v = parseFloat(ln.style.top);
+                    if (!isNaN(v)) list.push(v);
+                });
+                try { localStorage.setItem(LINE_KEY, JSON.stringify(list)); } catch (e) { /* 忽略 */ }
+            }
+
+            function clampPct(v) { return Math.min(100, Math.max(7, v)); }
+
+            function createHline(pct) {
+                var ln = document.createElement('div');
+                ln.className = 'zq-hline';
+                ln.style.top = clampPct(pct) + '%';
+                ln.innerHTML = '<div class="zq-hline-bar"></div>'
+                    + '<span class="zq-hline-tag"></span>'
+                    + '<button type="button" class="zq-hline-x" title="删除这条画线">×</button>';
+                var tag = ln.querySelector('.zq-hline-tag');
+                tag.textContent = clampPct(pct).toFixed(1) + '%';
+
+                // 按住线（除 × 外）上下拖动
+                ln.addEventListener('mousedown', function (ev) {
+                    if (ev.target.classList.contains('zq-hline-x')) return;
+                    ev.preventDefault();
+                    var vh = window.innerHeight;
+                    var startPx = parseFloat(ln.style.top) / 100 * vh;
+                    var startY = ev.clientY;
+                    document.body.style.userSelect = 'none';
+                    function onMove(e2) {
+                        var v = clampPct((startPx + e2.clientY - startY) / vh * 100);
+                        ln.style.top = v + '%';
+                        tag.textContent = v.toFixed(1) + '%';
+                    }
+                    function onUp() {
+                        document.body.style.userSelect = '';
+                        document.removeEventListener('mousemove', onMove);
+                        document.removeEventListener('mouseup', onUp);
+                        saveHlines();
+                    }
+                    document.addEventListener('mousemove', onMove);
+                    document.addEventListener('mouseup', onUp);
+                });
+
+                // 双击删除（× 按钮也可删）
+                ln.querySelector('.zq-hline-x').addEventListener('click', function (ev) {
+                    ev.stopPropagation();
+                    ln.remove();
+                    saveHlines();
+                });
+
+                document.body.appendChild(ln);
+            }
+
+            if (addLineBtn) {
+                addLineBtn.addEventListener('click', function () {
+                    createHline(70);   // 默认放在视口 70% 高度
+                    saveHlines();
+                });
+                loadHlines().forEach(createHline);
+            }
         })();
     </script>
 </body>
