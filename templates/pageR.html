@@ -101,9 +101,10 @@
         }
         .pageR-empty { padding: 60px; text-align: center; color: #9ca3af; }
         .pageR-tip { font-size: 12px; color: #9ca3af; margin-top: 8px; }
-        /* 水平画线：点「＋ 画线」新增，按住线上任意处上下拖动；双击或点 × 删除 */
+        /* 水平画线：锚定在文档上，跟随页面上下滚动；按住可上下拖动；点 × 删除 */
+        body { position: relative; }
         .zq-hline {
-            position: fixed; left: 0; right: 0; height: 14px; margin-top: -7px;
+            position: absolute; left: 0; right: 0; height: 14px; margin-top: -7px;
             cursor: ns-resize; z-index: 55;
         }
         .zq-hline .zq-hline-bar {
@@ -146,8 +147,6 @@
     <!-- pageR layout: v8 fixed-100px -->
     <main class="pageR-wrap">
         <div class="zq-toolbar">
-            <button type="button" id="zqAddLineBtn" class="zq-style-btn"
-                    title="添加一条水平红线（默认在 70% 高度），按住可上下拖动；不影响其他操作">＋ 画线</button>
             <span class="label">样式：</span>
             <button type="button" class="zq-style-btn" data-style="red">红</button>
             <button type="button" class="zq-style-btn" data-style="green">绿</button>
@@ -156,6 +155,8 @@
             <button type="button" class="zq-style-btn" data-style="black">黑</button>
             <button type="button" class="zq-style-btn" data-style="">普通</button>
             <span class="pageR-stats">交易日 <b>{{ stats.days }}</b></span>
+            <button type="button" id="zqAddLineBtn" class="pageR-btn"
+                    title="添加一条水平红线（跟随页面滚动），按住可上下拖动；不影响其他操作">＋ 画线</button>
         </div>
 
         {% if not board.days %}
@@ -427,7 +428,8 @@
                         .catch(function () { alert('请求失败'); });
                 });
             });
-            // ---- 水平画线：点击按钮新增红色横线，按住上下拖动；位置存 localStorage，刷新恢复 ----
+            // ---- 水平画线：点击按钮新增红色横线（锚定文档，跟随页面上下滚动），
+            //      按住上下拖动；位置存 localStorage，刷新恢复 ----
             var LINE_KEY = 'pageR.hlines';
             var addLineBtn = document.getElementById('zqAddLineBtn');
 
@@ -447,30 +449,33 @@
                 try { localStorage.setItem(LINE_KEY, JSON.stringify(list)); } catch (e) { /* 忽略 */ }
             }
 
-            function clampPct(v) { return Math.min(100, Math.max(7, v)); }
+            // 文档坐标范围：7px ~ 文档底部（留 7px 避免拖出页面）
+            function clampDocY(v) {
+                var max = Math.max(14, document.documentElement.scrollHeight - 7);
+                return Math.min(max, Math.max(7, v));
+            }
 
-            function createHline(pct) {
+            function createHline(docY) {
                 var ln = document.createElement('div');
                 ln.className = 'zq-hline';
-                ln.style.top = clampPct(pct) + '%';
+                ln.style.top = clampDocY(docY) + 'px';
                 ln.innerHTML = '<div class="zq-hline-bar"></div>'
                     + '<span class="zq-hline-tag"></span>'
                     + '<button type="button" class="zq-hline-x" title="删除这条画线">×</button>';
                 var tag = ln.querySelector('.zq-hline-tag');
-                tag.textContent = clampPct(pct).toFixed(1) + '%';
+                tag.textContent = Math.round(clampDocY(docY)) + 'px';
 
-                // 按住线（除 × 外）上下拖动
+                // 按住线（除 × 外）上下拖动：clientY 差值直接加到文档坐标上
                 ln.addEventListener('mousedown', function (ev) {
                     if (ev.target.classList.contains('zq-hline-x')) return;
                     ev.preventDefault();
-                    var vh = window.innerHeight;
-                    var startPx = parseFloat(ln.style.top) / 100 * vh;
+                    var startTop = parseFloat(ln.style.top);
                     var startY = ev.clientY;
                     document.body.style.userSelect = 'none';
                     function onMove(e2) {
-                        var v = clampPct((startPx + e2.clientY - startY) / vh * 100);
-                        ln.style.top = v + '%';
-                        tag.textContent = v.toFixed(1) + '%';
+                        var v = clampDocY(startTop + e2.clientY - startY);
+                        ln.style.top = v + 'px';
+                        tag.textContent = Math.round(v) + 'px';
                     }
                     function onUp() {
                         document.body.style.userSelect = '';
@@ -482,7 +487,7 @@
                     document.addEventListener('mouseup', onUp);
                 });
 
-                // 双击删除（× 按钮也可删）
+                // × 按钮删除
                 ln.querySelector('.zq-hline-x').addEventListener('click', function (ev) {
                     ev.stopPropagation();
                     ln.remove();
@@ -494,7 +499,8 @@
 
             if (addLineBtn) {
                 addLineBtn.addEventListener('click', function () {
-                    createHline(70);   // 默认放在视口 70% 高度
+                    // 默认放在当前视口 70% 高度处（换算成文档坐标）
+                    createHline(window.pageYOffset + window.innerHeight * 0.7);
                     saveHlines();
                 });
                 loadHlines().forEach(createHline);
