@@ -3008,7 +3008,7 @@ def api_pageU_images():
         review_id = int(request.args.get("review_id"))
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "缺少 review_id"}), 400
-    grouped = {"B1": [], "B2": []}
+    grouped = {"B1": [], "B2": [], "C1": [], "C2": []}
     for img in list_review_images(review_id):
         grouped.setdefault(img["slot"], []).append(
             {
@@ -3035,7 +3035,7 @@ def api_pageU_image_upload():
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "缺少 review_id"}), 400
     slot = request.form.get("slot", "B1")
-    if slot not in ("B1", "B2"):
+    if slot not in ("B1", "B2", "C1", "C2"):
         return jsonify({"ok": False, "error": "图片位置无效"}), 400
     f = request.files.get("file")
     if f is None or not f.filename:

@@ -164,14 +164,18 @@
             box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
         }
         .ue-textarea { resize: vertical; min-height: 240px; line-height: 1.8; }
-        /* B 区：复盘正文上方的图片区，分左右 B1 / B2 两块 */
+        /* B 区 / C 区：图片区，各分左右两块（B1/B2、C1/C2） */
         .ue-blank-b {
             min-height: 140px;
             display: flex;
             gap: 12px;
         }
+        /* C 区紧挨 B 区下方，留出与页面其他块一致的间距 */
+        .ue-blank-c { margin-top: 12px; }
         .ue-blank-b1,
-        .ue-blank-b2 {
+        .ue-blank-b2,
+        .ue-blank-c1,
+        .ue-blank-c2 {
             flex: 1;
             min-width: 0;
             box-sizing: border-box;
@@ -181,7 +185,9 @@
             transition: border-color 0.12s;
         }
         .ue-blank-b1:hover,
-        .ue-blank-b2:hover { border-color: #93c5fd; }
+        .ue-blank-b2:hover,
+        .ue-blank-c1:hover,
+        .ue-blank-c2:hover { border-color: #93c5fd; }
         .ue-b-head {
             display: flex;
             align-items: center;
@@ -334,7 +340,7 @@
 
         <!-- ===== B 区（复盘配图，左 B1 / 右 B2） ===== -->
         <div class="ue-blank-b">
-            <div class="ue-blank-b1">
+            <div class="ue-blank-b1" data-slot="B1">
                 <div class="ue-b-head">
                     <span class="cs-title">B1 图片</span>
                     <button class="ue-btn-sm ue-img-edit-btn" data-slot="B1" type="button"
@@ -344,13 +350,37 @@
                     <span class="ue-img-empty">暂无图片；截图后鼠标悬停本区按 Ctrl+V 粘贴</span>
                 </div>
             </div>
-            <div class="ue-blank-b2">
+            <div class="ue-blank-b2" data-slot="B2">
                 <div class="ue-b-head">
                     <span class="cs-title">B2 图片</span>
                     <button class="ue-btn-sm ue-img-edit-btn" data-slot="B2" type="button"
                             title="进入 / 退出编辑：显示图片删除按钮">编辑</button>
                 </div>
                 <div class="ue-img-list" id="imgListB2">
+                    <span class="ue-img-empty">暂无图片；截图后鼠标悬停本区按 Ctrl+V 粘贴</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== C 区（复盘配图，左 C1 / 右 C2），紧挨 B 区下方，功能与 B 区相同 ===== -->
+        <div class="ue-blank-b ue-blank-c">
+            <div class="ue-blank-c1" data-slot="C1">
+                <div class="ue-b-head">
+                    <span class="cs-title">C1 图片</span>
+                    <button class="ue-btn-sm ue-img-edit-btn" data-slot="C1" type="button"
+                            title="进入 / 退出编辑：显示图片删除按钮">编辑</button>
+                </div>
+                <div class="ue-img-list" id="imgListC1">
+                    <span class="ue-img-empty">暂无图片；截图后鼠标悬停本区按 Ctrl+V 粘贴</span>
+                </div>
+            </div>
+            <div class="ue-blank-c2" data-slot="C2">
+                <div class="ue-b-head">
+                    <span class="cs-title">C2 图片</span>
+                    <button class="ue-btn-sm ue-img-edit-btn" data-slot="C2" type="button"
+                            title="进入 / 退出编辑：显示图片删除按钮">编辑</button>
+                </div>
+                <div class="ue-img-list" id="imgListC2">
                     <span class="ue-img-empty">暂无图片；截图后鼠标悬停本区按 Ctrl+V 粘贴</span>
                 </div>
             </div>
@@ -423,7 +453,7 @@
 
         var showDelBtns = false;
         var showPlusBtns = false;
-        var imgEditSlots = { B1: false, B2: false };   // B 区各自的编辑状态（显示图片删除按钮）
+        var imgEditSlots = { B1: false, B2: false, C1: false, C2: false };   // 各图片区编辑状态（显示图片删除按钮）
         var maxLevel = 2;          // 至少展示「1 级复盘 / 2 级复盘」两列
         var reqSeq = 0;
 
@@ -824,10 +854,13 @@
             }
         });
 
-        // ---- B1 / B2 图片区 ----
+        // ---- B1/B2/C1/C2 图片区 ----
+        var IMG_SLOTS = ['B1', 'B2', 'C1', 'C2'];
         var imgLists = {
             B1: document.getElementById('imgListB1'),
-            B2: document.getElementById('imgListB2')
+            B2: document.getElementById('imgListB2'),
+            C1: document.getElementById('imgListC1'),
+            C2: document.getElementById('imgListC2')
         };
 
         function loadImages() {
@@ -849,7 +882,7 @@
 
         function renderBImages(grouped) {
             unzoomImage();
-            ['B1', 'B2'].forEach(function (slot) {
+            IMG_SLOTS.forEach(function (slot) {
                 var list = imgLists[slot];
                 if (!list) return;
                 list.innerHTML = '';
@@ -962,10 +995,11 @@
             return files;
         }
 
-        [['B1', document.querySelector('.ue-blank-b1')],
-         ['B2', document.querySelector('.ue-blank-b2')]].forEach(function (pair) {
-            var slot = pair[0], zone = pair[1];
-            if (!zone) return;
+        document.querySelectorAll(
+            '.ue-blank-b1, .ue-blank-b2, .ue-blank-c1, .ue-blank-c2'
+        ).forEach(function (zone) {
+            var slot = zone.getAttribute('data-slot');
+            if (!slot) return;
             zone.addEventListener('mouseenter', function () { hoverSlot = slot; });
             zone.addEventListener('mouseleave', function () {
                 if (hoverSlot === slot) hoverSlot = null;

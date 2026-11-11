@@ -4214,9 +4214,9 @@ def ensure_review_images_table(db_path=None):
 
 
 def add_review_image(review_id, slot, file_path, original_name="", db_path=None):
-    """登记一张复盘配图（slot 为 B1 / B2），返回新记录 id。"""
-    if slot not in ("B1", "B2"):
-        raise ValueError("图片位置无效（应为 B1 或 B2）")
+    """登记一张复盘配图（slot 为 B1/B2/C1/C2），返回新记录 id。"""
+    if slot not in ("B1", "B2", "C1", "C2"):
+        raise ValueError("图片位置无效（应为 B1/B2/C1/C2）")
     ensure_daily_reviews_table(db_path)
     ensure_review_images_table(db_path)
     conn = get_conn(db_path)
