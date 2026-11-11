@@ -3231,13 +3231,18 @@ def api_pageU_point_delete():
 
 @app.route("/api/pageU/add", methods=["POST"])
 def api_pageU_add():
-    """新增一条每日复盘。"""
-    from db import add_daily_review
+    """新增一条每日复盘，并默认创建一条以复盘日期命名的一级条目。"""
+    from db import add_daily_review, add_review_item
     payload = request.get_json(silent=True) or {}
     try:
         review_id = add_daily_review(
             payload.get("date", ""), payload.get("content", "")
         )
+        # 一级复盘默认为当天（复盘）日期；失败不影响复盘本身
+        try:
+            add_review_item(review_id, payload.get("date", ""))
+        except Exception:  # noqa: BLE001
+            pass
         return jsonify({"ok": True, "id": review_id})
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
