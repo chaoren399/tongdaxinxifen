@@ -970,7 +970,12 @@
             var serverImages = null;   // 保存流程中服务器返回的最新图片列表
 
             function imageFilename(url) {
-                return url.split("?")[0].split("/").pop();
+                // 图片相对路径（可能含 <年>/<月>/ 前缀），如 2026/10/44.png
+                var clean = String(url || "").split("?")[0];
+                var mark = "/stock_images/";
+                var i = clean.indexOf(mark);
+                if (i !== -1) return clean.slice(i + mark.length);
+                return clean.split("/").pop();
             }
 
             function makeImageItem(url, alt, onRemove) {
