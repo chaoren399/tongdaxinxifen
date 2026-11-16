@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>页面 V · 笔记</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=66" />
+    <style>
+        /* ===== 页面 V：笔记（富文本文档编辑） ===== */
+        body.page-v { background: #f3f4f6; }
+        .page-v .container { max-width: 1400px; }
+
+        /* 左右分栏 */
+        .nv-layout {
+            display: flex;
+            gap: 14px;
+            align-items: stretch;
+            min-height: calc(100vh - 120px);
+        }
+        /* 左栏：文档列表 */
+        .nv-side {
+            flex: 0 0 280px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-width: 0;
+        }
+        .nv-card {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        .nv-new-btn {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px 0;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            color: #fff;
+            background: #2563eb;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .nv-new-btn:hover { background: #1d4ed8; }
+        .nv-search {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 6px 10px;
+            font: inherit;
+            font-size: 13px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+        }
+        .nv-search:focus { outline: none; border-color: #2563eb; }
+        .nv-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+        .nv-item {
+            position: relative;
+            padding: 7px 30px 7px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+        .nv-item:hover { background: #f3f4f6; }
+        .nv-item.is-current { background: #eff6ff; border-color: #bfdbfe; }
+        .nv-item-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #111827;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .nv-item-summary {
+            display: block;
+            margin-top: 2px;
+            font-size: 12px;
+            color: #6b7280;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .nv-item-time {
+            display: block;
+            margin-top: 2px;
+            font-size: 11px;
+            color: #9ca3af;
+            font-family: "SF Mono", Consolas, Monaco, monospace;
+        }
+        .nv-item-del {
+            position: absolute;
+            right: 6px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 20px;
+            padding: 0;
+            border: none;
+            border-radius: 6px;
+            background: #fee2e2;
+            color: #dc2626;
+            font-size: 13px;
+            line-height: 20px;
+            cursor: pointer;
+            display: none;
+        }
+        .nv-item:hover .nv-item-del { display: block; }
+        .nv-item-del:hover { background: #fecaca; }
+        .nv-empty { color: #9ca3af; font-size: 12px; padding: 10px 6px; }
+
+        /* 右侧：编辑区 */
+        .nv-main {
+            flex: 1;
+            min-width: 0;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 14px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+        .nv-title-input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 6px 2px;
+            font: inherit;
+            font-size: 20px;
+            font-weight: 700;
+            color: #111827;
+            border: none;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .nv-title-input:focus { outline: none; border-bottom-color: #93c5fd; }
+
+        /* 工具栏 */
+        .nv-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .nv-tool {
+            min-width: 28px;
+            height: 28px;
+            padding: 0 8px;
+            font: inherit;
+            font-size: 13px;
+            color: #374151;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .nv-tool:hover { background: #f3f4f6; }
+        .nv-tool.is-on { background: #eff6ff; color: #2563eb; }
+        .nv-sep { width: 1px; height: 18px; background: #e5e7eb; margin: 0 4px; }
+
+        /* 正文编辑区 */
+        .nv-editor {
+            flex: 1;
+            margin-top: 10px;
+            padding: 10px 4px;
+            font-size: 14px;
+            line-height: 1.9;
+            color: #1f2937;
+            outline: none;
+            overflow-y: auto;
+            min-height: 300px;
+        }
+        .nv-editor:empty::before {
+            content: attr(data-placeholder);
+            color: #d1d5db;
+        }
+        .nv-editor img { max-width: 100%; border-radius: 6px; }
+        .nv-editor table { border-collapse: collapse; margin: 6px 0; }
+        .nv-editor table td,
+        .nv-editor table th {
+            border: 1px solid #d1d5db;
+            padding: 4px 8px;
+            min-width: 40px;
+        }
+        .nv-editor blockquote {
+            margin: 6px 0;
+            padding: 4px 12px;
+            border-left: 3px solid #93c5fd;
+            color: #6b7280;
+            background: #f9fafb;
+        }
+        .nv-editor h1, .nv-editor h2, .nv-editor h3 { line-height: 1.4; }
+        .nv-editor ul, .nv-editor ol { padding-left: 24px; }
+        .nv-editor hr { border: none; border-top: 1px solid #e5e7eb; margin: 10px 0; }
+
+        /* 状态栏 */
+        .nv-statusbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding-top: 10px;
+            border-top: 1px solid #f3f4f6;
+            font-size: 12px;
+            color: #6b7280;
+        }
+        .nv-status.is-unsaved { color: #dc2626; }
+        .nv-status.is-saved { color: #16a34a; }
+        .nv-save-btn {
+            margin-left: auto;
+            padding: 6px 18px;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            color: #fff;
+            background: #2563eb;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .nv-save-btn:hover { background: #1d4ed8; }
+        .nv-save-btn:disabled { opacity: 0.6; cursor: default; }
+        .nv-hint { color: #9ca3af; }
+    </style>
+</head>
+<body class="page-v">
+    <header class="topbar topbar-pageF">
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_d') }}">三级</a>
+            <a href="{{ url_for('page_k') }}">概念</a>
+            <a href="{{ url_for('page_l') }}">页面 L</a>
+            <a href="{{ url_for('page_p') }}">页面 P</a>
+            <a href="{{ url_for('page_r') }}" target="_blank" rel="noopener">周期</a>
+            <a href="{{ url_for('page_s') }}">页面 S</a>
+            <a href="{{ url_for('page_t') }}">页面 T</a>
+            <a href="{{ url_for('page_u') }}">复盘</a>
+            <a class="active" href="{{ url_for('page_v') }}">页面 V</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <div class="nv-layout">
+            <!-- ===== 左栏：新建 / 搜索 / 文档列表 ===== -->
+            <aside class="nv-side">
+                <div class="nv-card" style="display: flex; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto;">
+                    <button type="button" class="nv-new-btn" id="nvNewBtn">＋ 新建笔记</button>
+                    <input type="text" class="nv-search" id="nvSearch" placeholder="搜索标题 / 正文…" />
+                    <div class="nv-list" id="nvList">
+                        <span class="nv-empty">加载中...</span>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- ===== 右侧：编辑区 ===== -->
+            <section class="nv-main">
+                <input type="text" class="nv-title-input" id="nvTitleInput" placeholder="输入标题…" />
+                <div class="nv-toolbar" id="nvToolbar">
+                    <button type="button" class="nv-tool" data-cmd="undo" title="撤销">↶</button>
+                    <button type="button" class="nv-tool" data-cmd="redo" title="重做">↷</button>
+                    <span class="nv-sep"></span>
+                    <button type="button" class="nv-tool" data-block="h1" title="标题 1">H1</button>
+                    <button type="button" class="nv-tool" data-block="h2" title="标题 2">H2</button>
+                    <button type="button" class="nv-tool" data-block="h3" title="标题 3">H3</button>
+                    <button type="button" class="nv-tool" data-block="p" title="正文">正文</button>
+                    <span class="nv-sep"></span>
+                    <button type="button" class="nv-tool" data-cmd="bold" title="加粗"><b>B</b></button>
+                    <button type="button" class="nv-tool" data-cmd="italic" title="斜体"><i>I</i></button>
+                    <button type="button" class="nv-tool" data-cmd="underline" title="下划线"><u>U</u></button>
+                    <button type="button" class="nv-tool" data-cmd="strikeThrough" title="删除线"><s>S</s></button>
+                    <span class="nv-sep"></span>
+                    <button type="button" class="nv-tool" data-cmd="insertUnorderedList" title="无序列表">• 列表</button>
+                    <button type="button" class="nv-tool" data-cmd="insertOrderedList" title="有序列表">1. 列表</button>
+                    <button type="button" class="nv-tool" data-block="blockquote" title="引用">引用</button>
+                    <span class="nv-sep"></span>
+                    <button type="button" class="nv-tool" data-cmd="insertHorizontalRule" title="分割线">—</button>
+                    <button type="button" class="nv-tool" data-insert-table title="插入 3×3 表格">表格</button>
+                    <span class="nv-sep"></span>
+                    <button type="button" class="nv-tool" data-cmd="removeFormat" title="清除格式">清除</button>
+                    <button type="button" class="nv-tool" id="nvImgBtn" title="插入图片">图片</button>
+                    <input type="file" id="nvImgInput" accept="image/*" multiple hidden />
+                </div>
+                <div class="nv-editor" id="nvEditor" contenteditable="true"
+                     data-placeholder="正文…（截图后直接 Ctrl+V 粘贴到正文；Ctrl+S 保存）"></div>
+                <div class="nv-statusbar">
+                    <span id="nvCharCount">0 字</span>
+                    <span class="nv-status" id="nvSaveStatus">未选择笔记</span>
+                    <span class="nv-hint">Ctrl+S 保存 · 停止输入约 3 秒后自动保存</span>
+                    <button type="button" class="nv-save-btn" id="nvSaveBtn">保 存</button>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+    (function () {
+        "use strict";
+
+        var $ = function (id) { return document.getElementById(id); };
+        var listEl = $("nvList");
+        var searchEl = $("nvSearch");
+        var titleEl = $("nvTitleInput");
+        var editorEl = $("nvEditor");
+        var charEl = $("nvCharCount");
+        var statusEl = $("nvSaveStatus");
+        var saveBtn = $("nvSaveBtn");
+        var imgInput = $("nvImgInput");
+
+        var currentId = null;      // 当前笔记 id（null = 未保存的新笔记）
+        var dirty = false;         // 有未保存更改
+        var saving = false;
+        var autoTimer = null;
+        var LAST_KEY = "pageV.lastNote";   // 记住上次编辑的笔记，刷新后恢复
+
+        function rememberLast(id) {
+            try {
+                if (id) localStorage.setItem(LAST_KEY, String(id));
+                else localStorage.removeItem(LAST_KEY);
+            } catch (e) { /* 忽略 */ }
+        }
+
+        function apiGet(url) {
+            return fetch(url).then(function (r) {
+                return r.json().then(function (body) {
+                    return { status: r.status, body: body };
+                });
+            });
+        }
+        function apiPost(url, payload) {
+            return fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload || {}),
+            }).then(function (r) {
+                return r.json().then(function (body) {
+                    return { status: r.status, body: body };
+                });
+            });
+        }
+
+        function fmtTime(s) {
+            // 'YYYY-MM-DD HH:MM:SS' -> 'MM-DD HH:MM'
+            return String(s || "").slice(5, 16);
+        }
+
+        // ---- 字数 ----
+        function updateCharCount() {
+            var text = (editorEl.innerText || "").replace(/\n/g, "").length;
+            charEl.textContent = text + " 字";
+        }
+
+        // ---- 保存状态提示 ----
+        function setStatus(text, cls) {
+            statusEl.textContent = text;
+            statusEl.className = "nv-status" + (cls ? " " + cls : "");
+        }
+
+        // ---- 列表 ----
+        function loadList() {
+            var q = searchEl.value.trim();
+            apiGet("/api/pageV/list" + (q ? "?q=" + encodeURIComponent(q) : ""))
+                .then(function (resp) {
+                    var j = resp.body || {};
+                    listEl.innerHTML = "";
+                    var docs = j.docs || [];
+                    if (!docs.length) {
+                        listEl.innerHTML = '<span class="nv-empty">' +
+                            (q ? "没有匹配的笔记" : "暂无笔记，点上方「＋ 新建笔记」") + "</span>";
+                        return;
+                    }
+                    docs.forEach(function (d) {
+                        var item = document.createElement("div");
+                        item.className = "nv-item" +
+                            (d.id === currentId ? " is-current" : "");
+                        item.dataset.id = d.id;
+                        item.innerHTML =
+                            '<div class="nv-item-title">' + esc(d.title || "未命名") + "</div>" +
+                            '<span class="nv-item-summary">' + esc(d.summary || "（空）") + "</span>" +
+                            '<span class="nv-item-time">' + esc(fmtTime(d.updated_at)) + "</span>" +
+                            '<button type="button" class="nv-item-del" title="删除笔记">×</button>';
+                        item.addEventListener("click", function (ev) {
+                            if (ev.target.classList.contains("nv-item-del")) return;
+                            openNote(parseInt(item.dataset.id, 10));
+                        });
+                        item.querySelector(".nv-item-del").addEventListener("click", function (ev) {
+                            ev.stopPropagation();
+                            deleteNote(parseInt(item.dataset.id, 10));
+                        });
+                        listEl.appendChild(item);
+                    });
+                })
+                .catch(function () {
+                    listEl.innerHTML = '<span class="nv-empty">加载失败</span>';
+                });
+        }
+
+        function esc(s) {
+            return String(s || "").replace(/[&<>"']/g, function (c) {
+                return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+            });
+        }
+
+        // ---- 打开笔记 ----
+        function openNote(id) {
+            if (id === currentId) return;
+            // 切换前先保存当前更改
+            var pre = dirty && currentId !== null ? save() : Promise.resolve();
+            pre.then(function () {
+                return apiGet("/api/pageV/get?id=" + id);
+            }).then(function (resp) {
+                var j = resp.body || {};
+                if (!j.ok) {
+                    rememberLast(null);   // 笔记可能已被删除，清除记忆
+                    setStatus(j.error || "加载失败", "is-unsaved");
+                    return;
+                }
+                currentId = id;
+                rememberLast(id);
+                titleEl.value = j.note.title || "";
+                editorEl.innerHTML = j.note.content || "";
+                dirty = false;
+                updateCharCount();
+                setStatus("上次更新 " + fmtTime(j.note.updated_at), "");
+                highlightList();
+            }).catch(function () {
+                setStatus("加载失败", "is-unsaved");
+            });
+        }
+
+        function highlightList() {
+            listEl.querySelectorAll(".nv-item").forEach(function (item) {
+                item.classList.toggle("is-current",
+                    parseInt(item.dataset.id, 10) === currentId);
+            });
+        }
+
+        // ---- 新建 ----
+        function newNote() {
+            var pre = dirty && currentId !== null ? save() : Promise.resolve();
+            pre.then(function () {
+                currentId = null;
+                titleEl.value = "";
+                editorEl.innerHTML = "";
+                dirty = false;
+                updateCharCount();
+                setStatus("新笔记（未保存）", "is-unsaved");
+                highlightList();
+                editorEl.focus();
+            });
+        }
+
+        // ---- 保存 ----
+        function collectContent() {
+            // 空正文存空字符串（保留结构时可能只是 <br>）
+            var html = editorEl.innerHTML || "";
+            if (!editorEl.textContent.trim() && !html.match(/<img|<table|<hr/i)) return "";
+            return html;
+        }
+
+        function save() {
+            var content = collectContent();
+            var title = titleEl.value.trim();
+            if (!content && !title && currentId === null) {
+                return Promise.resolve();   // 空笔记不创建
+            }
+            saving = true;
+            saveBtn.disabled = true;
+            setStatus("保存中…", "");
+            var req = currentId === null
+                ? apiPost("/api/pageV/add", { title: title, content: content })
+                : apiPost("/api/pageV/update", { id: currentId, title: title, content: content });
+            return req.then(function (resp) {
+                var j = resp.body || {};
+                if (!j.ok) { setStatus(j.error || "保存失败", "is-unsaved"); return; }
+                if (currentId === null && j.id) currentId = j.id;
+                rememberLast(currentId);
+                dirty = false;
+                var now = new Date();
+                var hh = ("0" + now.getHours()).slice(-2);
+                var mm = ("0" + now.getMinutes()).slice(-2);
+                setStatus("已保存 " + hh + ":" + mm, "is-saved");
+                if (j.note && j.note.title) titleEl.value = j.note.title;
+                loadList();
+            }).catch(function () {
+                setStatus("保存失败（网络错误）", "is-unsaved");
+            }).then(function () {
+                saving = false;
+                saveBtn.disabled = false;
+                // 保存期间又有修改：提示仍未保存
+                if (dirty) setStatus("有未保存的更改", "is-unsaved");
+            });
+        }
+
+        // ---- 删除 ----
+        function deleteNote(id) {
+            if (!window.confirm("确定删除这篇笔记？正文中的图片也会一并清理。")) return;
+            apiPost("/api/pageV/delete", { id: id }).then(function (resp) {
+                var j = resp.body || {};
+                if (!j.ok) { setStatus(j.error || "删除失败", "is-unsaved"); return; }
+                if (id === currentId) {
+                    currentId = null;
+                    rememberLast(null);
+                    titleEl.value = "";
+                    editorEl.innerHTML = "";
+                    dirty = false;
+                    updateCharCount();
+                    setStatus("未选择笔记", "");
+                }
+                loadList();
+            }).catch(function () {
+                setStatus("删除失败（网络错误）", "is-unsaved");
+            });
+        }
+
+        // ---- 修改标记 / 自动保存 ----
+        function markDirty() {
+            dirty = true;
+            setStatus("有未保存的更改", "is-unsaved");
+            if (autoTimer) clearTimeout(autoTimer);
+            autoTimer = setTimeout(function () {
+                if (dirty && !saving) save();
+            }, 3000);
+        }
+
+        editorEl.addEventListener("input", function () {
+            updateCharCount();
+            markDirty();
+        });
+        titleEl.addEventListener("input", markDirty);
+
+        // ---- 工具栏 ----
+        $("nvToolbar").addEventListener("mousedown", function (ev) {
+            var btn = ev.target.closest(".nv-tool");
+            if (btn) ev.preventDefault();   // 防止编辑器失焦丢选区
+        });
+        $("nvToolbar").addEventListener("click", function (ev) {
+            var btn = ev.target.closest(".nv-tool");
+            if (!btn) return;
+            editorEl.focus();
+            if (btn.dataset.cmd) {
+                document.execCommand(btn.dataset.cmd, false, null);
+            } else if (btn.dataset.block) {
+                document.execCommand("formatBlock", false, btn.dataset.block);
+            } else if ("insertTable" in btn.dataset || btn.hasAttribute("data-insert-table")) {
+                insertTable();
+            }
+            updateCharCount();
+            markDirty();
+        });
+
+        function insertTable() {
+            var html = '<table><tbody>';
+            for (var r = 0; r < 3; r++) {
+                html += "<tr>";
+                for (var c = 0; c < 3; c++) html += "<td>&nbsp;</td>";
+                html += "</tr>";
+            }
+            html += "</tbody></table><p><br></p>";
+            document.execCommand("insertHTML", false, html);
+        }
+
+        // ---- 图片：选择文件 / Ctrl+V 粘贴 ----
+        function uploadImageFile(file) {
+            var fd = new FormData();
+            fd.append("file", file);
+            return fetch("/api/pageV/upload_image", { method: "POST", body: fd })
+                .then(function (r) { return r.json(); })
+                .then(function (j) {
+                    if (!j.ok) throw new Error(j.error || "上传失败");
+                    return j.url;
+                });
+        }
+
+        function insertImage(url) {
+            document.execCommand("insertHTML", false,
+                '<p><img src="' + url + '" alt="笔记图片" /></p>');
+        }
+
+        $("nvImgBtn").addEventListener("click", function () { imgInput.click(); });
+        imgInput.addEventListener("change", function () {
+            Array.prototype.slice.call(imgInput.files || []).forEach(function (f) {
+                uploadImageFile(f).then(insertImage)
+                    .catch(function (e) { setStatus(e.message || "图片上传失败", "is-unsaved"); });
+            });
+            imgInput.value = "";
+        });
+
+        editorEl.addEventListener("paste", function (ev) {
+            var items = (ev.clipboardData && ev.clipboardData.items) || [];
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i];
+                if (it.kind === "file" && it.type && it.type.indexOf("image") === 0) {
+                    var blob = it.getAsFile();
+                    if (!blob) continue;
+                    ev.preventDefault();
+                    var sub = (it.type.split("/")[1] || "png").replace("jpeg", "jpg");
+                    var file = new File([blob], "paste_" + Date.now() + "." + sub,
+                        { type: it.type });
+                    setStatus("图片上传中…", "");
+                    uploadImageFile(file).then(function (url) {
+                        insertImage(url);
+                        updateCharCount();
+                        markDirty();
+                    }).catch(function (e) {
+                        setStatus(e.message || "图片上传失败", "is-unsaved");
+                    });
+                    break;
+                }
+            }
+        });
+
+        // ---- 快捷键 ----
+        document.addEventListener("keydown", function (ev) {
+            if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "s") {
+                ev.preventDefault();
+                save();
+            }
+        });
+
+        saveBtn.addEventListener("click", save);
+        $("nvNewBtn").addEventListener("click", newNote);
+        searchEl.addEventListener("input", loadList);
+
+        // ---- 启动：恢复上次编辑的笔记 ----
+        loadList();
+        updateCharCount();
+        var lastId = parseInt(localStorage.getItem(LAST_KEY) || "0", 10);
+        if (lastId > 0) {
+            setStatus("正在恢复上次编辑的笔记…", "");
+            openNote(lastId);
+        } else {
+            setStatus("未选择笔记", "");
+        }
+    })();
+    </script>
+</body>
+</html>
