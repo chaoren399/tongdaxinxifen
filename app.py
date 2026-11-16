@@ -44,6 +44,10 @@ ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 FUPAN_IMAGES_DIR = os.path.join(os.path.dirname(DB_FILE), "fupan_images")
 os.makedirs(FUPAN_IMAGES_DIR, exist_ok=True)
 app.config["FUPAN_IMAGES_DIR"] = FUPAN_IMAGES_DIR
+# 笔记图片（页面 V）：data/note_images/<年>/<月>/，按上传日期自动归档
+NOTE_IMAGES_DIR = os.path.join(os.path.dirname(DB_FILE), "note_images")
+os.makedirs(NOTE_IMAGES_DIR, exist_ok=True)
+app.config["NOTE_IMAGES_DIR"] = NOTE_IMAGES_DIR
 # 单只股票最多可保存的图片张数
 MAX_IMAGES_PER_STOCK = 20
 
@@ -3268,6 +3272,175 @@ def api_pageU_update():
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001
         return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+# ---------------------------------------------------------------------------
+# 页面 V：笔记（富文本文档）
+
+
+@app.route("/pageV")
+def page_v():
+    """页面 V：笔记（类似云笔记的富文本文档编辑页）。"""
+    from db import ensure_pagev_notes_table
+
+    ensure_pagev_notes_table()
+    resp = make_response(render_template("pageV.html"))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.route("/api/pageV/list")
+def api_pageV_list():
+    """笔记列表（?q= 按标题/正文搜索），按更新时间倒序。"""
+    from db import ensure_pagev_notes_table, list_notes
+
+    ensure_pagev_notes_table()
+    docs = list_notes(request.args.get("q", ""))
+    return jsonify({
+        "ok": True,
+        "docs": [
+            {
+                "id": d["id"],
+                "title": d["title"],
+                "summary": d["summary"],
+                "created_at": d["created_at"],
+                "updated_at": d["updated_at"],
+            }
+            for d in docs
+        ],
+    })
+
+
+@app.route("/api/pageV/get")
+def api_pageV_get():
+    """取单条笔记全文。"""
+    from db import get_note
+
+    try:
+        note_id = int(request.args.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 id"}), 400
+    note = get_note(note_id)
+    if note is None:
+        return jsonify({"ok": False, "error": "笔记不存在"}), 404
+    return jsonify({"ok": True, "note": note})
+
+
+@app.route("/api/pageV/add", methods=["POST"])
+def api_pageV_add():
+    """新增笔记，返回新 id。"""
+    from db import add_note
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        note_id = add_note(payload.get("title", ""), payload.get("content", ""))
+        return jsonify({"ok": True, "id": note_id})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/pageV/update", methods=["POST"])
+def api_pageV_update():
+    """保存笔记（标题/正文），返回更新后的记录。"""
+    from db import update_note
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        note_id = int(payload.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 id"}), 400
+    try:
+        note = update_note(note_id, payload.get("title"), payload.get("content"))
+        if note is None:
+            return jsonify({"ok": False, "error": "笔记不存在"}), 404
+        return jsonify({
+            "ok": True,
+            "note": {
+                "id": note["id"],
+                "title": note["title"],
+                "updated_at": note["updated_at"],
+            },
+        })
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/pageV/delete", methods=["POST"])
+def api_pageV_delete():
+    """删除笔记，并清理其正文引用、且不再被其他笔记引用的图片文件。"""
+    from db import delete_note, get_conn, get_note
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        note_id = int(payload.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少 id"}), 400
+    note = get_note(note_id)
+    if note is None:
+        return jsonify({"ok": False, "error": "笔记不存在"}), 404
+
+    if not delete_note(note_id):
+        return jsonify({"ok": False, "error": "删除失败"}), 500
+
+    # 收集该笔记引用的图片；其他笔记仍在引用的保留
+    referenced = set(
+        re.findall(r"/note_images/([0-9a-zA-Z_./\-]+)", note["content"] or "")
+    )
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT content FROM notes")
+        for r in cur.fetchall():
+            for m in re.findall(r"/note_images/([0-9a-zA-Z_./\-]+)", r["content"] or ""):
+                referenced.discard(m)
+    finally:
+        conn.close()
+    for rel in referenced:
+        _abs = _note_image_abs(rel)
+        if _abs:
+            _safe_remove(_abs)
+    return jsonify({"ok": True})
+
+
+def _note_image_abs(rel_path):
+    """笔记图片相对路径 -> 绝对路径（防目录穿越），非法返回 None。"""
+    rel = str(rel_path or "").replace("\\", "/").lstrip("/")
+    if not rel or any(p in ("", ".", "..") for p in rel.split("/")):
+        return None
+    return os.path.join(NOTE_IMAGES_DIR, *rel.split("/"))
+
+
+@app.route("/api/pageV/upload_image", methods=["POST"])
+def api_pageV_upload_image():
+    """上传笔记正文图片（截图粘贴/选择文件），归档到 data/note_images/<年>/<月>/。"""
+    from db import ensure_pagev_notes_table
+
+    ensure_pagev_notes_table()
+    f = request.files.get("file")
+    if f is None or not f.filename:
+        return jsonify({"ok": False, "error": "未收到文件"}), 400
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in ALLOWED_IMAGE_EXTS:
+        return jsonify({"ok": False, "error": f"不支持的图片类型: {ext}"}), 400
+
+    import datetime as _dt_note
+
+    _now = _dt_note.date.today()
+    rel_dir = "%04d/%02d" % (_now.year, _now.month)
+    abs_dir = os.path.join(NOTE_IMAGES_DIR, "%04d" % _now.year, "%02d" % _now.month)
+    os.makedirs(abs_dir, exist_ok=True)
+    filename = uuid.uuid4().hex[:16] + ext
+    f.save(os.path.join(abs_dir, filename))
+    return jsonify({"ok": True, "url": "/note_images/" + rel_dir + "/" + filename})
+
+
+@app.route("/note_images/<path:filename>")
+def serve_note_image(filename):
+    """提供笔记图片的静态访问，支持 <年>/<月>/<文件> 相对路径。"""
+    rel = filename.replace("\\", "/").lstrip("/")
+    if not rel or any(p in ("", ".", "..") for p in rel.split("/")):
+        return jsonify({"ok": False, "error": "非法文件名"}), 400
+    return send_from_directory(NOTE_IMAGES_DIR, rel)
 
 
 @app.route("/api/pageU/delete", methods=["POST"])

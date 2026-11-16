@@ -4281,3 +4281,141 @@ def delete_review_image(image_id, db_path=None):
         return row["file_path"]
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 页面 V：笔记（富文本文档，标题 + HTML 正文）
+
+PAGEV_NOTES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS page_v_notes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    title      TEXT NOT NULL DEFAULT '',
+    content    TEXT NOT NULL DEFAULT '',   -- 富文本 HTML
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
+
+def ensure_pagev_notes_table(db_path=None):
+    """建「笔记」表（页面 V）。"""
+    conn = get_conn(db_path)
+    try:
+        conn.executescript(PAGEV_NOTES_SCHEMA)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_notes(query="", db_path=None):
+    """
+    列出笔记（按更新时间倒序）。query 非空时按标题/正文模糊搜索。
+    返回 [{id, title, summary, created_at, updated_at}]，列表不携带正文。
+    """
+    ensure_pagev_notes_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        sql = "SELECT id, title, content, created_at, updated_at FROM page_v_notes "
+        args = []
+        q = (query or "").strip()
+        if q:
+            sql += "WHERE title LIKE ? OR content LIKE ? "
+            like = "%" + q + "%"
+            args = [like, like]
+        sql += "ORDER BY updated_at DESC, id DESC"
+        cur.execute(sql, args)
+        rows = []
+        for r in cur.fetchall():
+            d = dict(r)
+            text = re.sub(r"<[^>]+>", " ", d["content"] or "")
+            text = re.sub(r"\s+", " ", text).strip()
+            d["summary"] = text[:80]
+            d["content"] = ""
+            rows.append(d)
+        return rows
+    finally:
+        conn.close()
+
+
+def get_note(note_id, db_path=None):
+    """按 id 取单条笔记（含正文），不存在返回 None。"""
+    ensure_pagev_notes_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, title, content, created_at, updated_at FROM page_v_notes WHERE id = ?",
+            (note_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def add_note(title, content="", db_path=None):
+    """新增一条笔记，返回新 id。标题为空时自动取当天日期。"""
+    ensure_pagev_notes_table(db_path)
+    title = (title or "").strip() or datetime.date.today().strftime("%Y-%m-%d")
+    now = _now_datetime_str()
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO page_v_notes (title, content, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?)",
+            (title, content or "", now, now),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def update_note(note_id, title=None, content=None, db_path=None):
+    """
+    更新笔记的标题/正文（传 None 的字段不修改）。
+    返回更新后的完整记录；不存在返回 None。标题为空时自动取当天日期。
+    """
+    fields, values = [], []
+    if title is not None:
+        fields.append("title = ?")
+        values.append((title or "").strip() or datetime.date.today().strftime("%Y-%m-%d"))
+    if content is not None:
+        fields.append("content = ?")
+        values.append(content or "")
+    if not fields:
+        return get_note(note_id, db_path)
+    fields.append("updated_at = ?")
+    values.append(_now_datetime_str())
+    values.append(note_id)
+    ensure_pagev_notes_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE page_v_notes SET %s WHERE id = ?" % ", ".join(fields), tuple(values))
+        if cur.rowcount == 0:
+            return None
+        conn.commit()
+        cur.execute(
+            "SELECT id, title, content, created_at, updated_at FROM page_v_notes WHERE id = ?",
+            (note_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def delete_note(note_id, db_path=None):
+    """删除一条笔记，返回是否删除成功。"""
+    ensure_pagev_notes_table(db_path)
+    conn = get_conn(db_path)
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM page_v_notes WHERE id = ?", (note_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
