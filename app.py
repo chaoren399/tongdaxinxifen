@@ -3289,117 +3289,22 @@ def page_v():
     return resp
 
 
-@app.route("/api/pageV/list")
-def api_pageV_list():
-    """笔记列表（?q= 按标题/正文搜索），按更新时间倒序。"""
-    from db import ensure_pagev_notes_table, list_notes
+def _get_or_create_note_safe():
+    """取页面 V 的唯一笔记；不存在则自动创建一条，标题「笔记」。"""
+    from db import add_note, ensure_pagev_notes_table, get_conn, get_note
 
     ensure_pagev_notes_table()
-    docs = list_notes(request.args.get("q", ""))
-    return jsonify({
-        "ok": True,
-        "docs": [
-            {
-                "id": d["id"],
-                "title": d["title"],
-                "summary": d["summary"],
-                "created_at": d["created_at"],
-                "updated_at": d["updated_at"],
-            }
-            for d in docs
-        ],
-    })
-
-
-@app.route("/api/pageV/get")
-def api_pageV_get():
-    """取单条笔记全文。"""
-    from db import get_note
-
-    try:
-        note_id = int(request.args.get("id"))
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "缺少 id"}), 400
-    note = get_note(note_id)
-    if note is None:
-        return jsonify({"ok": False, "error": "笔记不存在"}), 404
-    return jsonify({"ok": True, "note": note})
-
-
-@app.route("/api/pageV/add", methods=["POST"])
-def api_pageV_add():
-    """新增笔记，返回新 id。"""
-    from db import add_note
-
-    payload = request.get_json(silent=True) or {}
-    try:
-        note_id = add_note(payload.get("title", ""), payload.get("content", ""))
-        return jsonify({"ok": True, "id": note_id})
-    except Exception as exc:  # noqa: BLE001
-        return jsonify({"ok": False, "error": str(exc)}), 500
-
-
-@app.route("/api/pageV/update", methods=["POST"])
-def api_pageV_update():
-    """保存笔记（标题/正文），返回更新后的记录。"""
-    from db import update_note
-
-    payload = request.get_json(silent=True) or {}
-    try:
-        note_id = int(payload.get("id"))
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "缺少 id"}), 400
-    try:
-        note = update_note(note_id, payload.get("title"), payload.get("content"))
-        if note is None:
-            return jsonify({"ok": False, "error": "笔记不存在"}), 404
-        return jsonify({
-            "ok": True,
-            "note": {
-                "id": note["id"],
-                "title": note["title"],
-                "updated_at": note["updated_at"],
-            },
-        })
-    except Exception as exc:  # noqa: BLE001
-        return jsonify({"ok": False, "error": str(exc)}), 500
-
-
-@app.route("/api/pageV/delete", methods=["POST"])
-def api_pageV_delete():
-    """删除笔记，并清理其正文引用、且不再被其他笔记引用的图片文件。"""
-    from db import delete_note, get_conn, get_note
-
-    payload = request.get_json(silent=True) or {}
-    try:
-        note_id = int(payload.get("id"))
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "缺少 id"}), 400
-    note = get_note(note_id)
-    if note is None:
-        return jsonify({"ok": False, "error": "笔记不存在"}), 404
-
-    if not delete_note(note_id):
-        return jsonify({"ok": False, "error": "删除失败"}), 500
-
-    # 收集该笔记引用的图片；其他笔记仍在引用的保留
-    referenced = set(
-        re.findall(r"/note_images/([0-9a-zA-Z_./\-]+)", note["content"] or "")
-    )
     conn = get_conn()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT content FROM notes")
-        for r in cur.fetchall():
-            for m in re.findall(r"/note_images/([0-9a-zA-Z_./\-]+)", r["content"] or ""):
-                referenced.discard(m)
+        cur.execute("SELECT id FROM page_v_notes ORDER BY id LIMIT 1")
+        row = cur.fetchone()
     finally:
         conn.close()
-    for rel in referenced:
-        _abs = _note_image_abs(rel)
-        if _abs:
-            _safe_remove(_abs)
-    return jsonify({"ok": True})
+    if row is not None:
+        return get_note(row["id"])
+    note_id = add_note("笔记", "")
+    return get_note(note_id)
 
 
 def _note_image_abs(rel_path):
@@ -3408,6 +3313,50 @@ def _note_image_abs(rel_path):
     if not rel or any(p in ("", ".", "..") for p in rel.split("/")):
         return None
     return os.path.join(NOTE_IMAGES_DIR, *rel.split("/"))
+
+
+def _note_refs(content):
+    """提取正文 HTML 中引用的笔记图片相对路径集合。"""
+    return set(re.findall(r"/note_images/([0-9a-zA-Z_./\-]+)", content or ""))
+
+
+@app.route("/api/pageV/note")
+def api_pageV_note():
+    """取唯一笔记全文（不存在则自动创建）。"""
+    note = _get_or_create_note_safe()
+    return jsonify({"ok": True, "note": note})
+
+
+@app.route("/api/pageV/save", methods=["POST"])
+def api_pageV_save():
+    """保存唯一笔记（标题/正文）；同时清理正文不再引用的图片文件。"""
+    from db import get_note, update_note
+
+    payload = request.get_json(silent=True) or {}
+    note = _get_or_create_note_safe()
+    old_content = note["content"] or ""
+    title = payload.get("title")
+    content = payload.get("content")
+    try:
+        updated = update_note(note["id"], title, content)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    if updated is None:
+        return jsonify({"ok": False, "error": "笔记不存在"}), 404
+
+    # 清理旧内容引用、新内容已不再引用的图片文件
+    for rel in _note_refs(old_content) - _note_refs(updated["content"] or ""):
+        _abs = _note_image_abs(rel)
+        if _abs:
+            _safe_remove(_abs)
+    return jsonify({
+        "ok": True,
+        "note": {
+            "id": updated["id"],
+            "title": updated["title"],
+            "updated_at": updated["updated_at"],
+        },
+    })
 
 
 @app.route("/api/pageV/upload_image", methods=["POST"])
