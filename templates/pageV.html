@@ -21,13 +21,13 @@
         .nv-toc {
             flex: 0 0 210px;
             position: sticky;
-            top: 70px;
+            top: 10px;
             box-sizing: border-box;
             background: #fff;
             border: 1px solid #e5e7eb;
             border-radius: 12px;
             padding: 10px;
-            max-height: calc(100vh - 110px);
+            max-height: calc(100vh - 40px);
             overflow-y: auto;
         }
         .nv-toc-title {
@@ -52,7 +52,7 @@
         .nv-toc-item:hover { background: #f3f4f6; }
         .nv-toc-hint { color: #d1d5db; font-size: 12px; padding: 3px 6px; }
         @media (max-width: 1000px) { .nv-toc { display: none; } }
-        .nv-editor h1, .nv-editor h2 { scroll-margin-top: 80px; }
+        .nv-editor h1, .nv-editor h2 { scroll-margin-top: 60px; }
 
         .nv-main {
             background: #fff;
@@ -76,7 +76,7 @@
         }
         .nv-title-input:focus { outline: none; border-bottom-color: #93c5fd; }
 
-        /* 工具栏 */
+        /* 工具栏（吸顶：滚过初始位置后由 JS 转为 fixed，钉在导航条正下方） */
         .nv-toolbar {
             display: flex;
             flex-wrap: wrap;
@@ -84,6 +84,15 @@
             align-items: center;
             padding: 8px 0;
             border-bottom: 1px solid #f3f4f6;
+            z-index: 30;
+            background: #fff;
+        }
+        .nv-toolbar-fixed {
+            position: fixed;
+            box-sizing: border-box;
+            padding: 8px 10px;
+            border-bottom: 1px solid #e5e7eb;
+            box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
         }
         .nv-tool {
             min-width: 28px;
@@ -280,23 +289,6 @@
     </style>
 </head>
 <body class="page-v">
-    <header class="topbar topbar-pageF">
-        <nav class="topnav">
-            <a href="{{ url_for('index') }}">首页</a>
-            <a href="{{ url_for('page_a') }}">页面 A</a>
-            <a href="{{ url_for('page_b') }}">页面 B</a>
-            <a href="{{ url_for('page_d') }}">三级</a>
-            <a href="{{ url_for('page_k') }}">概念</a>
-            <a href="{{ url_for('page_l') }}">页面 L</a>
-            <a href="{{ url_for('page_p') }}">页面 P</a>
-            <a href="{{ url_for('page_r') }}" target="_blank" rel="noopener">周期</a>
-            <a href="{{ url_for('page_s') }}">页面 S</a>
-            <a href="{{ url_for('page_t') }}">页面 T</a>
-            <a href="{{ url_for('page_u') }}">复盘</a>
-            <a class="active" href="{{ url_for('page_v') }}">笔记</a>
-        </nav>
-    </header>
-
     <main class="container">
         <div class="nv-layout">
             <!-- ===== 左侧：目录（自动提取正文 H1 / H2） ===== -->
@@ -309,6 +301,7 @@
 
             <section class="nv-main">
             <input type="text" class="nv-title-input" id="nvTitleInput" placeholder="输入标题…" />
+            <div id="nvToolbarSpacer"></div>
             <div class="nv-toolbar" id="nvToolbar">
                 <button type="button" class="nv-tool" data-cmd="undo" title="撤销">↶</button>
                 <button type="button" class="nv-tool" data-cmd="redo" title="重做">↷</button>
@@ -321,14 +314,11 @@
                 <button type="button" class="nv-tool" data-cmd="bold" title="加粗"><b>B</b></button>
                 <button type="button" class="nv-tool" data-cmd="italic" title="斜体"><i>I</i></button>
                 <button type="button" class="nv-tool" data-cmd="underline" title="下划线"><u>U</u></button>
-                <button type="button" class="nv-tool" data-cmd="strikeThrough" title="删除线"><s>S</s></button>
-                <span class="nv-sep"></span>
-                <button type="button" class="nv-tool" data-cmd="insertUnorderedList" title="无序列表">• 列表</button>
-                <button type="button" class="nv-tool" data-cmd="insertOrderedList" title="有序列表">1. 列表</button>
-                <button type="button" class="nv-tool" data-block="blockquote" title="引用">引用</button>
                 <span class="nv-sep"></span>
                 <button type="button" class="nv-tool" data-cmd="insertHorizontalRule" title="分割线">—</button>
                 <button type="button" class="nv-tool" data-insert-table title="插入 3×3 表格">表格</button>
+                <span class="nv-sep"></span>
+                <button type="button" class="nv-tool" data-del-below title="删除光标所在标题下方的全部内容（标题本身保留）">删后</button>
                 <span class="nv-sep"></span>
                 <button type="button" class="nv-tool" data-cmd="removeFormat" title="清除格式">清除</button>
                 <button type="button" class="nv-tool" id="nvImgBtn" title="插入图片">图片</button>
@@ -398,6 +388,60 @@
             statusEl.className = "nv-status" + (cls ? " " + cls : "");
         }
 
+        // ---- 结构整理：修复历史畸形数据，保证首行可正常编辑 ----
+        var BLOCK_IN_HEAD = "figure, p, div, table, ul, ol, blockquote, pre, hr";
+
+        function normalizeEditor() {
+            // 1) 把误嵌进 H1/H2/H3 的块级元素（图片、段落等）拆出来，
+            //    拆完若标题里没有文字则删除空标题
+            Array.prototype.forEach.call(
+                editorEl.querySelectorAll("h1, h2, h3"),
+                function (h) {
+                    var moved = false;
+                    Array.prototype.slice.call(h.children).forEach(function (child) {
+                        if (child.matches(BLOCK_IN_HEAD)) {
+                            h.parentNode.insertBefore(child, h);
+                            moved = true;
+                        }
+                    });
+                    if (moved && !(h.textContent || "").trim()) h.remove();
+                }
+            );
+            // 2) 首个块若是不可编辑的原子块（如图片 figure），在最前面补一个
+            //    可编辑的空段落，保证光标能落到首行
+            var first = editorEl.firstElementChild;
+            if (first && first.getAttribute("contenteditable") === "false") {
+                var p = document.createElement("p");
+                p.innerHTML = "<br>";
+                editorEl.insertBefore(p, first);
+            }
+        }
+
+        // ---- 当日日期 H1：新增内容时自动补齐 ----
+        function todayLabel() {
+            var d = new Date();
+            var p = function (n) { return ("0" + n).slice(-2); };
+            return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+        }
+
+        function hasTodayH1() {
+            var t = todayLabel();
+            var heads = editorEl.querySelectorAll("h1");
+            for (var i = 0; i < heads.length; i++) {
+                if ((heads[i].innerText || "").trim() === t) return true;
+            }
+            return false;
+        }
+
+        // 没有当日日期的 H1 就在最顶部插一个；返回是否发生了插入
+        function ensureTodayHeading() {
+            if (hasTodayH1()) return false;
+            var h = document.createElement("h1");
+            h.textContent = todayLabel();
+            editorEl.insertBefore(h, editorEl.firstChild);
+            return true;
+        }
+
         // ---- 加载唯一笔记 ----
         function loadNote() {
             apiGet("/api/pageV/note")
@@ -406,7 +450,9 @@
                     if (!j.ok) { setStatus(j.error || "加载失败", "is-unsaved"); return; }
                     titleEl.value = j.note.title || "";
                     editorEl.innerHTML = j.note.content || "";
+                    normalizeEditor();
                     dirty = false;
+                    if (ensureTodayHeading()) markDirty();   // 跨天打开时自动补当日标题
                     updateCharCount();
                     refreshToc();
                     setStatus("上次更新 " + fmtTime(j.note.updated_at), "");
@@ -459,6 +505,7 @@
         }
 
         editorEl.addEventListener("input", function () {
+            ensureTodayHeading();   // 新增内容时自动补当日日期 H1（没有才插）
             updateCharCount();
             markDirty();
             scheduleToc();
@@ -487,7 +534,7 @@
                 return;
             }
             Array.prototype.forEach.call(heads, function (h, i) {
-                if (!h.id) h.id = "nv-h-" + i;
+                h.id = "nv-h-" + i;   // 强制重编号，修复历史数据中的重复 id
                 var item = document.createElement("div");
                 item.className = "nv-toc-item " +
                     (h.tagName === "H1" ? "is-h1" : "is-h2");
@@ -519,12 +566,58 @@
                 document.execCommand("formatBlock", false, btn.dataset.block);
             } else if (btn.hasAttribute("data-insert-table")) {
                 insertTable();
+            } else if (btn.hasAttribute("data-del-below")) {
+                deleteBelowHeading();
             }
             updateCharCount();
             markDirty();
         });
 
+        // ---- 删除当前光标所在标题下方的全部内容（标题本身保留） ----
+        function deleteBelowHeading() {
+            var sel = window.getSelection();
+            if (!sel.rangeCount) {
+                setStatus("请先把光标放到要操作的标题内", "is-unsaved");
+                return;
+            }
+            var node = sel.getRangeAt(0).startContainer;
+            var el = node.nodeType === 1 ? node : node.parentNode;
+            var head = el && el.closest ? el.closest("h1, h2, h3") : null;
+            if (!head || !editorEl.contains(head)) {
+                setStatus("请先把光标放到要操作的标题内", "is-unsaved");
+                return;
+            }
+            var name = (head.innerText || "").trim() || "无标题";
+            if (!window.confirm("确定删除「" + name + "」下方的所有内容吗？\n标题本身保留，此操作不可撤销。")) {
+                return;
+            }
+            while (head.nextElementSibling) {
+                head.nextElementSibling.remove();
+            }
+            updateCharCount();
+            markDirty();
+            refreshToc();
+        }
+
+        // 图片 / 表格是块级元素：若光标在标题内，先把光标移出标题再插入，
+        // 避免把 figure / table 嵌进 h1~h3 造成畸形结构
+        function escapeHeading() {
+            var sel = window.getSelection();
+            if (!sel.rangeCount) return;
+            var node = sel.getRangeAt(0).startContainer;
+            var el = node.nodeType === 1 ? node : node.parentNode;
+            var head = el && el.closest ? el.closest("h1, h2, h3") : null;
+            if (head && editorEl.contains(head)) {
+                var range = document.createRange();
+                range.setStartAfter(head);
+                range.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+        }
+
         function insertTable() {
+            escapeHeading();
             var html = '<table><tbody>';
             for (var r = 0; r < 3; r++) {
                 html += "<tr>";
@@ -555,6 +648,7 @@
         }
 
         function insertImage(url) {
+            escapeHeading();
             var label = nowLabel();
             document.execCommand("insertHTML", false,
                 '<figure class="nv-img-fig" contenteditable="false">'
@@ -846,6 +940,16 @@
             imgInput.value = "";
         });
 
+        function textToHtml(text) {
+            // 纯文本按行拆成段落
+            var lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
+            while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+            if (!lines.length) return "";
+            return lines.map(function (ln) {
+                return "<p>" + (ln ? esc(ln) : "<br>") + "</p>";
+            }).join("");
+        }
+
         editorEl.addEventListener("paste", function (ev) {
             var items = (ev.clipboardData && ev.clipboardData.items) || [];
             for (var i = 0; i < items.length; i++) {
@@ -860,8 +964,6 @@
                     setStatus("图片上传中…", "");
                     uploadImageFile(file).then(function (url) {
                         insertImage(url);
-                        updateCharCount();
-                        markDirty();
                     }).catch(function (e) {
                         setStatus(e.message || "图片上传失败", "is-unsaved");
                     });
@@ -883,6 +985,42 @@
         });
 
         saveBtn.addEventListener("click", save);
+
+        // ---- 工具栏吸顶：滚过初始位置后转为 fixed，钉在顶部导航条正下方 ----
+        var toolbarEl = $("nvToolbar");
+        var spacerEl = $("nvToolbarSpacer");
+        var mainEl = document.querySelector(".nv-main");
+        var topbarEl = document.querySelector(".topbar");
+
+        function updateToolbarPin() {
+            var headerH = topbarEl ? topbarEl.offsetHeight : 0;
+            var mainRect = mainEl.getBoundingClientRect();
+            var toolbarH = toolbarEl.offsetHeight;
+            // 工具栏的"自然位置"：固定期间取占位元素的位置
+            var pinned = toolbarEl.classList.contains("nv-toolbar-fixed");
+            var naturalTop = (pinned ? spacerEl : toolbarEl).getBoundingClientRect().top;
+            var cardEnd = mainRect.bottom - 14;   // 卡片内边距
+            if (naturalTop <= headerH + 1 && cardEnd > headerH + toolbarH + 10) {
+                if (!pinned) {
+                    spacerEl.style.height = toolbarH + "px";
+                    toolbarEl.classList.add("nv-toolbar-fixed");
+                }
+                toolbarEl.style.top = headerH + "px";
+                toolbarEl.style.left = (mainRect.left + 14) + "px";
+                toolbarEl.style.width = Math.max(0, mainRect.width - 28) + "px";
+            } else {
+                if (pinned) {
+                    toolbarEl.classList.remove("nv-toolbar-fixed");
+                    toolbarEl.style.top = "";
+                    toolbarEl.style.left = "";
+                    toolbarEl.style.width = "";
+                    spacerEl.style.height = "";
+                }
+            }
+        }
+        window.addEventListener("scroll", updateToolbarPin, { passive: true });
+        window.addEventListener("resize", updateToolbarPin);
+        updateToolbarPin();
 
         // ---- 启动 ----
         loadNote();
