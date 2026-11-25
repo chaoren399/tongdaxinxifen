@@ -133,7 +133,7 @@
                     (data.error || "加载失败") + "</div></td></tr>";
                 return;
             }
-            $count.textContent = data.stockCount;
+            if ($count) $count.textContent = data.stockCount;
             renderStocks(data.stocks || []);
         } catch (err) {
             $body.innerHTML = '<tr><td colspan="8"><div class="e-empty">加载失败：' +
