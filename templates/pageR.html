@@ -55,6 +55,23 @@
             background: #fde68a; font-weight: 700; text-align: center; color: #92400e;
         }
         table.zq thead th.zq-height { z-index: 4; }
+        /* 区域标记：上 11 行 10CM、中 5 行 20CM、下 3 行 30CM */
+        table.zq td.zq-height.zq-zone10 { box-shadow: inset 4px 0 0 #dc2626; }
+        table.zq td.zq-height.zq-zone20 { box-shadow: inset 4px 0 0 #2563eb; }
+        table.zq td.zq-height.zq-zone30 { box-shadow: inset 4px 0 0 #16a34a; }
+        .zq-zone-tag {
+            display: inline-block;
+            margin-left: 3px;
+            padding: 0 3px;
+            font-size: 9px;
+            line-height: 12px;
+            color: #fff;
+            border-radius: 3px;
+            vertical-align: 1px;
+        }
+        .zq-zone-tag.t10 { background: #dc2626; }
+        .zq-zone-tag.t20 { background: #2563eb; }
+        .zq-zone-tag.t30 { background: #16a34a; }
         table.zq td.zq-week-start { border-left: 2px solid #9ca3af; }
         table.zq td.zq-red { background: #dc2626; color: #fff; font-weight: 600; }
         table.zq td.zq-note { color: #374151; }
@@ -190,9 +207,10 @@
                 </thead>
                 <tbody>
                     {% for section in board.sections %}
+                        {% set zone = {'main': ('zq-zone10', 't10', '10CM'), 'sub': ('zq-zone20', 't20', '20CM'), 'sub2': ('zq-zone30', 't30', '30CM')}.get(section.name) %}
                         {% for row in section.rows %}
                         <tr class="{% if loop.first %}zq-section-divider{% endif %}{% if row.kind == 'note' %} zq-note-row{% endif %}{% if section.name == 'main' and row.kind != 'note' and row.height == '1' %} zq-height-end{% endif %}">
-                            <td class="zq-height">{{ row.height }}</td>
+                            <td class="zq-height{% if zone and row.kind != 'note' %} {{ zone[0] }}{% endif %}">{{ row.height }}{% if zone and loop.first and row.kind != 'note' %}<span class="zq-zone-tag {{ zone[1] }}">{{ zone[2] }}</span>{% endif %}</td>
                             {% for cell in row.cells %}
                             {% set d = board.days[loop.index0] %}
                             <td data-row="{{ row.id }}" data-day="{{ d.id }}" data-current="{{ cell.content if cell else '' }}" title="{{ cell.content if cell else '双击编辑' }}"{% if cell %}{% if cell.style %} class="zq-{{ cell.style }}"{% elif cell.content %} class="zq-note"{% endif %}{% endif %}>{% if cell %}{{ cell.content | e }}{% endif %}</td>
