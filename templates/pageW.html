@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
     <style>
         body.page-w { background: #f5f7fb; }
+        .w-card + .w-card, .w-nav + .w-card { margin-top: 14px; }
         .w-card {
             background: #fff;
             border: 1px solid #e5e7eb;
@@ -28,12 +29,9 @@
             padding: 0;
             font: inherit;
             font-size: 13px;
+            font-weight: 600;
             color: #2563eb;
-            background: transparent;
-            border: none;
-            cursor: pointer;
         }
-        .w-title:hover { text-decoration: underline; }
         .w-hint { font-size: 12px; color: #d1d5db; }
         .w-legend {
             display: flex;
@@ -66,6 +64,32 @@
         .w-chart { width: 100%; overflow-x: auto; }
         .w-chart svg { display: block; width: 100%; min-width: 980px; height: auto; }
         .w-empty { padding: 60px 0; text-align: center; color: #9ca3af; font-size: 13px; }
+        /* 底部时间轴：左右滑动查看历史窗口 */
+        .w-nav {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 14px;
+            padding: 10px 14px;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+        }
+        .w-nav button {
+            padding: 5px 12px;
+            font: inherit;
+            font-size: 12px;
+            color: #374151;
+            background: #fff;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .w-nav button:hover { border-color: #93c5fd; color: #2563eb; }
+        .w-nav button:disabled { opacity: 0.45; cursor: default; }
+        .w-nav input[type="range"] { flex: 1 1 200px; min-width: 160px; accent-color: #2563eb; }
+        .w-range-label { font-size: 12px; color: #6b7280; min-width: 210px; text-align: right; }
     </style>
 </head>
 <body class="page-w">
@@ -79,9 +103,9 @@
             <a href="{{ url_for('page_l') }}">页面 L</a>
             <a href="{{ url_for('page_p') }}">页面 P</a>
             <a href="{{ url_for('page_r') }}" target="_blank" rel="noopener">周期</a>
+            <a class="active" href="{{ url_for('page_w') }}">页面 W</a>
             <a href="{{ url_for('page_s') }}">页面 S</a>
             <a href="{{ url_for('page_t') }}">页面 T</a>
-            <a class="active" href="{{ url_for('page_w') }}">页面 W</a>
             <a href="{{ url_for('page_u') }}">复盘</a>
             <a href="{{ url_for('page_v') }}" target="_blank" rel="noopener">笔记</a>
         </nav>
@@ -90,17 +114,35 @@
     <main class="container">
         <div class="w-card">
             <div class="w-head">
-                <button type="button" class="w-title" id="wToggle">收起高度图</button>
-                <span class="w-hint">点击标题可收起 / 展开</span>
+                <span class="w-title">主板-创业板</span>
+                <span class="w-hint">数据来自周期表的主板 / 创业板区域</span>
             </div>
-            <div id="wBody">
+            <div>
                 <div class="w-legend">
                     <span style="color:#dc2626"><i></i>连板高度</span>
-                    <span style="color:#9ca3af"><i></i>次高高度</span>
                     <span style="color:#3b82f6"><i></i>创业板高度</span>
                 </div>
                 <div class="w-chart" id="wChart"></div>
             </div>
+        </div>
+
+        <div class="w-nav" id="wNav">
+            <button type="button" id="wPrev" title="向前移动一天">←</button>
+            <input type="range" id="wSlider" min="0" max="0" value="0" aria-label="历史交易日" />
+            <button type="button" id="wNext" title="向后移动一天">→</button>
+            <button type="button" id="wLatest" title="回到最新交易日">回到最新</button>
+            <span class="w-range-label" id="wRangeLabel"></span>
+        </div>
+
+        <div class="w-card">
+            <div class="w-head">
+                <span class="w-title">30CM 区域</span>
+                <span class="w-hint">数据来自周期表的 30CM 区域（1–3 行）</span>
+            </div>
+            <div class="w-legend">
+                <span style="color:#16a34a"><i></i>30CM 高度</span>
+            </div>
+            <div class="w-chart" id="wChart30"></div>
         </div>
     </main>
 
@@ -110,14 +152,18 @@
 
         var board = {{ board | tojson }};
         var chartEl = document.getElementById("wChart");
-        var bodyEl = document.getElementById("wBody");
-        var toggleEl = document.getElementById("wToggle");
+        var chart30El = document.getElementById("wChart30");
         var WINDOW_DAYS = 12;
+        var LABEL_FONT = 20;   // 数据点标注字号（原 10，放大 1 倍）
+        var LABEL_LINE = 24;   // 多行标注行距
 
+        // 按绘制顺序排列：蓝色创业板在下层，红色连板在上层
         var SERIES = [
-            { key: "main", name: "连板高度", color: "#dc2626", labelSide: "top" },
-            { key: "sub2", name: "次高高度", color: "#9ca3af", labelSide: "none" },
-            { key: "sub",  name: "创业板高度", color: "#3b82f6", labelSide: "bottom" }
+            { key: "sub",  name: "创业板高度", color: "#3b82f6", labelSide: "bottom" },
+            { key: "main", name: "连板高度", color: "#dc2626", labelSide: "top" }
+        ];
+        var SERIES30 = [
+            { key: "sub2", name: "30CM 高度", color: "#16a34a", labelSide: "top" }
         ];
 
         function pad(n) { return ("0" + n).slice(-2); }
@@ -149,8 +195,9 @@
         (board.sections || []).forEach(function (s) { sections[s.name] = s.rows || []; });
 
         function dayHasData(gi) {
-            return SERIES.some(function (se) {
-                return (sections[se.key] || []).some(function (row) {
+            // 三个区域都参与判断，保证 30CM 图的历史窗口不被漏掉
+            return ["main", "sub", "sub2"].some(function (key) {
+                return (sections[key] || []).some(function (row) {
                     if (row.kind === "note") return false;
                     var c = row.cells && row.cells[gi];
                     return !!(c && c.content && heightOf(c.content) > 0);
@@ -158,13 +205,20 @@
             });
         }
 
-        // 取最后 WINDOW_DAYS 个有数据的交易日
-        var last = -1;
-        for (var i = 0; i < allDays.length; i++) { if (dayHasData(i)) last = i; }
-        if (last < 0) last = allDays.length - 1;
-        var start = Math.max(0, last - WINDOW_DAYS + 1);
+        // 默认显示最后有数据的交易日，可用底部时间轴向前查看历史
+        var lastWithData = -1;
+        for (var i = 0; i < allDays.length; i++) { if (dayHasData(i)) lastWithData = i; }
+        var latestEnd = lastWithData >= 0 ? lastWithData : Math.max(0, allDays.length - 1);
+        var windowEnd = latestEnd;
         var dayIdx = [];
-        for (var j = start; j <= last; j++) dayIdx.push(j);
+
+        function rebuildWindow() {
+            windowEnd = Math.max(0, Math.min(windowEnd, allDays.length - 1));
+            var start = Math.max(0, windowEnd - WINDOW_DAYS + 1);
+            dayIdx = [];
+            for (var j = start; j <= windowEnd; j++) dayIdx.push(j);
+        }
+        rebuildWindow();
 
         function pointOf(se, gi) {
             var pool = [];
@@ -206,22 +260,22 @@
                             .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
         }
 
-        function draw() {
+        function renderChart(el, seriesList, minMax, H) {
             if (!dayIdx.length) {
-                chartEl.innerHTML = '<div class="w-empty">暂无周期数据，请先在页面 R 中填写</div>';
+                el.innerHTML = '<div class="w-empty">暂无周期数据，请先在页面 R 中填写</div>';
                 return;
             }
-            var W = 1320, H = 420;
+            var W = 1320;
             var left = 70, right = 36, top = 56, bottom = 54;
             var pw = W - left - right, ph = H - top - bottom;
 
-            var data = SERIES.map(function (se) {
+            var data = seriesList.map(function (se) {
                 return {
                     se: se,
                     pts: dayIdx.map(function (gi) { return pointOf(se, gi); })
                 };
             });
-            var maxV = 6;
+            var maxV = minMax;
             data.forEach(function (d) {
                 d.pts.forEach(function (p) { if (p.v > maxV) maxV = p.v; });
             });
@@ -230,7 +284,8 @@
             function Y(v) { return top + ph * (1 - v / maxV); }
 
             var svg = [];
-            svg.push('<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="收起高度图">');
+            svg.push('<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' +
+                esc(seriesList.map(function (se) { return se.name; }).join("、")) + '">');
 
             // 横向网格和 Y 轴刻度
             for (var v = 0; v <= maxV; v++) {
@@ -250,8 +305,7 @@
                     esc(fullDate(allDays[gi].date)) + '</text>');
             });
 
-            // 三条曲线：先画灰色次高，再画蓝色创业板，最后画红色连板
-            [data[1], data[2], data[0]].forEach(function (d) {
+            data.forEach(function (d) {
                 var se = d.se;
                 var coords = d.pts.map(function (p, i) { return [X(i), Y(p.v)]; });
                 svg.push('<path d="' + smoothPath(coords) + '" fill="none" stroke="' + se.color +
@@ -263,10 +317,10 @@
                     if (p.labels.length && se.labelSide !== "none") {
                         p.labels.slice(0, 3).forEach(function (txt, k) {
                             var ly = se.labelSide === "top"
-                                ? y - 14 - k * 13
-                                : y + 21 + k * 13;
+                                ? y - 14 - k * LABEL_LINE
+                                : y + 27 + k * LABEL_LINE;
                             svg.push('<text x="' + x + '" y="' + ly +
-                                '" text-anchor="middle" font-size="10" fill="' + se.color + '">' +
+                                '" text-anchor="middle" font-size="' + LABEL_FONT + '" fill="' + se.color + '">' +
                                 esc(txt) + '</text>');
                         });
                     }
@@ -274,15 +328,52 @@
             });
 
             svg.push("</svg>");
-            chartEl.innerHTML = svg.join("");
+            el.innerHTML = svg.join("");
         }
 
-        toggleEl.addEventListener("click", function () {
-            var hidden = bodyEl.hidden;
-            bodyEl.hidden = !hidden;
-            toggleEl.textContent = hidden ? "收起高度图" : "展开高度图";
-        });
+        function draw() {
+            // 上图 6 格 × 420 高，30CM 图 3 格 × 265 高：两图网格行间距保持一致
+            renderChart(chartEl, SERIES, 6, 420);
+            renderChart(chart30El, SERIES30, 3, 265);
+        }
 
+        // ---- 底部时间轴：左右按钮 / 滑杆切换历史窗口，两张图同步 ----
+        var sliderEl = document.getElementById("wSlider");
+        var prevEl = document.getElementById("wPrev");
+        var nextEl = document.getElementById("wNext");
+        var latestEl = document.getElementById("wLatest");
+        var rangeLabel = document.getElementById("wRangeLabel");
+
+        function updateNav() {
+            sliderEl.max = String(Math.max(0, allDays.length - 1));
+            sliderEl.value = String(windowEnd);
+            prevEl.disabled = windowEnd <= 0;
+            nextEl.disabled = windowEnd >= allDays.length - 1;
+            latestEl.disabled = windowEnd === latestEnd;
+            if (!dayIdx.length) {
+                rangeLabel.textContent = "无交易日数据";
+            } else {
+                rangeLabel.textContent = fullDate(allDays[dayIdx[0]].date) + " ~ " +
+                    fullDate(allDays[dayIdx[dayIdx.length - 1]].date) +
+                    "（" + dayIdx.length + " 个交易日）";
+            }
+        }
+
+        function refresh() {
+            rebuildWindow();
+            draw();
+            updateNav();
+        }
+
+        prevEl.addEventListener("click", function () { windowEnd -= 1; refresh(); });
+        nextEl.addEventListener("click", function () { windowEnd += 1; refresh(); });
+        sliderEl.addEventListener("input", function () {
+            windowEnd = Number(sliderEl.value);
+            refresh();
+        });
+        latestEl.addEventListener("click", function () { windowEnd = latestEnd; refresh(); });
+
+        updateNav();
         draw();
     })();
     </script>
