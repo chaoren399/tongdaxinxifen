@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>W · 收起高度图</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <style>
+        body.page-w { background: #f5f7fb; }
+        .w-card {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+            padding: 14px 18px 18px;
+            box-sizing: border-box;
+        }
+        .w-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            border-bottom: 1px solid #f3f4f6;
+            padding-bottom: 10px;
+        }
+        .w-title {
+            padding: 0;
+            font: inherit;
+            font-size: 13px;
+            color: #2563eb;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+        }
+        .w-title:hover { text-decoration: underline; }
+        .w-hint { font-size: 12px; color: #d1d5db; }
+        .w-legend {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 24px;
+            padding: 12px 0 4px;
+            font-size: 12px;
+            color: #6b7280;
+        }
+        .w-legend span { display: inline-flex; align-items: center; gap: 6px; }
+        .w-legend i {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            box-sizing: border-box;
+            border: 2px solid currentColor;
+            border-radius: 50%;
+            position: relative;
+        }
+        .w-legend i::after {
+            content: "";
+            position: absolute;
+            left: 50%; top: 50%;
+            width: 5px; height: 5px;
+            transform: translate(-50%, -50%);
+            background: #fff;
+            border-radius: 50%;
+        }
+        .w-chart { width: 100%; overflow-x: auto; }
+        .w-chart svg { display: block; width: 100%; min-width: 980px; height: auto; }
+        .w-empty { padding: 60px 0; text-align: center; color: #9ca3af; font-size: 13px; }
+    </style>
+</head>
+<body class="page-w">
+    <header class="topbar topbar-pageF">
+        <nav class="topnav">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('page_a') }}">页面 A</a>
+            <a href="{{ url_for('page_b') }}">页面 B</a>
+            <a href="{{ url_for('page_d') }}">三级</a>
+            <a href="{{ url_for('page_k') }}">概念</a>
+            <a href="{{ url_for('page_l') }}">页面 L</a>
+            <a href="{{ url_for('page_p') }}">页面 P</a>
+            <a href="{{ url_for('page_r') }}" target="_blank" rel="noopener">周期</a>
+            <a href="{{ url_for('page_s') }}">页面 S</a>
+            <a href="{{ url_for('page_t') }}">页面 T</a>
+            <a class="active" href="{{ url_for('page_w') }}">页面 W</a>
+            <a href="{{ url_for('page_u') }}">复盘</a>
+            <a href="{{ url_for('page_v') }}" target="_blank" rel="noopener">笔记</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <div class="w-card">
+            <div class="w-head">
+                <button type="button" class="w-title" id="wToggle">收起高度图</button>
+                <span class="w-hint">点击标题可收起 / 展开</span>
+            </div>
+            <div id="wBody">
+                <div class="w-legend">
+                    <span style="color:#dc2626"><i></i>连板高度</span>
+                    <span style="color:#9ca3af"><i></i>次高高度</span>
+                    <span style="color:#3b82f6"><i></i>创业板高度</span>
+                </div>
+                <div class="w-chart" id="wChart"></div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+    (function () {
+        "use strict";
+
+        var board = {{ board | tojson }};
+        var chartEl = document.getElementById("wChart");
+        var bodyEl = document.getElementById("wBody");
+        var toggleEl = document.getElementById("wToggle");
+        var WINDOW_DAYS = 12;
+
+        var SERIES = [
+            { key: "main", name: "连板高度", color: "#dc2626", labelSide: "top" },
+            { key: "sub2", name: "次高高度", color: "#9ca3af", labelSide: "none" },
+            { key: "sub",  name: "创业板高度", color: "#3b82f6", labelSide: "bottom" }
+        ];
+
+        function pad(n) { return ("0" + n).slice(-2); }
+
+        // "11/12" -> 最接近今天的 "2026-11-12"
+        function fullDate(label) {
+            var m = String(label || "").match(/^(\d{1,2})\/(\d{1,2})$/);
+            if (!m) return String(label || "");
+            var now = new Date(), best = null;
+            [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].forEach(function (y) {
+                var d = new Date(y, Number(m[1]) - 1, Number(m[2]));
+                if (!best || Math.abs(d - now) < Math.abs(best - now)) best = d;
+            });
+            return best.getFullYear() + "-" + pad(best.getMonth() + 1) + "-" + pad(best.getDate());
+        }
+
+        // 从格子文字中取高度：忽略百分号里的数字，如 "真视通+6%" 不计 6
+        function heightOf(text) {
+            var re = /(\d+)(?![\d%])/g, m, best = 0;
+            while ((m = re.exec(String(text || ""))) !== null) {
+                var n = Number(m[1]);
+                if (n >= 1 && n <= 12 && n > best) best = n;
+            }
+            return best;
+        }
+
+        var allDays = board.days || [];
+        var sections = {};
+        (board.sections || []).forEach(function (s) { sections[s.name] = s.rows || []; });
+
+        function dayHasData(gi) {
+            return SERIES.some(function (se) {
+                return (sections[se.key] || []).some(function (row) {
+                    if (row.kind === "note") return false;
+                    var c = row.cells && row.cells[gi];
+                    return !!(c && c.content && heightOf(c.content) > 0);
+                });
+            });
+        }
+
+        // 取最后 WINDOW_DAYS 个有数据的交易日
+        var last = -1;
+        for (var i = 0; i < allDays.length; i++) { if (dayHasData(i)) last = i; }
+        if (last < 0) last = allDays.length - 1;
+        var start = Math.max(0, last - WINDOW_DAYS + 1);
+        var dayIdx = [];
+        for (var j = start; j <= last; j++) dayIdx.push(j);
+
+        function pointOf(se, gi) {
+            var pool = [];
+            (sections[se.key] || []).forEach(function (row) {
+                if (row.kind === "note") return;
+                var c = row.cells && row.cells[gi];
+                if (!c || !c.content) return;
+                var h = heightOf(c.content);
+                if (h > 0) pool.push({ h: h, text: c.content, red: c.style === "red" });
+            });
+            var reds = pool.filter(function (p) { return p.red; });
+            var use = reds.length ? reds : pool;
+            if (!use.length) return { v: 0, labels: [] };
+            var top = use.reduce(function (a, b) { return b.h > a.h ? b : a; });
+            return {
+                v: top.h,
+                labels: use.filter(function (p) { return p.h === top.h; })
+                           .map(function (p) { return p.text; })
+            };
+        }
+
+        function smoothPath(pts) {
+            if (!pts.length) return "";
+            var d = "M" + pts[0][0] + "," + pts[0][1];
+            for (var i = 0; i < pts.length - 1; i++) {
+                var p0 = pts[i - 1] || pts[i], p1 = pts[i];
+                var p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+                var c1x = p1[0] + (p2[0] - p0[0]) / 6;
+                var c1y = p1[1] + (p2[1] - p0[1]) / 6;
+                var c2x = p2[0] - (p3[0] - p1[0]) / 6;
+                var c2y = p2[1] - (p3[1] - p1[1]) / 6;
+                d += " C" + c1x + "," + c1y + " " + c2x + "," + c2y + " " + p2[0] + "," + p2[1];
+            }
+            return d;
+        }
+
+        function esc(s) {
+            return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                            .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+
+        function draw() {
+            if (!dayIdx.length) {
+                chartEl.innerHTML = '<div class="w-empty">暂无周期数据，请先在页面 R 中填写</div>';
+                return;
+            }
+            var W = 1320, H = 420;
+            var left = 70, right = 36, top = 56, bottom = 54;
+            var pw = W - left - right, ph = H - top - bottom;
+
+            var data = SERIES.map(function (se) {
+                return {
+                    se: se,
+                    pts: dayIdx.map(function (gi) { return pointOf(se, gi); })
+                };
+            });
+            var maxV = 6;
+            data.forEach(function (d) {
+                d.pts.forEach(function (p) { if (p.v > maxV) maxV = p.v; });
+            });
+
+            function X(i) { return left + (dayIdx.length === 1 ? pw / 2 : i * pw / (dayIdx.length - 1)); }
+            function Y(v) { return top + ph * (1 - v / maxV); }
+
+            var svg = [];
+            svg.push('<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="收起高度图">');
+
+            // 横向网格和 Y 轴刻度
+            for (var v = 0; v <= maxV; v++) {
+                var gy = Y(v);
+                svg.push('<line x1="' + left + '" y1="' + gy + '" x2="' + (W - right) + '" y2="' + gy +
+                    '" stroke="' + (v === 0 ? "#d1d5db" : "#e5e7eb") + '" stroke-width="1"/>');
+                if (v > 0) {
+                    svg.push('<text x="' + (left - 14) + '" y="' + (gy + 4) +
+                        '" text-anchor="end" font-size="12" fill="#374151">' + v + '</text>');
+                }
+            }
+
+            // X 轴日期
+            dayIdx.forEach(function (gi, i) {
+                svg.push('<text x="' + X(i) + '" y="' + (H - bottom + 22) +
+                    '" text-anchor="middle" font-size="11" fill="#374151">' +
+                    esc(fullDate(allDays[gi].date)) + '</text>');
+            });
+
+            // 三条曲线：先画灰色次高，再画蓝色创业板，最后画红色连板
+            [data[1], data[2], data[0]].forEach(function (d) {
+                var se = d.se;
+                var coords = d.pts.map(function (p, i) { return [X(i), Y(p.v)]; });
+                svg.push('<path d="' + smoothPath(coords) + '" fill="none" stroke="' + se.color +
+                    '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>');
+                d.pts.forEach(function (p, i) {
+                    var x = X(i), y = Y(p.v);
+                    svg.push('<circle cx="' + x + '" cy="' + y + '" r="5" fill="#fff" stroke="' +
+                        se.color + '" stroke-width="2"/>');
+                    if (p.labels.length && se.labelSide !== "none") {
+                        p.labels.slice(0, 3).forEach(function (txt, k) {
+                            var ly = se.labelSide === "top"
+                                ? y - 14 - k * 13
+                                : y + 21 + k * 13;
+                            svg.push('<text x="' + x + '" y="' + ly +
+                                '" text-anchor="middle" font-size="10" fill="' + se.color + '">' +
+                                esc(txt) + '</text>');
+                        });
+                    }
+                });
+            });
+
+            svg.push("</svg>");
+            chartEl.innerHTML = svg.join("");
+        }
+
+        toggleEl.addEventListener("click", function () {
+            var hidden = bodyEl.hidden;
+            bodyEl.hidden = !hidden;
+            toggleEl.textContent = hidden ? "收起高度图" : "展开高度图";
+        });
+
+        draw();
+    })();
+    </script>
+</body>
+</html>

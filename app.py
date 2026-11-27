@@ -1377,6 +1377,22 @@ def page_r():
     return resp
 
 
+@app.route("/pageW")
+def page_w():
+    """页面 W：根据页面 R 的周期表数据绘制收起高度折线图。"""
+    from db import ensure_zq_tables, zq_has_data, import_zq_csv, load_zq_board
+    ensure_zq_tables()
+    if not zq_has_data():
+        try:
+            import_zq_csv()
+        except (FileNotFoundError, ValueError):
+            pass
+    board = load_zq_board()
+    resp = make_response(render_template("pageW.html", board=board))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @app.route("/api/pageR/add_day", methods=["POST"])
 def api_pageR_add_day():
     """在表格最后新增一个交易日列（自动顺延日期、跳过周末）。"""
