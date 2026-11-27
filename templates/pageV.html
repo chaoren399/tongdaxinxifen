@@ -107,6 +107,19 @@
             cursor: pointer;
         }
         .nv-tool:hover { background: #f3f4f6; }
+        /* 工具栏内的普通链接（不参与编辑器按钮逻辑） */
+        .nv-tool-link {
+            display: inline-flex;
+            align-items: center;
+            min-width: 28px;
+            height: 28px;
+            padding: 0 8px;
+            font-size: 13px;
+            color: #374151;
+            text-decoration: none;
+            border-radius: 6px;
+        }
+        .nv-tool-link:hover { background: #f3f4f6; color: #2563eb; }
         .nv-sep { width: 1px; height: 18px; background: #e5e7eb; margin: 0 4px; }
 
         /* 正文编辑区 */
@@ -320,9 +333,7 @@
                 <span class="nv-sep"></span>
                 <button type="button" class="nv-tool" data-del-below title="删除光标所在标题下方的全部内容（标题本身保留）">删后</button>
                 <span class="nv-sep"></span>
-                <button type="button" class="nv-tool" data-cmd="removeFormat" title="清除格式">清除</button>
-                <button type="button" class="nv-tool" id="nvImgBtn" title="插入图片">图片</button>
-                <input type="file" id="nvImgInput" accept="image/*" multiple hidden />
+                <a class="nv-tool-link" href="{{ url_for('page_u') }}" target="_blank" rel="noopener" title="在新标签页打开复盘页面">复盘</a>
             </div>
             <div class="nv-editor" id="nvEditor" contenteditable="true"
                  data-placeholder="正文…（Ctrl+V 粘贴截图；单击图片选中后可 Ctrl+X 剪切，双击图片可裁剪/删除；Ctrl+S 保存）"></div>
@@ -346,7 +357,6 @@
         var charEl = $("nvCharCount");
         var statusEl = $("nvSaveStatus");
         var saveBtn = $("nvSaveBtn");
-        var imgInput = $("nvImgInput");
 
         var dirty = false;         // 有未保存更改
         var saving = false;
@@ -930,15 +940,6 @@
                 }, "image/png");
             });
         }
-
-        $("nvImgBtn").addEventListener("click", function () { imgInput.click(); });
-        imgInput.addEventListener("change", function () {
-            Array.prototype.slice.call(imgInput.files || []).forEach(function (f) {
-                uploadImageFile(f).then(insertImage)
-                    .catch(function (e) { setStatus(e.message || "图片上传失败", "is-unsaved"); });
-            });
-            imgInput.value = "";
-        });
 
         function textToHtml(text) {
             // 纯文本按行拆成段落
