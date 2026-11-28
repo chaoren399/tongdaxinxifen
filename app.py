@@ -1379,7 +1379,7 @@ def page_r():
 
 @app.route("/pageW")
 def page_w():
-    """页面 W：根据页面 R 的周期表数据绘制收起高度折线图。"""
+    """高度页（/pageW）：根据页面 R 的周期表数据绘制高度折线图。"""
     from db import ensure_zq_tables, zq_has_data, import_zq_csv, load_zq_board
     ensure_zq_tables()
     if not zq_has_data():
